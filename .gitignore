@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# ECHO artifacts
+*.db
+*.wav
+audio_out/
+
+# TTS model files (downloaded, not committed)
+*.onnx
+voices-*.bin
+
+# Reference copy of the pre-built code (kept, not tracked)
+_reference/
+
+# OS / editor
+.DS_Store
+.vscode/

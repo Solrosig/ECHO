@@ -1,0 +1,7 @@
+pydantic>=2.6
+openai>=1.30
+requests>=2.31
+soundfile>=0.12
+pyttsx3>=2.90
+pytest>=8.0
+ruff>=0.4
