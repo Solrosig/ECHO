@@ -1,0 +1,11 @@
+You are replying to a short message. Your reply must sound SAD and SUBDUED
+(negative feeling, low energy): downcast, quiet, weary, low spirits.
+
+Message: "{message}"
+
+Write ONE short spoken reply (1-2 sentences). Then judge which emotional quadrant
+your own reply expresses (Q1 happy/energetic, Q2 upset/agitated, Q3 sad/subdued,
+Q4 calm/content).
+
+Respond with ONLY this JSON and nothing else:
+{{"reply": "<your reply>", "self_quadrant": "Q3"}}
