@@ -6,8 +6,8 @@ interface:
   - Pyttsx3Adapter : offline OS voices (Windows SAPI5) — guaranteed audio fallback
   - MockTTSAdapter : dependency-free, for tests / offline integration runs
 
-Arousal reaches the engine as `voice_params.rate` (a speed multiplier), already
-mapped by the strategy. Higher arousal -> faster speech.
+Voice dials come pre-computed on voice_params (rate, volume, pitch). Rate and
+volume are rendered here; pitch is honoured once a pitch-capable engine is added.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class MockTTSAdapter(TTSAdapter):
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        base = max(len(text), 1) / 15.0  # ~seconds of "speech"
+        base = max(len(text), 1) / 15.0
         seconds = max(0.2, base / max(voice_params.rate, 0.1))
         n = int(self._SR * seconds)
         with wave.open(str(out_path), "wb") as w:
@@ -46,7 +46,10 @@ class MockTTSAdapter(TTSAdapter):
 
 
 class Pyttsx3Adapter(TTSAdapter):
-    """Offline fallback using the OS speech engine (Windows SAPI5)."""
+    """Offline fallback using the OS speech engine (Windows SAPI5).
+
+    Renders rate and volume. (SAPI5 via pyttsx3 does not expose pitch.)
+    """
 
     engine_id = "pyttsx3"
     _BASE_WPM = 175
@@ -57,6 +60,7 @@ class Pyttsx3Adapter(TTSAdapter):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         engine = pyttsx3.init()
         engine.setProperty("rate", int(self._BASE_WPM * voice_params.rate))
+        engine.setProperty("volume", max(0.0, min(1.0, voice_params.volume)))
         engine.save_to_file(text, str(out_path))
         engine.runAndWait()
         engine.stop()
@@ -64,7 +68,7 @@ class Pyttsx3Adapter(TTSAdapter):
 
 
 class KokoroAdapter(TTSAdapter):
-    """High-quality open-source neural TTS via kokoro-onnx."""
+    """High-quality open-source neural TTS via kokoro-onnx. Renders rate + volume."""
 
     engine_id = "kokoro"
 
@@ -79,11 +83,9 @@ class KokoroAdapter(TTSAdapter):
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         samples, sample_rate = self._kokoro.create(
-            text,
-            voice=voice_params.voice_id,
-            speed=voice_params.rate,
-            lang=self._lang,
+            text, voice=voice_params.voice_id, speed=voice_params.rate, lang=self._lang
         )
+        samples = samples * max(0.0, min(1.0, voice_params.volume))  # apply loudness
         sf.write(str(out_path), samples, sample_rate)
         return out_path
 
@@ -97,7 +99,6 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
         return Pyttsx3Adapter()
     if choice == "kokoro":
         return KokoroAdapter(kokoro_model, kokoro_voices)
-    # auto
     if Path(kokoro_model).exists() and Path(kokoro_voices).exists():
         try:
             return KokoroAdapter(kokoro_model, kokoro_voices)
