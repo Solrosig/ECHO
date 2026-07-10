@@ -11,32 +11,19 @@ python demo.py "The meeting was moved to a different room" --all-quadrants
 ```
 → four replies (happy / upset / sad / calm), four spoken clips, four fully-logged turns.
 
-## What it demonstrates (thesis Phase 1)
+## What it demonstrates
 
-The project's main risk is the seam between the independent **text** and **speech** channels.
+The project's main risk is the connection between the independent **text** and **speech** channels.
 This MVP proves that seam works end to end: one `EmotionContract` flows through generation,
 a coherence gate, speech synthesis, and provenance logging — every swappable part
 (`EncodingStrategy`, `LLMAdapter`, `TTSAdapter`) sits behind a stable interface so later
 phases add a class instead of rewriting the pipeline.
 
-## Quickstart (Windows)
+## MVP Scope
+**In:** one command, one turn end-to-end, four-quadrant sweep, coherence gate, provenance log.
+**Out:** UI, channel-specialised strategy, real text/speech classifiers,
+commercial adapters (OpenAI LLM + Azure TTS), the controlled corpus, the listener study.
 
-### 1. Install Ollama (the language model)
-1. Install from https://ollama.com/download
-2. Pull the model: `ollama pull llama3.2:3b`  (Ollama serves at `http://localhost:11434`)
-
-### 2. Install dependencies
-```
-conda activate echo
-pip install -r requirements.txt
-```
-
-### 3. Run it
-```
-python demo.py "The bus was late this morning" --all-quadrants
-```
-Speech uses the built-in Windows voice (pyttsx3) out of the box — no extra setup.
-No external tools handy? Add `--mock` to run the whole pipeline with stubs.
 
 ## The four emotions (Russell circumplex quadrants)
 
@@ -71,17 +58,17 @@ Coherence gate  (matches target? retry ≤2)     │
                        (1 turn row + 1 row per attempt)
 ```
 
-## Layout (flat scripts)
+## Layout
 
 ```
-contracts.py       # EmotionContract, quadrants, VA anchors        (SEAM #1)
+contracts.py       # EmotionContract, quadrants, VA anchors        (Block #1)
 strategies.py      # EncodingStrategy + SymmetricStrategy; arousal→rate/volume, valence→pitch
 prompts/           # 4 quadrant templates (data, not code)
-llm.py             # LLMAdapter + Ollama + Mock                     (SEAM #2)
-tts.py             # TTSAdapter + Kokoro + pyttsx3 + Mock           (SEAM #2)
+llm.py             # LLMAdapter + Ollama + Mock                     (Block #2)
+tts.py             # TTSAdapter + Kokoro + pyttsx3 + Mock           (Block #2)
 gate.py            # coherence gate (pure logic + retry loop)
 orchestrator.py    # run_turn: the per-turn pipeline
-persistence.py     # SQLite provenance store                       (SEAM #3)
+persistence.py     # SQLite provenance store                       (Block #3)
 demo.py            # CLI entry point (python demo.py ...)
 config.py          # central settings (env vars + defaults)
 conftest.py        # puts the project folder on the test path
@@ -99,7 +86,7 @@ pytest        # fast unit + integration (mocks; no Ollama/audio needed)
 sqlite3 echo.db "SELECT quadrant, gate_passed, n_attempts, rate, reply FROM turns;"
 ```
 
-## Scope
+## MVP Scope
 **In:** one command, one turn end-to-end, four-quadrant sweep, coherence gate, provenance log.
-**Out (later phases):** UI, channel-specialised strategy, real text/speech classifiers,
+**Out:** UI, channel-specialised strategy, real text/speech classifiers,
 commercial adapters (OpenAI LLM + Azure TTS), the controlled corpus, the listener study.
