@@ -5,3 +5,4 @@ soundfile>=0.12
 pyttsx3>=2.90
 pytest>=8.0
 ruff>=0.4
+pywin32>=305; platform_system == "Windows"   # SAPI5 XML engine (renders pitch)

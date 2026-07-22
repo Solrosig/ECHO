@@ -1,12 +1,12 @@
 """TTS adapter — PROTECTED SEAM #2 (speech side).
 
 `synthesize(text, voice_params) -> Path` writes a WAV. Engines share one interface:
-  - KokoroAdapter  : high-quality open-source neural TTS (preferred)
-  - Pyttsx3Adapter : offline OS voice (Windows SAPI5) — guaranteed audio fallback
-  - MockTTSAdapter : dependency-free, for tests / offline integration runs
+  - KokoroAdapter    : high-quality open-source neural TTS (rate + volume)
+  - Sapi5XmlAdapter  : Windows SAPI5 via prosody XML — renders rate + volume + PITCH
+  - Pyttsx3Adapter   : offline OS voice (rate + volume; no pitch) — safe fallback
+  - MockTTSAdapter   : dependency-free, for tests / offline integration runs
 
-Voice dials arrive pre-computed on `voice_params`. The real engines render
-`rate` and `volume`; `pitch` needs a pitch-capable engine, added in a later step.
+Voice dials arrive pre-computed on `voice_params` (rate, volume, pitch).
 """
 
 from __future__ import annotations
@@ -63,6 +63,53 @@ class Pyttsx3Adapter(TTSAdapter):
         return out_path
 
 
+def _to_scale(value: float, lo: float, hi: float) -> int:
+    """Map a value in [lo, hi] onto SAPI's integer scale [-10, 10]."""
+    if hi == lo:
+        return 0
+    frac = (value - lo) / (hi - lo)              # 0..1
+    return max(-10, min(10, int(round((frac * 2.0 - 1.0) * 10))))
+
+
+def _xml_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+class Sapi5XmlAdapter(TTSAdapter):
+    """Windows SAPI5 driven with prosody XML markup, so PITCH is rendered too.
+
+    Uses pywin32 (win32com). Maps rate/volume/pitch onto SAPI's <rate>, <volume>,
+    and <pitch> tags. This is the engine that finally carries valence (via pitch)
+    into the voice.
+    """
+
+    engine_id = "sapi5xml"
+
+    def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
+        import win32com.client  # Windows only (pywin32)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        rate_i = _to_scale(voice_params.rate, 0.7, 1.3)
+        pitch_i = _to_scale(voice_params.pitch, 0.8, 1.2)
+        vol_pct = int(round(max(0.0, min(1.0, voice_params.volume)) * 100))
+
+        xml = (
+            f'<volume level="{vol_pct}">'
+            f'<rate absspeed="{rate_i}">'
+            f'<pitch absmiddle="{pitch_i}">{_xml_escape(text)}</pitch>'
+            f"</rate></volume>"
+        )
+        voice = win32com.client.Dispatch("SAPI.SpVoice")
+        stream = win32com.client.Dispatch("SAPI.SpFileStream")
+        stream.Open(str(out_path), 3, False)   # 3 = SSFMCreateForWrite
+        voice.AudioOutputStream = stream
+        try:
+            voice.Speak(xml, 8)                # 8 = SVSFIsXML
+        finally:
+            stream.Close()
+        return out_path
+
+
 class KokoroAdapter(TTSAdapter):
     """High-quality open-source neural TTS via kokoro-onnx. Renders rate + volume."""
 
@@ -90,12 +137,18 @@ class KokoroAdapter(TTSAdapter):
 
 
 def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapter:
-    """Select an engine. 'auto' prefers Kokoro if its model files exist, else pyttsx3."""
+    """Select an engine.
+
+    'mock' | 'pyttsx3' | 'sapi' (=sapi5xml, renders pitch) | 'kokoro' | 'auto'.
+    'auto' prefers Kokoro if its model files exist, else pyttsx3 (the safe default).
+    """
     choice = engine.lower()
     if choice == "mock":
         return MockTTSAdapter()
     if choice == "pyttsx3":
         return Pyttsx3Adapter()
+    if choice in ("sapi", "sapi5", "sapi5xml"):
+        return Sapi5XmlAdapter()
     if choice == "kokoro":
         return KokoroAdapter(kokoro_model, kokoro_voices)
     # auto

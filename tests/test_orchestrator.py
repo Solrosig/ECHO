@@ -43,6 +43,17 @@ def test_full_row_reconstructs(tmp_path):
     store.close()
 
 
+def test_voice_dials_recorded(tmp_path):
+    # rate, volume, and pitch are all persisted, and match the record's voice params.
+    store, rec = _run(tmp_path, Quadrant.Q1)
+    row = store.read_turn(rec.contract.turn_uuid)["turn"]
+    assert row["rate"] == rec.voice_params.rate
+    assert row["volume"] == rec.voice_params.volume
+    assert row["pitch"] == rec.voice_params.pitch
+    assert row["volume"] is not None and row["pitch"] is not None
+    store.close()
+
+
 def test_retries_exhausted_still_logs_one_turn(tmp_path):
     # Force a permanent mismatch: target Q1 but model always says Q3.
     store = ProvenanceStore(str(tmp_path / "echo.db"))
