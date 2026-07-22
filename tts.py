@@ -1,13 +1,12 @@
 """TTS adapter — PROTECTED SEAM #2 (speech side).
 
-`synthesize(text, voice_params) -> Path` writes a WAV. Three engines share one
-interface:
+`synthesize(text, voice_params) -> Path` writes a WAV. Engines share one interface:
   - KokoroAdapter  : high-quality open-source neural TTS (preferred)
-  - Pyttsx3Adapter : offline OS voices (Windows SAPI5) — guaranteed audio fallback
+  - Pyttsx3Adapter : offline OS voice (Windows SAPI5) — guaranteed audio fallback
   - MockTTSAdapter : dependency-free, for tests / offline integration runs
 
-Arousal reaches the engine as `voice_params.rate` (a speed multiplier), already
-mapped by the strategy. Higher arousal -> faster speech.
+Voice dials arrive pre-computed on `voice_params`. The real engines render
+`rate` and `volume`; `pitch` needs a pitch-capable engine, added in a later step.
 """
 
 from __future__ import annotations
@@ -46,7 +45,7 @@ class MockTTSAdapter(TTSAdapter):
 
 
 class Pyttsx3Adapter(TTSAdapter):
-    """Offline fallback using the OS speech engine (Windows SAPI5)."""
+    """Offline OS voice (Windows SAPI5). Renders rate + volume (no pitch)."""
 
     engine_id = "pyttsx3"
     _BASE_WPM = 175
@@ -57,6 +56,7 @@ class Pyttsx3Adapter(TTSAdapter):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         engine = pyttsx3.init()
         engine.setProperty("rate", int(self._BASE_WPM * voice_params.rate))
+        engine.setProperty("volume", max(0.0, min(1.0, voice_params.volume)))
         engine.save_to_file(text, str(out_path))
         engine.runAndWait()
         engine.stop()
@@ -64,7 +64,7 @@ class Pyttsx3Adapter(TTSAdapter):
 
 
 class KokoroAdapter(TTSAdapter):
-    """High-quality open-source neural TTS via kokoro-onnx."""
+    """High-quality open-source neural TTS via kokoro-onnx. Renders rate + volume."""
 
     engine_id = "kokoro"
 
@@ -84,6 +84,7 @@ class KokoroAdapter(TTSAdapter):
             speed=voice_params.rate,
             lang=self._lang,
         )
+        samples = samples * max(0.0, min(1.0, voice_params.volume))  # apply loudness
         sf.write(str(out_path), samples, sample_rate)
         return out_path
 
