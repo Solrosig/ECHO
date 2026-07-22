@@ -3,6 +3,8 @@
 One row per turn + one row per attempt. The whole turn is written in a single
 transaction, so a failure leaves zero orphan rows. Later evaluation reads only
 from this log; it never inspects live model state.
+
+Records the full voice control: rate, volume, and pitch.
 """
 
 from __future__ import annotations
@@ -35,6 +37,8 @@ CREATE TABLE IF NOT EXISTS turns (
     n_attempts     INTEGER NOT NULL,
     voice_id       TEXT NOT NULL,
     rate           REAL NOT NULL,
+    volume         REAL,
+    pitch          REAL,
     engine         TEXT NOT NULL,
     audio_path     TEXT NOT NULL
 );
@@ -50,6 +54,14 @@ CREATE TABLE IF NOT EXISTS attempts (
     raw           TEXT
 );
 """
+
+# Explicit column order for the turns INSERT (robust to future schema growth).
+_TURN_COLUMNS = [
+    "turn_uuid", "ts", "message", "intent", "quadrant", "valence", "arousal",
+    "intensity", "strategy", "prompt_version", "anchor_version", "model", "reply",
+    "self_quadrant", "gate_passed", "n_attempts", "voice_id", "rate", "volume",
+    "pitch", "engine", "audio_path",
+]
 
 
 @dataclass
@@ -79,36 +91,49 @@ class ProvenanceStore:
         self._conn = sqlite3.connect(db_path)
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add newer columns to a pre-existing turns table (no-op if already present)."""
+        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(turns)")}
+        for col in ("volume", "pitch"):
+            if col not in existing:
+                self._conn.execute(f"ALTER TABLE turns ADD COLUMN {col} REAL")
 
     def save_turn(self, rec: TurnRecord) -> str:
         c = rec.contract
         accepted = rec.accepted
+        vp = rec.voice_params
+        values = (
+            c.turn_uuid,
+            datetime.now(timezone.utc).isoformat(),
+            rec.message,
+            c.intent,
+            c.quadrant.value,
+            c.valence,
+            c.arousal,
+            c.intensity,
+            rec.strategy,
+            rec.prompt_version,
+            c.anchor_version,
+            rec.model,
+            accepted.reply,
+            accepted.self_quadrant.value if accepted.self_quadrant else None,
+            int(rec.gate_passed),
+            len(rec.attempts),
+            vp.voice_id,
+            vp.rate,
+            vp.volume,
+            vp.pitch,
+            rec.engine,
+            rec.audio_path,
+        )
+        placeholders = ",".join("?" * len(_TURN_COLUMNS))
         with self._conn:  # transaction: commit on success, rollback on error
             self._conn.execute(
-                "INSERT INTO turns VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    c.turn_uuid,
-                    datetime.now(timezone.utc).isoformat(),
-                    rec.message,
-                    c.intent,
-                    c.quadrant.value,
-                    c.valence,
-                    c.arousal,
-                    c.intensity,
-                    rec.strategy,
-                    rec.prompt_version,
-                    c.anchor_version,
-                    rec.model,
-                    accepted.reply,
-                    accepted.self_quadrant.value if accepted.self_quadrant else None,
-                    int(rec.gate_passed),
-                    len(rec.attempts),
-                    rec.voice_params.voice_id,
-                    rec.voice_params.rate,
-                    rec.engine,
-                    rec.audio_path,
-                ),
+                f"INSERT INTO turns ({', '.join(_TURN_COLUMNS)}) VALUES ({placeholders})",
+                values,
             )
             self._conn.executemany(
                 "INSERT INTO attempts "
