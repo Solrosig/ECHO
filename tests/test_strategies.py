@@ -4,9 +4,12 @@ from contracts import EmotionContract, Quadrant
 from strategies import (
     RATE_MAX,
     RATE_MIN,
+    VOL_MAX,
+    VOL_MIN,
     SymmetricStrategy,
     VoiceParams,
     arousal_to_rate,
+    arousal_to_volume,
 )
 
 
@@ -16,6 +19,13 @@ def test_arousal_rate_monotonic_and_clamped():
     assert min(rates) >= RATE_MIN
     assert max(rates) <= RATE_MAX
     assert arousal_to_rate(0.0) == pytest.approx(1.0)
+
+
+def test_arousal_volume_monotonic_and_clamped():
+    vols = [arousal_to_volume(a / 10) for a in range(-10, 11)]
+    assert vols == sorted(vols)  # louder as arousal rises
+    assert min(vols) >= VOL_MIN
+    assert max(vols) <= VOL_MAX
 
 
 def test_symmetric_prompt_contains_message_and_quadrant_json():
@@ -32,6 +42,7 @@ def test_symmetric_voice_params_reflect_arousal():
     excited = strat.build_voice_params(EmotionContract.from_quadrant(Quadrant.Q1))
     assert isinstance(calm, VoiceParams)
     assert excited.rate > calm.rate  # higher arousal -> faster
+    assert excited.volume > calm.volume  # higher arousal -> louder
 
 
 def test_all_four_templates_render():
