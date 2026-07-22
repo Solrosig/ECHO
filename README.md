@@ -2,8 +2,8 @@
 
 Emotion-conditioned text **and** speech, in one command. You give ECHO a message and a
 target emotion (a quadrant on the valence–arousal plane); it generates a reply in that
-emotion, checks the reply actually *sounds* like that emotion, speaks it with a pace and
-loudness that reflect the emotion, and logs the whole turn to a database. Open-source,
+emotion, checks the reply actually *sounds* like that emotion, speaks it with a pace,
+loudness, and pitch that reflect the emotion, and logs the whole turn to a database. Open-source,
 local, no cloud, no cost.
 
 ```
@@ -34,8 +34,9 @@ commercial adapters (OpenAI LLM + Azure TTS), the controlled corpus, the listene
 | Q3       | −       | low     | sad, subdued      | slow, soft, lower pitch       |
 | Q4       | +       | low     | calm, content     | slow, soft, higher pitch      |
 
-Rate and volume are driven by **arousal**; pitch is driven by **valence** (rendered once a
-pitch-capable engine is used — the offline Windows voice applies rate + volume).
+Rate and volume are driven by **arousal**; pitch is driven by **arousal + valence** (blended so all
+four quadrants differ). The **SAPI** engine (`ECHO_TTS_ENGINE=sapi`) renders pitch; the `pyttsx3`
+and `Kokoro` engines render rate + volume. `rate`, `volume`, and `pitch` are logged per turn.
 
 ## How a turn flows
 
@@ -51,7 +52,7 @@ EmotionContract ──► EncodingStrategy ──► prompt + voice params
       ▼                                        │
 Coherence gate  (matches target? retry ≤2)     │
       │                                        ▼
-      ▼                                   TTS (pyttsx3 / Kokoro)
+      ▼                                   TTS (pyttsx3 / SAPI / Kokoro)
    accepted reply ─────────────────────────►  speech.wav
       │                                        │
       └──────────────► SQLite provenance log ◄─┘
@@ -83,7 +84,7 @@ pytest        # fast unit + integration (mocks; no Ollama/audio needed)
 
 ## Inspect the log
 ```
-sqlite3 echo.db "SELECT quadrant, gate_passed, n_attempts, rate, reply FROM turns;"
+sqlite3 echo.db "SELECT quadrant, rate, volume, pitch, gate_passed, reply FROM turns;"
 ```
 
 ## MVP Scope

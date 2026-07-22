@@ -20,6 +20,17 @@ The orchestrator/adapters generate; nothing reads model state for analysis excep
 the log. Every swappable factor (`EncodingStrategy`, `LLMAdapter`, `TTSAdapter`) is an ABC with
 concrete implementations, so later phases add a class instead of editing the pipeline.
 
+## Voice control
+The strategy maps the emotion to three engine-agnostic dials on `VoiceParams`:
+- `rate`   ← arousal  (speaking speed)
+- `volume` ← arousal  (loudness)
+- `pitch`  ← arousal + valence  (voice height; blended so all four quadrants differ)
+
+Engines render what they support: `pyttsx3` and `Kokoro` render rate + volume; the SAPI engine
+(`Sapi5XmlAdapter`, selected with `ECHO_TTS_ENGINE=sapi`) also renders **pitch** via SAPI prosody
+XML. All engines sit behind the `TTSAdapter` seam and are chosen by config. `rate`, `volume`, and
+`pitch` are recorded per turn in the provenance log.
+
 ## Conventions
 - One commit per script/block. Write the test in the same block as the code.
 - Mock the LLM/TTS at the adapter boundary; never assert on model-generated content.

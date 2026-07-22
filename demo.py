@@ -3,8 +3,8 @@
     echo-run "I lost my keys again" --quadrant Q2
     echo-run "I lost my keys again" --all-quadrants
 
-One message -> emotion-conditioned reply -> coherence check -> speech whose pace
-reflects arousal -> one full SQLite row -> audio plays.
+One message -> emotion-conditioned reply -> coherence check -> speech whose rate,
+loudness, and pitch reflect the emotion -> one full SQLite row -> audio plays.
 """
 
 from __future__ import annotations
@@ -40,7 +40,9 @@ def _print_turn(rec) -> None:
     acc = rec.accepted
     detected = acc.self_quadrant.value if acc.self_quadrant else "unparsed"
     mark = "PASS" if rec.gate_passed else "no-match"
-    print(f"\n== {c.quadrant.value} ({c.label}) | arousal={c.arousal:+.1f} -> rate={rec.voice_params.rate:.2f} ==")
+    vp = rec.voice_params
+    print(f"\n== {c.quadrant.value} ({c.label}) | val={c.valence:+.1f} aro={c.arousal:+.1f}"
+          f" -> rate={vp.rate:.2f} vol={vp.volume:.2f} pitch={vp.pitch:.2f} ==")
     print(f"   reply     : {acc.reply}")
     print(f"   coherence : target={c.quadrant.value} detected={detected} [{mark}] "
           f"after {len(rec.attempts)} attempt(s)")
