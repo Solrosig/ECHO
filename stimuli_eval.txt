@@ -1,0 +1,10 @@
+# ECHO fixed evaluation stimuli — semantically NEUTRAL carrier sentences.
+# Emotion is carried by prosody only (the text is constant across all conditions),
+# so any perceived emotional difference is attributable to the VOICE, not the words.
+# ~20-22 words each -> ~4-11 s across the rate range (audible even at the fastest rate).
+# Frozen set: do not edit mid-study.  Format:  <stimulus_id>: <text>
+S01: The train from the coast reaches the station after noon, and the passengers collect their bags before the doors open.
+S02: She placed the grey folder on the shelf, checked the list of names again, and returned to the meeting room.
+S03: After the rain had stopped, the workers opened the gates and stacked the empty boxes along the far wall.
+S04: The report on the table covers the past three months and will be read by the committee later next week.
+S05: He parked near the corner shop, bought a loaf of bread and a carton of milk, and walked home slowly.
