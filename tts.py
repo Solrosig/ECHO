@@ -11,6 +11,7 @@ Voice dials arrive pre-computed on `voice_params` (rate, volume, pitch).
 
 from __future__ import annotations
 
+import math
 import wave
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -63,12 +64,29 @@ class Pyttsx3Adapter(TTSAdapter):
         return out_path
 
 
-def _to_scale(value: float, lo: float, hi: float) -> int:
-    """Map a value in [lo, hi] onto SAPI's integer scale [-10, 10]."""
-    if hi == lo:
-        return 0
-    frac = (value - lo) / (hi - lo)              # 0..1
-    return max(-10, min(10, int(round((frac * 2.0 - 1.0) * 10))))
+# --- SAPI dial calibration -------------------------------------------------
+# SAPI's tags run -10..+10, but those extremes are NOT linear and NOT modest:
+#   absspeed=+10 is ~3x speaking rate; absmiddle=+10 is a chipmunk-level pitch jump.
+# The intended dials are gentle (rate 0.7-1.3, pitch 0.8-1.2). The earlier code
+# stretched that gentle band across SAPI's whole extreme range, so a "1.3x" intent
+# rendered as ~2-3x actual speed (unlistenable). These helpers instead map each
+# dial onto the SMALL part of SAPI's scale that reproduces the intended factor.
+
+def _sapi_rate(rate_factor: float) -> int:
+    """Rate factor -> SAPI absspeed. SAPI rate is multiplicative (~3**(absspeed/10)),
+    so invert it: 1.3x -> ~+2 (a mild speed-up), 0.7x -> ~-3 -- never SAPI's ~3x +10."""
+    return max(-10, min(10, round(10.0 * math.log(max(rate_factor, 1e-3)) / math.log(3.0))))
+
+
+def _sapi_pitch(pitch_factor: float) -> int:
+    """Pitch factor -> SAPI absmiddle, gently: the +-0.15 extremes -> about +-3
+    (a natural, audible shift), clamped so it can never chipmunk."""
+    return max(-5, min(5, round((pitch_factor - 1.0) * 20.0)))
+
+
+def _sapi_volume(volume: float) -> int:
+    """Loudness 0..1 -> SAPI volume 0..100, ceiling ~85 so it is present, not blasting."""
+    return max(0, min(100, round(max(0.0, min(1.0, volume)) * 85.0)))
 
 
 def _xml_escape(text: str) -> str:
@@ -89,9 +107,9 @@ class Sapi5XmlAdapter(TTSAdapter):
         import win32com.client  # Windows only (pywin32)
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        rate_i = _to_scale(voice_params.rate, 0.7, 1.3)
-        pitch_i = _to_scale(voice_params.pitch, 0.8, 1.2)
-        vol_pct = int(round(max(0.0, min(1.0, voice_params.volume)) * 100))
+        rate_i = _sapi_rate(voice_params.rate)
+        pitch_i = _sapi_pitch(voice_params.pitch)
+        vol_pct = _sapi_volume(voice_params.volume)
 
         xml = (
             f'<volume level="{vol_pct}">'
