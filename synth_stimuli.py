@@ -7,7 +7,7 @@ bypassed — this is a voice-rendering experiment, not a live system run.
 
 Each run creates:
     research/sessions/<YYYY-MM-DD_HHMM>_<label>/
-        audio/<engine>/<param_set>/<clip_id>.wav
+        audio/<engine>/<param_set>/<stimulus>_<quadrant>.wav   (neutral/ = flat BEFORE)
         register.csv   (one row per clip: dials, stimulus, target, hash, duration_ok)
         SESSION.md     (purpose, config, git commit/tag, stimuli, what to compare)
 
@@ -16,7 +16,7 @@ Usage:
         --purpose "Ablation of the voice dials on the SAPI engine at v0.2."
 
   --engine     pyttsx3 | sapi | kokoro | mock
-  --param-set  rate | rate_volume | rate_volume_pitch | all   (the ablation)
+  --param-set  neutral | rate | rate_volume | rate_volume_pitch | all   (neutral = flat BEFORE)
   --label      short slug for the session folder
   --purpose    one-line objective recorded in SESSION.md
   --stimuli    stimuli_eval.txt        --sessions-root  research/sessions
@@ -39,7 +39,7 @@ from contracts import EmotionContract, Quadrant
 from strategies import SymmetricStrategy
 from tts import make_tts
 
-PARAM_SETS = ["rate", "rate_volume", "rate_volume_pitch"]
+PARAM_SETS = ["neutral", "rate", "rate_volume", "rate_volume_pitch"]
 PITCH_ENGINES = {"sapi5xml"}
 REGISTER_FIELDS = [
     "clip_id", "blind_id", "created", "engine", "param_set", "stimulus_id", "quadrant",
@@ -60,7 +60,13 @@ def load_stimuli(path: str) -> list[tuple[str, str]]:
 
 
 def apply_param_set(vp, param_set: str):
-    """Mask dials for the ablation: 'rate' zeroes volume+pitch to neutral, etc."""
+    """Mask dials for the ablation. 'neutral' is the true BEFORE (no emotion in the
+    voice at all -> a flat carrier); 'rate' adds only speed (the MVP baseline); then
+    volume; then pitch (the full AFTER). Comparing neutral vs rate_volume_pitch for the
+    SAME clip is the clear, audible Before/After; the rate->...->full steps are the
+    (subtle) per-dial research ablation."""
+    if param_set == "neutral":
+        return replace(vp, rate=1.0, volume=1.0, pitch=1.0)  # flat carrier -> emotionless baseline
     if param_set == "rate":
         return replace(vp, volume=1.0, pitch=1.0)   # arousal->rate only (= MVP baseline)
     if param_set == "rate_volume":
@@ -107,12 +113,18 @@ def _write_session_md(path: Path, purpose: str, engine_id: str, param_sets: list
         f"**flagged out-of-band [{band[0]}–{band[1]} s]:** {n_flagged}",
         "",
         "## What to compare",
-        "- Across parameter sets (the **ablation**): the marginal effect of adding volume, then pitch.",
+        "- **Before vs After (clearest):** `neutral/<clip>` (flat, emotionless voice) vs "
+        "`rate_volume_pitch/<clip>` for the SAME file, e.g. `S01_Q1.wav` -> the voice goes from "
+        "neutral to expressive. (`neutral/` sounds identical across quadrants -- that is the point.)",
+        "- **Emotion distinction:** within `rate_volume_pitch/`, compare `S01_Q1` (happy) vs `S01_Q3` (sad).",
+        "- **Ablation (per-dial, subtle):** `rate/` -> `rate_volume/` -> `rate_volume_pitch/` isolates each "
+        "dial's marginal effect. This is the research view, NOT the demo (differences here are small).",
         "- Against other sessions/engines at the same or a different **tag** (the evolution).",
         "",
         "## Files",
         "- `register.csv` — one row per clip (dials, stimulus, target, SHA-256, duration_ok).",
-        "- `audio/<engine>/<param_set>/<clip_id>.wav` — the clips (git-ignored; back up separately).",
+        "- `audio/<engine>/<param_set>/<stimulus>_<quadrant>.wav` — clips share a name across param-set "
+        "folders for trivial A/B (git-ignored; back up separately).",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -121,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--engine", default="pyttsx3")
     ap.add_argument("--param-set", default="all",
-                    choices=["rate", "rate_volume", "rate_volume_pitch", "all"])
+                    choices=["neutral", "rate", "rate_volume", "rate_volume_pitch", "all"])
     ap.add_argument("--label", default="session")
     ap.add_argument("--purpose", default="")
     ap.add_argument("--stimuli", default="stimuli_eval.txt")
