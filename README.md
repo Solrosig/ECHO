@@ -82,12 +82,9 @@ tests/             # one test file per script
 pytest        # fast unit + integration (mocks; no Ollama/audio needed)
 ```
 
-## Inspect the log
-```
-sqlite3 echo.db "SELECT quadrant, rate, volume, pitch, gate_passed, reply FROM turns;"
-```
-
 ## MVP Scope
 **In:** one command, one turn end-to-end, four-quadrant sweep, coherence gate, provenance log.
 **Out:** UI, channel-specialised strategy, real text/speech classifiers,
 commercial adapters (OpenAI LLM + Azure TTS), the controlled corpus, the listener study.
+## Stage 1
+**UI
