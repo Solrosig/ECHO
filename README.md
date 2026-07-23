@@ -38,7 +38,7 @@ Rate and volume are driven by **arousal**; pitch is driven by **arousal + valenc
 four quadrants differ). The **SAPI** engine (`ECHO_TTS_ENGINE=sapi`) renders pitch; the `pyttsx3`
 and `Kokoro` engines render rate + volume. `rate`, `volume`, and `pitch` are logged per turn.
 
-## How a turn flows
+## Architecture
 
 ```
 message + quadrant
