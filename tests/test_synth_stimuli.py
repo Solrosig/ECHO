@@ -22,14 +22,17 @@ def test_session_folder_register_and_md(tmp_path):
     assert (sess / "SESSION.md").exists()
 
     rows = list(csv.DictReader(open(sess / "register.csv", encoding="utf-8")))
-    # 1 stimulus x 4 quadrants x 3 param-sets
-    assert len(rows) == 12
-    assert {r["param_set"] for r in rows} == {"rate", "rate_volume", "rate_volume_pitch"}
+    # 1 stimulus x 4 quadrants x 4 param-sets (neutral + the 3 ablation sets)
+    assert len(rows) == 16
+    assert {r["param_set"] for r in rows} == {"neutral", "rate", "rate_volume", "rate_volume_pitch"}
     # every clip has a hash and a duration flag
     assert all(r["sha256"] for r in rows)
     assert all(r["duration_ok"] in ("yes", "no") for r in rows)
     # the ablation masks the dials: 'rate' set has neutral volume/pitch
     rate_only = [r for r in rows if r["param_set"] == "rate"]
     assert all(r["volume"] == "1.0" and r["pitch"] == "1.0" for r in rate_only)
+    # the true baseline: 'neutral' zeroes ALL dials (rate too)
+    neutral = [r for r in rows if r["param_set"] == "neutral"]
+    assert all(r["rate"] == "1.0" and r["volume"] == "1.0" and r["pitch"] == "1.0" for r in neutral)
 
-    assert len(list(sess.rglob("*.wav"))) == 12
+    assert len(list(sess.rglob("*.wav"))) == 16
