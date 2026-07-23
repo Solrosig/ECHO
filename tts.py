@@ -11,7 +11,6 @@ Voice dials arrive pre-computed on `voice_params` (rate, volume, pitch).
 
 from __future__ import annotations
 
-import math
 import wave
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -73,20 +72,25 @@ class Pyttsx3Adapter(TTSAdapter):
 # dial onto the SMALL part of SAPI's scale that reproduces the intended factor.
 
 def _sapi_rate(rate_factor: float) -> int:
-    """Rate factor -> SAPI absspeed. SAPI rate is multiplicative (~3**(absspeed/10)),
-    so invert it: 1.3x -> ~+2 (a mild speed-up), 0.7x -> ~-3 -- never SAPI's ~3x +10."""
-    return max(-10, min(10, round(10.0 * math.log(max(rate_factor, 1e-3)) / math.log(3.0))))
+    """Rate factor -> SAPI absspeed. Gain 17 gives a CLEAR fast/slow contrast between
+    quadrants (1.18 -> +3 ~1.4x, 0.82 -> -3 ~0.7x); the +-5 cap keeps even the extremes
+    listenable (never SAPI's +10 ~= 3x, which was unlistenable)."""
+    return max(-5, min(5, round((rate_factor - 1.0) * 17.0)))
 
 
 def _sapi_pitch(pitch_factor: float) -> int:
-    """Pitch factor -> SAPI absmiddle, gently: the +-0.15 extremes -> about +-3
-    (a natural, audible shift), clamped so it can never chipmunk."""
+    """Pitch factor -> SAPI absmiddle. This is the valence channel: gain 20 turns the
+    +-0.2 pitch range into an audible +-4 shift (Q1 high vs Q2 low), clamped +-5 so it
+    can never chipmunk."""
     return max(-5, min(5, round((pitch_factor - 1.0) * 20.0)))
 
 
 def _sapi_volume(volume: float) -> int:
-    """Loudness 0..1 -> SAPI volume 0..100, ceiling ~85 so it is present, not blasting."""
-    return max(0, min(100, round(max(0.0, min(1.0, volume)) * 85.0)))
+    """Loudness dial (0.6..1.0) -> SAPI volume 50..95: a WIDE dynamic range so 'loud'
+    quadrants (~86) are clearly louder than 'soft' ones (~59); floor 50 stays audible,
+    ceiling 95 avoids blasting."""
+    v = max(0.6, min(1.0, volume))
+    return max(0, min(100, round(50.0 + (v - 0.6) / 0.4 * 45.0)))
 
 
 def _xml_escape(text: str) -> str:

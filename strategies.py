@@ -34,8 +34,12 @@ VOL_MAX = 1.0
 
 # (arousal, valence) -> pitch (voice height), around 1.0.
 PITCH_MIN, PITCH_MAX = 0.8, 1.2
-AROUSAL_PITCH_W = 0.15   # arousal raises pitch
-VALENCE_PITCH_W = 0.10   # positive valence raises pitch further
+# Pitch is the ONLY dial that separates same-arousal quadrants (Q1 'happy' vs Q2 'upset',
+# Q4 'calm' vs Q3 'sad'), because rate/volume come from arousal alone. A weak valence
+# weight (0.10) made those pairs nearly identical; 0.22 spreads all four quadrants across
+# the full pitch range so each is audibly distinct. See test_four_quadrants_render_distinct.
+AROUSAL_PITCH_W = 0.15   # arousal sets the base height
+VALENCE_PITCH_W = 0.22   # valence shifts it: positive = higher/brighter, negative = lower/tenser
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
