@@ -50,6 +50,39 @@ def test_four_quadrants_have_distinct_pitch():
     assert len({round(p, 4) for p in pitches.values()}) == 4  # all four differ
 
 
+def test_every_dial_separates_all_four_quadrants_with_tiered_gaps():
+    """Two-tier model: each dial (rate, volume, pitch) gives four distinct quadrant
+    values, but valence is the SECONDARY effect on rate/volume -- so the same-arousal
+    gap (Q1 vs Q2) is smaller than the cross-arousal gap (Q1 vs Q3)."""
+    strat = SymmetricStrategy()
+    vp = {q: strat.build_voice_params(EmotionContract.from_quadrant(q)) for q in Quadrant}
+
+    # all four quadrants are distinct on EVERY dial
+    assert len({round(v.rate, 4) for v in vp.values()}) == 4
+    assert len({round(v.volume, 4) for v in vp.values()}) == 4
+    assert len({round(v.pitch, 4) for v in vp.values()}) == 4
+
+    q1, q2, q3 = vp[Quadrant.Q1], vp[Quadrant.Q2], vp[Quadrant.Q3]
+    # tiering: valence (Q1 vs Q2) moves rate/volume LESS than arousal (Q1 vs Q3)
+    assert abs(q1.rate - q2.rate) < abs(q1.rate - q3.rate)
+    assert abs(q1.volume - q2.volume) < abs(q1.volume - q3.volume)
+
+
+def test_quadrant_profiles_match_emotion_acoustics():
+    """Profiles follow the acoustic-correlate literature (Schroeder / Burkhardt 2023):
+    happy = fastest + highest pitch; upset = loudest + lowest pitch (anger is loud);
+    sad = slow, soft, low."""
+    strat = SymmetricStrategy()
+    vp = {q: strat.build_voice_params(EmotionContract.from_quadrant(q)) for q in Quadrant}
+    q1, q2, q3 = vp[Quadrant.Q1], vp[Quadrant.Q2], vp[Quadrant.Q3]
+    assert q1.rate > q2.rate            # positive valence -> a touch faster (happy fastest)
+    assert q1.pitch > q2.pitch          # positive valence -> higher pitch
+    assert q2.volume > q1.volume        # negative valence -> louder (upset is the loudest)
+    assert q3.rate < q1.rate            # low arousal -> slow
+    assert q3.pitch < q1.pitch          # sad is low-pitched
+    assert q3.volume < q1.volume and q3.volume < q2.volume   # sad softer than the loud pair
+
+
 def test_symmetric_prompt_contains_message_and_quadrant_json():
     strat = SymmetricStrategy()
     c = EmotionContract.from_quadrant(Quadrant.Q2)

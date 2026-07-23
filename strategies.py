@@ -4,14 +4,16 @@ The strategy is a swappable control policy. The MVP ships SymmetricStrategy (sam
 emotion to both channels). Phase 4 will add ChannelSpecialisedStrategy behind this
 same interface, so nothing downstream changes.
 
-Engine-agnostic voice dials, derived from the contract:
-  - rate   (speaking speed) <- arousal            (fast when excited, slow when calm)
-  - volume (loudness)       <- arousal            (loud when excited, soft when subdued)
-  - pitch  (voice height)   <- arousal AND valence (higher when excited/positive)
+Engine-agnostic voice dials, derived from the contract. EVERY dial blends BOTH axes
+in a two-tier scheme (primary axis dominant, secondary axis a small shift):
+  - rate   (speaking speed) <- arousal (primary) + valence (secondary, +)
+  - volume (loudness)       <- arousal (primary) - valence (secondary; +valence = softer)
+  - pitch  (voice height)   <- valence (primary) + arousal (secondary)
 
-Pitch blends both axes on purpose: arousal sets the base height and valence shifts
-it, so the four quadrants get four distinct pitches (this is what separates Q1
-'happy' from Q2 'upset', which share arousal).
+Because each dial carries a little valence, all four quadrants are distinct on every
+dial -- but arousal still dominates pace/loudness and valence dominates pitch. This is
+what makes Q1 'happy' and Q2 'upset' (which share arousal) audibly different everywhere,
+while keeping the Q1<->Q2 gap smaller than the Q1<->Q3 (cross-arousal) gap.
 """
 
 from __future__ import annotations
@@ -24,22 +26,42 @@ from contracts import EmotionContract, Quadrant
 
 PROMPT_VERSION = "prompts-v1"
 
-# Arousal -> speech rate (endpoints as data; monotonic). -1 slow .. +1 fast.
-RATE_MIN = 0.7
-RATE_MAX = 1.3
+# ---------------------------------------------------------------------------
+# Emotion -> dial mapping. Linear valence(V)/arousal(A) model in the tradition of the
+# MARY TTS / Schroeder emotion rules, as extracted and re-validated by
+# Burkhardt, Reichel, Eyben & Schuller (2023) "Going Retro..." (ESSV) and Schroeder (2004).
+# Each dial is a weighted sum of A and V, following the reported acoustic correlates:
+#   * high AROUSAL     -> faster rate, higher intensity, higher F0
+#                         (Schroeder: rate=0.5A, volume=0.33A, pitch=0.3A)
+#   * positive VALENCE -> faster rate, but LOWER intensity; pitch is the best valence
+#                         carrier (Syntact variant: pitch<-valence gave the best valence UAR)
+#
+# Two-tier weighting so ALL FOUR quadrants differ on every dial, tiered by axis
+# (primary dominates, secondary refines):
+#   dial   | primary (Tier 1)          | secondary (Tier 2)        | valence sign
+#   -------|---------------------------|---------------------------|-------------
+#   rate   | arousal (RATE_AROUSAL_W)  | valence (RATE_VALENCE_W)  |  +  (faster)
+#   volume | arousal (VOL_AROUSAL_W)   | valence (VOL_VALENCE_W)   |  -  (softer)
+#   pitch  | valence (VALENCE_PITCH_W) | arousal (AROUSAL_PITCH_W) |  +  (higher)
+#
+# Consequence (matches emotion acoustics): Q2 'upset' = LOUDEST + lowest pitch (neg V,
+# high A); Q1 'happy' = FASTEST + highest pitch; Q3 'sad' = slow/soft/low; Q4 'calm' =
+# softest. Known limitation: a linear V/A model gives 'upset' a LOW pitch, whereas
+# hot-anger also has high F0 -- separating anger from fear needs the dominance dimension
+# or voice quality (Burkhardt et al. 2023, deferred to a later phase).
+# ---------------------------------------------------------------------------
 
-# Arousal -> loudness. -1 -> VOL_MIN (soft), +1 -> VOL_MAX (loud).
-VOL_MIN = 0.6
-VOL_MAX = 1.0
+RATE_MIN, RATE_MAX = 0.7, 1.3     # clamp bounds for the rate factor
+RATE_AROUSAL_W = 0.20             # A -> rate (primary): fast when excited     (Schroeder 0.5)
+RATE_VALENCE_W = 0.08             # V -> rate (secondary, ADDED): positive a touch faster (Schroeder 0.2)
 
-# (arousal, valence) -> pitch (voice height), around 1.0.
-PITCH_MIN, PITCH_MAX = 0.8, 1.2
-# Pitch is the ONLY dial that separates same-arousal quadrants (Q1 'happy' vs Q2 'upset',
-# Q4 'calm' vs Q3 'sad'), because rate/volume come from arousal alone. A weak valence
-# weight (0.10) made those pairs nearly identical; 0.22 spreads all four quadrants across
-# the full pitch range so each is audibly distinct. See test_four_quadrants_render_distinct.
-AROUSAL_PITCH_W = 0.15   # arousal sets the base height
-VALENCE_PITCH_W = 0.22   # valence shifts it: positive = higher/brighter, negative = lower/tenser
+VOL_MIN, VOL_MAX = 0.6, 1.0       # clamp bounds for loudness
+VOL_AROUSAL_W = 0.20              # A -> volume (primary): loud when excited   (Schroeder 0.33)
+VOL_VALENCE_W = 0.05              # V -> volume (secondary, SUBTRACTED): positive valence = softer
+
+PITCH_MIN, PITCH_MAX = 0.8, 1.2   # clamp bounds for pitch
+VALENCE_PITCH_W = 0.22            # V -> pitch (primary channel; Syntact: pitch carries valence)
+AROUSAL_PITCH_W = 0.15            # A -> pitch (secondary): higher when excited (Schroeder 0.3)
 
 
 def _clamp(x: float, lo: float, hi: float) -> float:
@@ -47,21 +69,33 @@ def _clamp(x: float, lo: float, hi: float) -> float:
 
 
 def arousal_to_rate(arousal: float) -> float:
-    """Monotonic map arousal in [-1, 1] to a clamped speech-rate factor."""
-    return _clamp(1.0 + arousal * (RATE_MAX - 1.0), RATE_MIN, RATE_MAX)
+    """Arousal-only rate component (primary tier). Monotonic in arousal, clamped."""
+    return _clamp(1.0 + RATE_AROUSAL_W * arousal, RATE_MIN, RATE_MAX)
+
+
+def emotion_to_rate(valence: float, arousal: float) -> float:
+    """Rate from BOTH axes: arousal (primary) + a small valence shift (secondary), so
+    same-arousal quadrants (Q1/Q2) differ modestly in speed while cross-arousal pairs
+    (Q1/Q3) differ strongly. Clamped."""
+    return _clamp(1.0 + RATE_AROUSAL_W * arousal + RATE_VALENCE_W * valence, RATE_MIN, RATE_MAX)
 
 
 def arousal_to_volume(arousal: float) -> float:
-    """Monotonic map arousal in [-1, 1] to a clamped loudness in [VOL_MIN, VOL_MAX]."""
-    return _clamp(VOL_MIN + (arousal + 1.0) / 2.0 * (VOL_MAX - VOL_MIN), VOL_MIN, VOL_MAX)
+    """Arousal-only loudness component (primary tier). Monotonic, clamped.
+    (0.8 + 0.2*arousal is identical to the old VOL_MIN + (a+1)/2 * span.)"""
+    return _clamp(0.8 + VOL_AROUSAL_W * arousal, VOL_MIN, VOL_MAX)
+
+
+def emotion_to_volume(valence: float, arousal: float) -> float:
+    """Loudness from BOTH axes: arousal (primary, louder when excited) MINUS a small
+    valence term (positive valence = lower intensity, per the acoustic correlates), so
+    Q2 'upset' is the loudest of the high-arousal pair (anger = high intensity). Clamped."""
+    return _clamp(0.8 + VOL_AROUSAL_W * arousal - VOL_VALENCE_W * valence, VOL_MIN, VOL_MAX)
 
 
 def emotion_to_pitch(valence: float, arousal: float) -> float:
-    """Map emotion to a clamped pitch factor around 1.0.
-
-    Arousal sets the base height; valence shifts it. Monotonic in each axis, so
-    all four quadrants receive distinct pitches.
-    """
+    """Pitch from BOTH axes: valence (PRIMARY channel) + arousal (secondary). Monotonic
+    in each axis, clamped, so all four quadrants receive distinct pitches."""
     return _clamp(
         1.0 + AROUSAL_PITCH_W * arousal + VALENCE_PITCH_W * valence,
         PITCH_MIN,
@@ -112,10 +146,11 @@ class SymmetricStrategy(EncodingStrategy):
         return template.format(message=message)
 
     def build_voice_params(self, contract: EmotionContract) -> VoiceParams:
-        # Symmetric: the same contract drives pace, loudness, and pitch.
+        # Two-tier: every dial blends both axes (arousal primary for pace/loudness,
+        # valence primary for pitch), so all four quadrants are distinct on every dial.
         return VoiceParams(
             voice_id=self._voice_id,
-            rate=arousal_to_rate(contract.arousal),
-            volume=arousal_to_volume(contract.arousal),
+            rate=emotion_to_rate(contract.valence, contract.arousal),
+            volume=emotion_to_volume(contract.valence, contract.arousal),
             pitch=emotion_to_pitch(contract.valence, contract.arousal),
         )
