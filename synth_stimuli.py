@@ -148,7 +148,9 @@ def main(argv: list[str] | None = None) -> int:
                 c = EmotionContract.from_quadrant(q)
                 vp = apply_param_set(strat.build_voice_params(c), ps)
                 cid = clip_id_for(engine_id, ps, sid, q.value)
-                dest = session_dir / "audio" / engine_id / ps / f"{cid}.wav"
+                # Human-readable filename (stimulus + quadrant) so the SAME words have the
+                # SAME name across param-set folders -> trivial Before/After comparison.
+                dest = session_dir / "audio" / engine_id / ps / f"{sid}_{q.value}.wav"
                 tts.synthesize(text, vp, dest)
                 dur = wav_duration(dest)
                 ok = dur is not None and cfg.min_duration_s <= dur <= cfg.max_duration_s
