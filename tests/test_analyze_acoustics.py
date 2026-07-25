@@ -137,3 +137,5 @@ def test_cli_writes_acoustics_and_returns_zero(tmp_path):
     rows = list(csv.DictReader(open(out, encoding="utf-8")))
     assert len(rows) == 2
     assert all("f0_hz" in r and "rms_dbfs" in r for r in rows)
+    # E5.1/E5.2/E5.3 columns are surfaced in the written register
+    assert all(c in rows[0] for c in ("f0_sd_hz", "f0_range_hz", "jitter", "shimmer", "hnr", "backend"))

@@ -196,27 +196,46 @@ MEASURED_COLS = ["f0_hz", "f0_sd_hz", "f0_range_hz", "jitter", "shimmer", "hnr",
                  "rms_dbfs", "words_per_s", "measured_dur_s", "backend", "silent"]
 
 
-def _fmt(v) -> str:
-    return f"{v:6.1f}" if isinstance(v, float) else f"{str(v):>6}"
+def _isnum(v) -> bool:
+    try:
+        return math.isfinite(float(v))
+    except (TypeError, ValueError):
+        return False
+
+
+def _avg(vals) -> float:
+    """Mean over numeric values only (blank / non-numeric entries are ignored)."""
+    nums = [float(v) for v in vals if _isnum(v)]
+    return mean(nums) if nums else 0.0
 
 
 def _summary(rows: list[dict]) -> None:
-    """Mean F0 / rate / loudness per (param_set, quadrant), audible clips only."""
-    audible = [r for r in rows if r["silent"] == "no"]
+    """Mean acoustics per (param_set, quadrant), audible clips only. Voice-quality columns
+    (jitter/shimmer/HNR) are shown only when a backend actually produced them (i.e. Praat),
+    so a numpy-fallback run does not print empty columns."""
+    audible = [r for r in rows if r.get("silent") == "no"]
     if not audible:
         print("  (no audible clips to summarise -- run this on a REAL engine session, not mock)")
         return
+    has_vq = any(_isnum(r.get("jitter")) for r in audible)
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for r in audible:
         groups[(r.get("param_set", "?"), r.get("quadrant", "?"))].append(r)
     print("\n== Mean acoustics per param_set x quadrant (audible clips) ==")
-    print(f"  {'param_set':<20}{'quad':<6}{'F0 Hz':>8}{'words/s':>9}{'RMS dBFS':>10}{'n':>4}")
+    head = f"  {'param_set':<18}{'quad':<6}{'F0 Hz':>8}{'F0 SD':>7}{'words/s':>9}{'RMS dB':>8}"
+    if has_vq:
+        head += f"{'jit %':>7}{'shim %':>8}{'HNR dB':>8}"
+    print(head + f"{'n':>4}")
     for (ps, q) in sorted(groups):
         g = groups[(ps, q)]
-        f0 = mean([r['f0_hz'] for r in g if r['f0_hz'] > 0] or [0.0])
-        wps = mean([r['words_per_s'] for r in g])
-        db = mean([r['rms_dbfs'] for r in g])
-        print(f"  {ps:<20}{q:<6}{f0:8.1f}{wps:9.2f}{db:10.1f}{len(g):4d}")
+        f0 = _avg([r["f0_hz"] for r in g if _isnum(r.get("f0_hz")) and float(r["f0_hz"]) > 0])
+        line = (f"  {ps:<18}{q:<6}{f0:8.1f}{_avg([r.get('f0_sd_hz') for r in g]):7.1f}"
+                f"{_avg([r.get('words_per_s') for r in g]):9.2f}{_avg([r.get('rms_dbfs') for r in g]):8.1f}")
+        if has_vq:
+            line += (f"{_avg([r.get('jitter') for r in g]):7.2f}"
+                     f"{_avg([r.get('shimmer') for r in g]):8.2f}"
+                     f"{_avg([r.get('hnr') for r in g]):8.1f}")
+        print(line + f"{len(g):4d}")
 
 
 def _before_after(rows: list[dict], before: str = "neutral", after: str = "rate_volume_pitch") -> None:
@@ -224,8 +243,8 @@ def _before_after(rows: list[dict], before: str = "neutral", after: str = "rate_
     audible = [r for r in rows if r["silent"] == "no"]
     def cell(ps: str, q: str, key: str) -> float | None:
         vals = [r[key] for r in audible if r.get("param_set") == ps and r.get("quadrant") == q
-                and (key != "f0_hz" or r[key] > 0)]
-        return round(mean(vals), 1) if vals else None
+                and _isnum(r.get(key)) and (key != "f0_hz" or float(r[key]) > 0)]
+        return round(_avg(vals), 1) if vals else None
     quads = sorted({r.get("quadrant", "?") for r in audible})
     have = {r.get("param_set") for r in audible}
     if before not in have or after not in have:
