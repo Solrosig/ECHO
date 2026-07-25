@@ -6,6 +6,7 @@ import math
 import wave
 
 import numpy as np
+import pytest
 
 import analyze_acoustics as aa
 
@@ -88,6 +89,27 @@ def test_analyze_clip_includes_f0_variability(tmp_path):
     _sine_wav(p, 220.0, dur=1.5)
     a = aa.analyze_clip(p, text="one two three")
     assert "f0_sd_hz" in a and "f0_range_hz" in a
+
+
+def test_praat_backend_on_tone(tmp_path):
+    pytest.importorskip("parselmouth")
+    p = tmp_path / "praat_tone.wav"
+    _sine_wav(p, 200.0, dur=1.5)
+    a = aa.analyze_clip(p, text="one two three four")
+    assert a["backend"] == "praat"
+    assert abs(a["f0_hz"] - 200.0) / 200.0 < 0.05          # Praat recovers the tone
+    assert a["hnr"] != "" and float(a["hnr"]) > 15.0       # a clean tone -> high HNR
+    assert a["jitter"] != "" and a["shimmer"] != ""        # voice-quality columns present
+
+
+def test_numpy_fallback_when_praat_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setattr(aa, "_HAVE_PRAAT", False)
+    p = tmp_path / "fallback_tone.wav"
+    _sine_wav(p, 200.0, dur=1.0)
+    a = aa.analyze_clip(p, text="a b c")
+    assert a["backend"] == "numpy"
+    assert a["f0_hz"] > 0                                   # numpy still measures F0
+    assert a["jitter"] == "" and a["shimmer"] == "" and a["hnr"] == ""  # no VQ on fallback
 
 
 def test_silent_clip_is_flagged(tmp_path):

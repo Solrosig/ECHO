@@ -14,8 +14,10 @@ quadrants separate -- without relying on anyone's ears.
         -> prints a per (param_set x quadrant) summary
         -> prints a neutral -> full "Before/After" table per quadrant
 
-Measurement is intentionally light (numpy only): autocorrelation F0, RMS loudness. It is
-meant for RELATIVE comparison across conditions, not absolute phonetic precision.
+Measurement uses the validated Praat backend (via Parselmouth) for F0 and voice quality
+when it is installed, with a numpy autocorrelation fallback; loudness (RMS dBFS) and rate
+are always numpy for a consistent scale. It is meant for RELATIVE comparison across
+conditions, not absolute phonetic precision.
 
 Method basis (literature):
   * Feature choice — F0 (pitch), loudness (intensity), and rate are the standard minimal
@@ -44,6 +46,13 @@ from pathlib import Path
 from statistics import mean
 
 import numpy as np
+
+try:                                             # optional: validated Praat backend
+    import parselmouth
+    from parselmouth.praat import call
+    _HAVE_PRAAT = True
+except Exception:                                # pragma: no cover
+    _HAVE_PRAAT = False
 
 F0_MIN, F0_MAX = 75.0, 400.0     # plausible speaking-voice F0 band (Hz)
 SILENCE_DBFS = -60.0             # below this a clip is treated as silent (e.g. the mock engine)
@@ -124,24 +133,67 @@ def f0_stats(x: np.ndarray, sr: int, fmin: float = F0_MIN, fmax: float = F0_MAX)
     }
 
 
+def _praat_features(path: Path, fmin: float = F0_MIN, fmax: float = F0_MAX) -> dict:
+    """Validated F0 (level + spread) and voice quality (jitter %, shimmer %, HNR dB) via
+    Praat (Boersma) through Parselmouth. Undefined values (e.g. unvoiced) become ''."""
+    snd = parselmouth.Sound(str(path))
+    f0 = snd.to_pitch(pitch_floor=fmin, pitch_ceiling=fmax).selected_array["frequency"]
+    voiced = f0[f0 > 0]
+    if voiced.size:
+        f0_hz = round(float(np.median(voiced)), 1)
+        f0_sd = round(float(np.std(voiced)), 1)
+        f0_rng = round(float(voiced.max() - voiced.min()), 1)
+    else:
+        f0_hz = f0_sd = f0_rng = 0.0
+
+    def _num(v, scale=1.0, nd=3):
+        v = float(v)
+        return round(v * scale, nd) if math.isfinite(v) else ""
+
+    pp = call(snd, "To PointProcess (periodic, cc)", fmin, fmax)
+    jitter = _num(call(pp, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3), 100.0)          # -> %
+    shimmer = _num(call([snd, pp], "Get shimmer (local)", 0, 0, 0.0001, 0.02, 1.3, 1.6), 100.0)  # -> %
+    hnr_obj = call(snd, "To Harmonicity (cc)", 0.01, fmin, 0.1, 1.0)
+    hnr = _num(call(hnr_obj, "Get mean", 0, 0), 1.0, 1)                                     # -> dB
+    return {"f0_hz": f0_hz, "f0_sd_hz": f0_sd, "f0_range_hz": f0_rng,
+            "jitter": jitter, "shimmer": shimmer, "hnr": hnr}
+
+
 def analyze_clip(path: Path, text: str = "") -> dict:
-    """Measure one clip: F0 (Hz), loudness (dBFS), speaking rate (words/s), duration (s)."""
+    """Measure one clip. Loudness (RMS dBFS) and speaking rate are ALWAYS numpy (one
+    consistent scale); F0 and voice quality come from Praat/Parselmouth when available
+    (backend='praat'), else the numpy autocorrelation fallback (backend='numpy', with the
+    voice-quality fields left blank because numpy cannot compute them)."""
     x, sr = read_wav(path)
     dur = x.size / sr if sr else 0.0
     loud = round(rms_dbfs(x), 1)
-    st = f0_stats(x, sr)
+    rate = round(len(text.split()) / dur, 2) if dur > 0 and text else 0.0
+
+    f = {"f0_hz": 0.0, "f0_sd_hz": 0.0, "f0_range_hz": 0.0,
+         "jitter": "", "shimmer": "", "hnr": "", "backend": "numpy"}
+    if _HAVE_PRAAT:
+        try:
+            f.update(_praat_features(path))
+            f["backend"] = "praat"
+        except Exception:                        # pragma: no cover - degrade to numpy
+            f = {"f0_hz": 0.0, "f0_sd_hz": 0.0, "f0_range_hz": 0.0,
+                 "jitter": "", "shimmer": "", "hnr": "", "backend": "numpy"}
+    if f["backend"] == "numpy":
+        f.update(f0_stats(x, sr))                # f0_hz, f0_sd_hz, f0_range_hz from numpy
+
     return {
-        "f0_hz": st["f0_hz"],
-        "f0_sd_hz": st["f0_sd_hz"],
-        "f0_range_hz": st["f0_range_hz"],
+        "f0_hz": f["f0_hz"], "f0_sd_hz": f["f0_sd_hz"], "f0_range_hz": f["f0_range_hz"],
+        "jitter": f["jitter"], "shimmer": f["shimmer"], "hnr": f["hnr"],
         "rms_dbfs": loud,
-        "words_per_s": round(len(text.split()) / dur, 2) if dur > 0 and text else 0.0,
+        "words_per_s": rate,
         "measured_dur_s": round(dur, 3),
+        "backend": f["backend"],
         "silent": "yes" if loud <= SILENCE_DBFS else "no",
     }
 
 
-MEASURED_COLS = ["f0_hz", "f0_sd_hz", "f0_range_hz", "rms_dbfs", "words_per_s", "measured_dur_s", "silent"]
+MEASURED_COLS = ["f0_hz", "f0_sd_hz", "f0_range_hz", "jitter", "shimmer", "hnr",
+                 "rms_dbfs", "words_per_s", "measured_dur_s", "backend", "silent"]
 
 
 def _fmt(v) -> str:
