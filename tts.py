@@ -150,16 +150,35 @@ class KokoroAdapter(TTSAdapter):
     note = "neural, Apache-2.0, local (ONNX); high naturalness; no explicit pitch"
 
     def __init__(self, model_path: str, voices_path: str, lang: str = "en-us") -> None:
-        from kokoro_onnx import Kokoro
-
-        self._kokoro = Kokoro(model_path, voices_path)
+        self._model_path = model_path
+        self._voices_path = voices_path
         self._lang = lang
+        self._kokoro = None                        # lazy: model loaded on first synthesize
+
+    def _engine(self):
+        """Load the ONNX model on first use, with clear errors for the two failure modes."""
+        if self._kokoro is None:
+            try:
+                from kokoro_onnx import Kokoro
+            except Exception as exc:               # package not installed
+                raise RuntimeError(
+                    "kokoro-onnx not installed — `pip install kokoro-onnx` (optional neural engine)."
+                ) from exc
+            missing = [p for p in (self._model_path, self._voices_path) if not Path(p).exists()]
+            if missing:
+                raise RuntimeError(
+                    f"Kokoro model files not found: {missing}. Download kokoro-v1.0.onnx + "
+                    "voices-v1.0.bin (kokoro-onnx releases) and set ECHO_KOKORO_MODEL / ECHO_KOKORO_VOICES."
+                )
+            self._kokoro = Kokoro(self._model_path, self._voices_path)
+        return self._kokoro
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
+        engine = self._engine()                    # validate package + model first (clear errors)
         import soundfile as sf
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        samples, sample_rate = self._kokoro.create(
+        samples, sample_rate = engine.create(
             text,
             voice=voice_params.voice_id,
             speed=voice_params.rate,
