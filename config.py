@@ -27,6 +27,11 @@ class Config:
     # gate
     max_retries: int = int(os.getenv("ECHO_MAX_RETRIES", "2"))
 
+    # evaluation — audible-duration band. Clips outside [min, max] are FLAGGED
+    # (duration_ok=False), never silently altered, so the emotion signal stays intact.
+    min_duration_s: float = float(os.getenv("ECHO_MIN_DURATION", "2.5"))
+    max_duration_s: float = float(os.getenv("ECHO_MAX_DURATION", "15.0"))
+
 
 def load_config() -> Config:
     return Config()
