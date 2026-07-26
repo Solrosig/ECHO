@@ -153,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
 
     rows: list[dict] = []
     n_flagged = 0
+    total = len(param_sets) * len(stimuli) * len(list(Quadrant))
+    done = 0
+    print(f"Synthesising {total} clips with {engine_id} (first neural clip loads the model — please wait)...",
+          flush=True)
     for ps in param_sets:
         for sid, text in stimuli:
             for q in Quadrant:
@@ -163,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
                 # SAME name across param-set folders -> trivial Before/After comparison.
                 dest = session_dir / "audio" / engine_id / ps / f"{sid}_{q.value}.wav"
                 tts.synthesize(text, vp, dest)
+                done += 1
+                print(f"  [{done}/{total}] {engine_id}/{ps}/{sid}_{q.value}", flush=True)
                 dur = wav_duration(dest)
                 ok = dur is not None and cfg.min_duration_s <= dur <= cfg.max_duration_s
                 n_flagged += 0 if ok else 1
