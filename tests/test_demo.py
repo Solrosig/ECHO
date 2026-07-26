@@ -20,3 +20,10 @@ def test_mock_defaults_to_mock_engine(tmp_path, monkeypatch):
     monkeypatch.setattr(demo, "load_config", lambda: _tmp_cfg(tmp_path))
     rc = demo.main(["the bus was late", "--quadrant", "Q2", "--mock", "--no-audio"])
     assert rc == 0
+
+
+def test_list_engines_prints_matrix_and_exits(capsys):
+    rc = demo.main(["--list-engines"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "sapi5xml" in out and "pitch" in out and "kokoro" in out

@@ -56,15 +56,25 @@ def _print_turn(rec) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="echo-run", description="ECHO MVP demo")
-    parser.add_argument("message", help="the incoming message to reply to")
+    parser.add_argument("message", nargs="?", help="the incoming message to reply to")
     parser.add_argument("--quadrant", choices=[q.value for q in Quadrant], help="single target emotion")
     parser.add_argument("--all-quadrants", action="store_true", help="sweep Q1..Q4")
     parser.add_argument("--mock", action="store_true", help="use mock LLM/TTS (no external tools)")
     parser.add_argument("--engine", choices=["auto", "mock", "pyttsx3", "sapi", "sapi5xml", "kokoro"],
                         default=None, help="TTS engine (overrides config ECHO_TTS_ENGINE)")
+    parser.add_argument("--list-engines", action="store_true",
+                        help="print the per-engine capability matrix and exit")
     parser.add_argument("--no-audio", action="store_true", help="synthesise but do not play")
     args = parser.parse_args(argv)
 
+    if args.list_engines:
+        from tts import format_capability_matrix
+        print("Per-engine capability matrix (which dials each engine renders):")
+        print(format_capability_matrix())
+        return 0
+
+    if not args.message:
+        parser.error("message is required (or use --list-engines)")
     if not args.quadrant and not args.all_quadrants:
         parser.error("choose --quadrant Qn or --all-quadrants")
 

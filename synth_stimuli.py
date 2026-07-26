@@ -40,7 +40,6 @@ from strategies import SymmetricStrategy
 from tts import make_tts
 
 PARAM_SETS = ["neutral", "rate", "rate_volume", "rate_volume_pitch"]
-PITCH_ENGINES = {"sapi5xml"}
 REGISTER_FIELDS = [
     "clip_id", "blind_id", "created", "engine", "param_set", "stimulus_id", "quadrant",
     "valence", "arousal", "intensity", "rate", "volume", "pitch", "pitch_rendered",
@@ -174,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                     "engine": engine_id, "param_set": ps, "stimulus_id": sid, "quadrant": q.value,
                     "valence": c.valence, "arousal": c.arousal, "intensity": c.intensity,
                     "rate": round(vp.rate, 3), "volume": round(vp.volume, 3), "pitch": round(vp.pitch, 3),
-                    "pitch_rendered": "yes" if engine_id in PITCH_ENGINES else "no",
+                    "pitch_rendered": "yes" if "pitch" in getattr(tts, "renders", frozenset()) else "no",
                     "duration_s": dur, "duration_ok": "yes" if ok else "no",
                     "model": "fixed-text", "text": text, "audio_path": str(dest),
                     "sha256": sha256_file(dest), "commit": commit, "tag": tag,

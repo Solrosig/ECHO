@@ -20,6 +20,9 @@ from strategies import VoiceParams
 
 class TTSAdapter(ABC):
     engine_id: str = "abstract"
+    renders: frozenset = frozenset()   # which dials this engine actually renders (rate/volume/pitch)
+    natural: bool = False              # neural/natural voice (vs formant/concatenative)
+    note: str = ""
 
     @abstractmethod
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path: ...
@@ -29,6 +32,8 @@ class MockTTSAdapter(TTSAdapter):
     """Writes a valid silent WAV whose length shrinks as rate rises (no deps)."""
 
     engine_id = "mock"
+    renders = frozenset()                       # silent; renders no audible dial
+    note = "silent WAV; tests only"
     _SR = 24000
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
@@ -48,6 +53,8 @@ class Pyttsx3Adapter(TTSAdapter):
     """Offline OS voice (Windows SAPI5). Renders rate + volume (no pitch)."""
 
     engine_id = "pyttsx3"
+    renders = frozenset({"rate", "volume"})     # OS voice: no pitch control
+    note = "OS voice (SAPI/espeak/nsss); no pitch; not cross-platform-consistent"
     _BASE_WPM = 175
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
@@ -106,6 +113,8 @@ class Sapi5XmlAdapter(TTSAdapter):
     """
 
     engine_id = "sapi5xml"
+    renders = frozenset({"rate", "volume", "pitch"})   # full dial set (pitch via XML)
+    note = "Windows-only; not OSS; rough voice quality"
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
         import win32com.client  # Windows only (pywin32)
@@ -136,6 +145,9 @@ class KokoroAdapter(TTSAdapter):
     """High-quality open-source neural TTS via kokoro-onnx. Renders rate + volume."""
 
     engine_id = "kokoro"
+    renders = frozenset({"rate", "volume"})     # neural: speed + loudness; no explicit pitch dial
+    natural = True
+    note = "neural, Apache-2.0, local (ONNX); high naturalness; no explicit pitch"
 
     def __init__(self, model_path: str, voices_path: str, lang: str = "en-us") -> None:
         from kokoro_onnx import Kokoro
@@ -180,3 +192,33 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
         except Exception:
             pass
     return Pyttsx3Adapter()
+
+
+# --- per-engine capability matrix ------------------------------------------
+# Engines differ in which dials they render; this makes that explicit so cross-engine
+# comparisons stay honest (e.g. pyttsx3 has no pitch, so its "pitch dial" is not testable).
+_ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, KokoroAdapter]
+_DIALS = ("rate", "volume", "pitch")
+
+
+def capability_matrix() -> list[dict]:
+    """One row per engine: which dials it renders (yes/no), whether it is a natural voice,
+    and a short note. Used to keep engine comparisons honest and to set register flags."""
+    rows = []
+    for cls in _ENGINE_CLASSES:
+        row = {"engine": cls.engine_id}
+        row.update({d: ("yes" if d in cls.renders else "no") for d in _DIALS})
+        row["natural"] = "yes" if cls.natural else "no"
+        row["note"] = cls.note
+        rows.append(row)
+    return rows
+
+
+def format_capability_matrix() -> str:
+    """Human-readable capability matrix table."""
+    lines = [f"  {'engine':<10}{'rate':>6}{'volume':>8}{'pitch':>7}{'natural':>9}   note",
+             "  " + "-" * 74]
+    for r in capability_matrix():
+        lines.append(f"  {r['engine']:<10}{r['rate']:>6}{r['volume']:>8}{r['pitch']:>7}"
+                     f"{r['natural']:>9}   {r['note']}")
+    return "\n".join(lines)
