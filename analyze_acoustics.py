@@ -42,6 +42,7 @@ import csv
 import math
 import wave
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from statistics import mean
 
@@ -262,11 +263,27 @@ def _before_after(rows: list[dict], before: str = "neutral", after: str = "rate_
         print(line)
 
 
+def _resolve_out(path: Path, force: bool) -> Path:
+    """Never overwrite: if the target already exists (and --force is not given), return a
+    timestamped sibling (..._YYYYMMDD-HHMMSS[-n].csv) so no prior result is ever lost."""
+    if force or not path.exists():
+        return path
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    cand = path.with_name(f"{path.stem}_{stamp}{path.suffix}")
+    i = 1
+    while cand.exists():
+        cand = path.with_name(f"{path.stem}_{stamp}-{i}{path.suffix}")
+        i += 1
+    return cand
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--register", default="research/register.csv",
                     help="register CSV to analyse (master or a session register.csv)")
-    ap.add_argument("--out", default="research/acoustics.csv")
+    ap.add_argument("--out", default=None,
+                    help="output CSV (default: acoustics.csv beside the register); never overwrites")
+    ap.add_argument("--force", action="store_true", help="allow overwriting an existing --out")
     ap.add_argument("--before", default="neutral")
     ap.add_argument("--after", default="rate_volume_pitch")
     args = ap.parse_args(argv)
@@ -291,7 +308,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     fields = list(dict.fromkeys(list(measured[0].keys())))
-    out = Path(args.out)
+    out = Path(args.out) if args.out else src.parent / "acoustics.csv"
+    out = _resolve_out(out, args.force)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)

@@ -49,3 +49,25 @@ def test_report_end_to_end(tmp_path):
     # separation + effect-size rows are present
     assert any(r["section"] == "separation" for r in recs)
     assert any(r["section"] == "effect_size" for r in recs)
+
+
+def test_out_defaults_beside_acoustics_and_never_overwrites(tmp_path):
+    sess = tmp_path / "sess"
+    sess.mkdir()
+    ac = sess / "acoustics.csv"
+    rows = [{"param_set": "rate_volume_pitch", "quadrant": q, "rate": r, "volume": v, "pitch": p,
+             "words_per_s": w, "rms_dbfs": d, "f0_hz": f, "silent": "no"}
+            for q, r, v, p, w, d, f in [("Q1", 1.18, 0.9, 1.2, 3.0, -6, 240),
+                                        ("Q2", 1.07, 0.95, 0.96, 2.8, -4.5, 175),
+                                        ("Q3", 0.83, 0.71, 0.8, 1.9, -9.9, 150),
+                                        ("Q4", 0.93, 0.65, 1.04, 2.2, -11, 210)]]
+    with open(ac, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    # first run -> controllability.csv beside the acoustics file
+    assert rc.main(["--acoustics", str(ac)]) == 0
+    assert (sess / "controllability.csv").exists()
+    # second run -> no overwrite; a timestamped sibling appears
+    assert rc.main(["--acoustics", str(ac)]) == 0
+    assert len(list(sess.glob("controllability*.csv"))) == 2

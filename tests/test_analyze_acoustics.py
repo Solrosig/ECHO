@@ -120,6 +120,25 @@ def test_silent_clip_is_flagged(tmp_path):
     assert a["f0_hz"] == 0.0
 
 
+def test_out_defaults_beside_register_and_never_overwrites(tmp_path):
+    wav = tmp_path / "s.wav"
+    _sine_wav(wav, 200.0)
+    sess = tmp_path / "sess"
+    sess.mkdir()
+    reg = sess / "register.csv"
+    with open(reg, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["audio_path", "text", "param_set", "quadrant"])
+        w.writeheader()
+        w.writerow({"audio_path": str(wav), "text": "a b", "param_set": "neutral", "quadrant": "Q1"})
+    # first run -> writes acoustics.csv beside the register
+    assert aa.main(["--register", str(reg)]) == 0
+    assert (sess / "acoustics.csv").exists()
+    # second run -> must NOT overwrite; a timestamped sibling is created instead
+    assert aa.main(["--register", str(reg)]) == 0
+    outs = list(sess.glob("acoustics*.csv"))
+    assert len(outs) == 2 and (sess / "acoustics.csv").exists()
+
+
 def test_cli_writes_acoustics_and_returns_zero(tmp_path):
     neutral = tmp_path / "neutral_Q1.wav"
     full = tmp_path / "full_Q1.wav"

@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from statistics import mean
 
@@ -90,13 +91,29 @@ def cohens_d(a, b) -> float:
     return float((a.mean() - b.mean()) / sp) if sp > 0 else float("nan")
 
 
+def _resolve_out(path: Path, force: bool) -> Path:
+    """Never overwrite: if the target already exists (and --force is not given), return a
+    timestamped sibling (..._YYYYMMDD-HHMMSS[-n].csv) so no prior result is ever lost."""
+    if force or not path.exists():
+        return path
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    cand = path.with_name(f"{path.stem}_{stamp}{path.suffix}")
+    i = 1
+    while cand.exists():
+        cand = path.with_name(f"{path.stem}_{stamp}-{i}{path.suffix}")
+        i += 1
+    return cand
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--acoustics", default="research/acoustics.csv",
                     help="measured register from analyze_acoustics.py")
     ap.add_argument("--param-set", default="rate_volume_pitch",
                     help="param-set used for separation + effect sizes (the full dial set)")
-    ap.add_argument("--out", default="research/controllability.csv")
+    ap.add_argument("--out", default=None,
+                    help="output CSV (default: controllability.csv beside --acoustics); never overwrites")
+    ap.add_argument("--force", action="store_true", help="allow overwriting an existing --out")
     ap.add_argument("--rho-pass", type=float, default=0.5, help="Spearman rho pass threshold")
     args = ap.parse_args(argv)
 
@@ -163,7 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         out.append({"section": "effect_size", "item": label, "measured": key,
                     "value": round(d, 3) if d == d else "", "n": "", "note": ""})
 
-    dest = Path(args.out)
+    dest = Path(args.out) if args.out else src.parent / "controllability.csv"
+    dest = _resolve_out(dest, args.force)
     dest.parent.mkdir(parents=True, exist_ok=True)
     with open(dest, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["section", "item", "measured", "value", "n", "note"])
