@@ -2,9 +2,14 @@
 
     echo-run "I lost my keys again" --quadrant Q2
     echo-run "I lost my keys again" --all-quadrants
+    echo-run "I lost my keys again" --quadrant Q2 --engine sapi     # pick the TTS engine
+    echo-run "I lost my keys again" --all-quadrants --mock --engine kokoro   # mock LLM, real voice
 
 One message -> emotion-conditioned reply -> coherence check -> speech whose rate,
 loudness, and pitch reflect the emotion -> one full SQLite row -> audio plays.
+
+The voice engine is selectable at runtime: --engine overrides config (ECHO_TTS_ENGINE);
+--mock uses the silent mock engine unless --engine says otherwise.
 """
 
 from __future__ import annotations
@@ -55,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quadrant", choices=[q.value for q in Quadrant], help="single target emotion")
     parser.add_argument("--all-quadrants", action="store_true", help="sweep Q1..Q4")
     parser.add_argument("--mock", action="store_true", help="use mock LLM/TTS (no external tools)")
+    parser.add_argument("--engine", choices=["auto", "mock", "pyttsx3", "sapi", "sapi5xml", "kokoro"],
+                        default=None, help="TTS engine (overrides config ECHO_TTS_ENGINE)")
     parser.add_argument("--no-audio", action="store_true", help="synthesise but do not play")
     args = parser.parse_args(argv)
 
@@ -65,11 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     quadrants = list(Quadrant) if args.all_quadrants else [Quadrant(args.quadrant)]
 
     strategy = SymmetricStrategy(voice_id=cfg.kokoro_voice)
-    if args.mock:
-        from tts import MockTTSAdapter
 
+    # LLM: mock (no external tools) or the real Ollama endpoint.
+    if args.mock:
         llm = MockLLMAdapter()
-        tts = MockTTSAdapter()
     else:
         try:
             llm = OllamaAdapter(
@@ -80,8 +86,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: could not reach Ollama at {cfg.ollama_host} ({exc}).")
             print("Is `ollama serve` running and the model pulled? Or try --mock.")
             return 2
-        tts = make_tts(cfg.tts_engine, kokoro_model=cfg.kokoro_model_path,
-                       kokoro_voices=cfg.kokoro_voices_path)
+
+    # TTS: --engine wins; else --mock implies the silent mock engine; else config default.
+    engine_choice = args.engine or ("mock" if args.mock else cfg.tts_engine)
+    tts = make_tts(engine_choice, kokoro_model=cfg.kokoro_model_path,
+                   kokoro_voices=cfg.kokoro_voices_path)
 
     store = ProvenanceStore(cfg.db_path)
     print(f'message: "{args.message}"   [db={cfg.db_path}, tts={tts.engine_id}]')
