@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quadrant", choices=[q.value for q in Quadrant], help="single target emotion")
     parser.add_argument("--all-quadrants", action="store_true", help="sweep Q1..Q4")
     parser.add_argument("--mock", action="store_true", help="use mock LLM/TTS (no external tools)")
-    parser.add_argument("--engine", choices=["auto", "mock", "pyttsx3", "sapi", "sapi5xml", "kokoro"],
+    parser.add_argument("--engine", choices=["auto", "mock", "pyttsx3", "sapi", "sapi5xml", "espeak", "kokoro"],
                         default=None, help="TTS engine (overrides config ECHO_TTS_ENGINE)")
     parser.add_argument("--list-engines", action="store_true",
                         help="print the per-engine capability matrix and exit")

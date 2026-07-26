@@ -170,6 +170,76 @@ class KokoroAdapter(TTSAdapter):
         return out_path
 
 
+def _espeak_speed(rate: float) -> int:
+    """Rate factor -> eSpeak words-per-minute (base 175), clamped to eSpeak's range."""
+    return max(80, min(450, round(175 * rate)))
+
+
+def _espeak_pitch(pitch: float) -> int:
+    """Pitch factor (~0.8..1.2) -> eSpeak pitch 0..99 (50 = default). eSpeak gives REAL
+    pitch control, so +-0.2 maps to a clear +-20 -- unlike SAPI's compressed absmiddle."""
+    return max(0, min(99, round(50 + (pitch - 1.0) * 100)))
+
+
+def _espeak_amp(volume: float) -> int:
+    """Loudness 0..1 -> eSpeak amplitude 0..200 (100 = default)."""
+    return max(0, min(200, round(max(0.0, min(1.0, volume)) * 150)))
+
+
+def _find_espeak() -> "str | None":
+    """Locate the eSpeak NG binary robustly: the ECHO_ESPEAK_BIN override first, then PATH,
+    then the standard Windows install dirs (the MSI does not always add itself to PATH)."""
+    import os
+    import shutil
+
+    env = os.getenv("ECHO_ESPEAK_BIN")
+    if env and Path(env).exists():
+        return env
+    for name in ("espeak-ng", "espeak"):
+        found = shutil.which(name)
+        if found:
+            return found
+    for cand in (r"C:\Program Files\eSpeak NG\espeak-ng.exe",
+                 r"C:\Program Files (x86)\eSpeak NG\espeak-ng.exe"):
+        if Path(cand).exists():
+            return cand
+    return None
+
+
+class EspeakNgAdapter(TTSAdapter):
+    """Open-source, cross-platform formant synthesizer (eSpeak NG) via its CLI.
+
+    Full explicit control of rate, volume, AND pitch -- a controllable open-source
+    baseline that supersedes SAPI's role without the Windows lock-in. Robotic (low
+    naturalness): a controllability baseline, not a naturalness contender.
+    Needs the `espeak-ng` binary on PATH (apt / brew / choco / installer).
+    """
+
+    engine_id = "espeak"
+    renders = frozenset({"rate", "volume", "pitch"})
+    note = "open-source, cross-platform (GPLv3); full parametric control; robotic"
+
+    def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
+        import subprocess
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        exe = _find_espeak()
+        if not exe:
+            raise RuntimeError(
+                "espeak-ng not found. Install it (Windows: choco install espeak-ng; "
+                "Linux: apt install espeak-ng; macOS: brew install espeak-ng), then REOPEN the "
+                "terminal so PATH updates — or set ECHO_ESPEAK_BIN to the full path of espeak-ng.exe."
+            )
+        subprocess.run(
+            [exe, "-w", str(out_path),
+             "-s", str(_espeak_speed(voice_params.rate)),
+             "-p", str(_espeak_pitch(voice_params.pitch)),
+             "-a", str(_espeak_amp(voice_params.volume))],
+            input=text.encode("utf-8"), check=True,
+        )
+        return out_path
+
+
 def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapter:
     """Select an engine.
 
@@ -183,6 +253,8 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
         return Pyttsx3Adapter()
     if choice in ("sapi", "sapi5", "sapi5xml"):
         return Sapi5XmlAdapter()
+    if choice in ("espeak", "espeak-ng", "espeakng"):
+        return EspeakNgAdapter()
     if choice == "kokoro":
         return KokoroAdapter(kokoro_model, kokoro_voices)
     # auto
@@ -197,7 +269,7 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
 # --- per-engine capability matrix ------------------------------------------
 # Engines differ in which dials they render; this makes that explicit so cross-engine
 # comparisons stay honest (e.g. pyttsx3 has no pitch, so its "pitch dial" is not testable).
-_ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, KokoroAdapter]
+_ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, EspeakNgAdapter, KokoroAdapter]
 _DIALS = ("rate", "volume", "pitch")
 
 
