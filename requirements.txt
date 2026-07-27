@@ -10,6 +10,8 @@ praat-parselmouth>=0.4.3                        # validated Praat backend: F0 + 
 #              # + download kokoro-v1.0.onnx & voices-v1.0.bin (set ECHO_KOKORO_MODEL / ECHO_KOKORO_VOICES)
 # torch torchaudio librosa  # (naturalness.py, UTMOS) optional eval-only: `pip install torch torchaudio librosa`
 #                           # UTMOS model auto-downloads via torch.hub (tarepan/SpeechMOS) on first use
+# transformers              # (emotion_conveyance.py, dimensional SER) optional eval-only: `pip install transformers`
+#                           # audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim downloads from HF on first use
 pyttsx3>=2.90
 pytest>=8.0
 ruff>=0.4

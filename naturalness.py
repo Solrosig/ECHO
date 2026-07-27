@@ -33,12 +33,21 @@ def _utmos_predictor():
     if _PREDICTOR is None:
         try:
             import torch
-        except Exception as exc:                 # torch absent
+            import torchaudio  # noqa: F401  — UTMOS's model imports it internally
+        except Exception as exc:                 # torch / torchaudio absent
             raise RuntimeError(
-                "UTMOS needs PyTorch — install the eval extra: "
-                "`pip install torch torchaudio librosa` (CPU wheel is fine)."
+                "UTMOS needs PyTorch AND torchaudio — install the eval extras: "
+                "`pip install torch torchaudio librosa` (CPU wheels are fine). "
+                "torchaudio is required by the UTMOS model itself."
             ) from exc
-        _PREDICTOR = torch.hub.load("tarepan/SpeechMOS:v1.2.0", "utmos22_strong", trust_repo=True)
+        try:
+            _PREDICTOR = torch.hub.load("tarepan/SpeechMOS:v1.2.0", "utmos22_strong", trust_repo=True)
+        except Exception as exc:
+            raise RuntimeError(
+                "Could not load UTMOS via torch.hub. If your network blocks GitHub/TLS, the hub "
+                "cache lives in ~/.cache/torch/hub — the repo zip can be placed there manually. "
+                f"Original error: {exc}"
+            ) from exc
     return _PREDICTOR
 
 
