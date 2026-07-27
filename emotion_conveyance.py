@@ -18,8 +18,24 @@ machine proxy for the human 4-AFC test (S1), which remains the ground truth.
     python emotion_conveyance.py --register research/register.csv
         -> emotion.csv beside the register (never overwrites) + per-engine report
 
-torch/transformers are OPTIONAL eval-layer deps (`pip install torch transformers`); the
-model downloads from Hugging Face on first use.
+torch/transformers are OPTIONAL eval-layer deps (`pip install torch transformers librosa`);
+the model downloads from Hugging Face on first use, or loads from a local folder via
+`--model` / `ECHO_SER_MODEL` (needed where TLS to huggingface.co is filtered).
+
+PORTABILITY NOTES (hard-won; see PROJECT_LOG "FIXING CHAIN" 2026-07-27). This module
+deliberately does NOT use the model card's published loading code, because it breaks on
+current libraries. Three deviations, each with a reason:
+  1. No `Wav2Vec2Processor` — it needs `processor_config.json`, absent from this (4.x-era)
+     repo, so transformers 5.x cannot build it. The processor only does zero-mean/unit-
+     variance normalisation, which `predict_va()` applies inline instead.
+  2. `EmotionModel` is a plain `nn.Module`, NOT a `Wav2Vec2PreTrainedModel` — the parent
+     class drags in `init_weights()`/`tie_weights()`, which in transformers 5.x require an
+     `all_tied_weights_keys` attribute the 4.x-era class never defined (it failed at
+     construction, even offline). Module names are unchanged, so the published checkpoint
+     still loads as-is.
+  3. Weights are read with plain `load_state_dict` (`_load_state_dict()`), not
+     `from_pretrained` — fewer moving parts, no version-specific finaliser.
+The net effect: this runs on transformers 4.x and 5.x, online or fully offline.
 """
 
 from __future__ import annotations
@@ -49,9 +65,7 @@ def _load_model(model_id: str | None = None):
     if _MODEL is None:
         try:
             import torch  # noqa: F401
-            from transformers.models.wav2vec2.modeling_wav2vec2 import (
-                Wav2Vec2Model, Wav2Vec2PreTrainedModel,
-            )
+            from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2Model
             import torch.nn as nn
         except Exception as exc:
             raise RuntimeError(
@@ -70,15 +84,22 @@ def _load_model(model_id: str | None = None):
                 x = self.dropout(torch.tanh(self.dense(features)))
                 return self.out_proj(x)
 
-        class EmotionModel(Wav2Vec2PreTrainedModel):
-            """wav2vec2 + regression head -> (arousal, dominance, valence)."""
+        class EmotionModel(nn.Module):
+            """wav2vec2 + regression head -> (arousal, dominance, valence).
+
+            Deliberately a PLAIN `nn.Module`, not a `Wav2Vec2PreTrainedModel`: the model card's
+            4.x-era class routes through transformers' pretrained machinery (`init_weights` ->
+            `tie_weights` -> `all_tied_weights_keys`), which changed in 5.x and breaks. We only
+            need the architecture plus a state dict, and the submodule names (`wav2vec2.*`,
+            `classifier.*`) are identical, so the published checkpoint loads unchanged — and
+            this stays stable across transformers versions.
+            """
 
             def __init__(self, config):
-                super().__init__(config)
+                super().__init__()
                 self.config = config
                 self.wav2vec2 = Wav2Vec2Model(config)
                 self.classifier = RegressionHead(config)
-                self.init_weights()
 
             def forward(self, input_values):
                 hidden = self.wav2vec2(input_values)[0]
@@ -86,17 +107,59 @@ def _load_model(model_id: str | None = None):
 
         src = model_id or MODEL_ID
         try:
-            _MODEL = EmotionModel.from_pretrained(src).eval()
+            # Build from config + load weights DIRECTLY, bypassing from_pretrained():
+            # transformers 5.x's loading finalizer expects attributes (all_tied_weights_keys)
+            # that this custom model class (written for 4.x) does not define.
+            from transformers import AutoConfig
+            cfg = AutoConfig.from_pretrained(src)
+            model = EmotionModel(cfg)
+            state = _load_state_dict(src)
+            result = model.load_state_dict(state, strict=False)
+            # SAFETY GUARD: strict=False tolerates key mismatches (needed, since the checkpoint
+            # carries training-only tensors), but that also means a WRONG checkpoint would load
+            # silently and the model would emit plausible-looking, meaningless scores — the worst
+            # failure mode for a research tool. So require the regression head explicitly.
+            loaded = [k for k in state if k.startswith("classifier.")]
+            if not loaded:
+                raise RuntimeError("checkpoint has no 'classifier.*' weights (wrong model?)")
+            missing = [k for k in getattr(result, "missing_keys", []) if not k.startswith("wav2vec2.masked_spec_embed")]
+            if missing:
+                print(f"  (note: {len(missing)} weight(s) not found in the checkpoint; "
+                      f"first: {missing[:3]})")
+            _MODEL = model.eval()
         except Exception as exc:
             raise RuntimeError(
-                f"Could not load the SER model '{src}'.\n"
+                f"Could not load the SER model '{src}': {exc}\n"
                 "If the Hugging Face download is blocked by your network (TLS reset / "
                 "WinError 10054), download the model files once in a BROWSER from\n"
                 "  https://huggingface.co/audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim/tree/main\n"
-                "(config.json + pytorch_model.bin or model.safetensors) into a folder, then pass\n"
+                "(config.json + model.safetensors or pytorch_model.bin) into a folder, then pass\n"
                 "  --model C:\\path\\to\\that\\folder   (or set ECHO_SER_MODEL)."
             ) from exc
     return _MODEL
+
+
+def _load_state_dict(src: str) -> dict:
+    """Read the weights from a local folder (preferred) or fetch them from the HF hub."""
+    import torch
+
+    local = Path(src)
+    if local.is_dir():
+        st, bin_ = local / "model.safetensors", local / "pytorch_model.bin"
+        if st.exists():
+            from safetensors.torch import load_file
+            return load_file(str(st))
+        if bin_.exists():
+            return torch.load(str(bin_), map_location="cpu", weights_only=True)
+        raise RuntimeError(f"no model.safetensors or pytorch_model.bin in {local}")
+
+    from huggingface_hub import hf_hub_download
+    try:
+        from safetensors.torch import load_file
+        return load_file(hf_hub_download(src, "model.safetensors"))
+    except Exception:
+        return torch.load(hf_hub_download(src, "pytorch_model.bin"),
+                          map_location="cpu", weights_only=True)
 
 
 def predict_va(wav_path, model_id: str | None = None) -> dict:
@@ -111,7 +174,11 @@ def predict_va(wav_path, model_id: str | None = None) -> dict:
 
     model = _load_model(model_id)
     wave, _ = librosa.load(str(wav_path), sr=SR, mono=True)
-    wave = (wave - wave.mean()) / (wave.std() + 1e-7)          # = processor(do_normalize=True)
+    # FIX (see docstring note 1): this line replaces Wav2Vec2Processor entirely. The audeering
+    # processor is configured with do_normalize=True and nothing else, so zero-mean/unit-variance
+    # IS its whole behaviour — reproducing it here removes a network fetch of processor_config.json
+    # (absent from that repo) and the transformers-5.x incompatibility it caused.
+    wave = (wave - wave.mean()) / (wave.std() + 1e-7)
     x = torch.from_numpy(wave.astype("float32")).unsqueeze(0)
     with torch.no_grad():
         out = model(x)[0].numpy().squeeze()          # (arousal, dominance, valence) in ~0..1

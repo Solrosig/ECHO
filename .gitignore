@@ -12,9 +12,13 @@ venv/
 *.wav
 audio_out/
 
-# TTS model files (downloaded, not committed)
+# Model files (downloaded, never committed — hundreds of MB; GitHub rejects >100 MB)
 *.onnx
-voices-*.bin
+*.bin
+*.safetensors
+*.pt
+*.pth
+ser_model/          # local SER model folder (emotion_conveyance.py --model ser_model)
 
 # Reference copy of the pre-built code (kept, not tracked)
 _reference/

@@ -33,7 +33,10 @@ def _utmos_predictor():
     if _PREDICTOR is None:
         try:
             import torch
-            import torchaudio  # noqa: F401  — UTMOS's model imports it internally
+            # FIX: torchaudio is imported by UTMOS's OWN model code, not by us — so a missing
+            # torchaudio surfaced as a confusing ModuleNotFoundError from deep inside the hub
+            # module. Checking it here turns that into an actionable dependency message.
+            import torchaudio  # noqa: F401
         except Exception as exc:                 # torch / torchaudio absent
             raise RuntimeError(
                 "UTMOS needs PyTorch AND torchaudio — install the eval extras: "
