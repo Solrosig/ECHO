@@ -1,0 +1,11 @@
+section,item,measured,value,n,note
+monotonicity,speaking rate,words_per_s,0.939,80,PASS
+monotonicity,loudness,rms_dbfs,0.932,80,PASS
+monotonicity,pitch (F0),f0_hz,0.635,80,PASS
+separation,Q1,,,5,F0=99.0;wps=4.33;db=-24.8
+separation,Q2,,,5,F0=86.9;wps=3.45;db=-23.4
+separation,Q3,,,5,F0=84.6;wps=2.20;db=-29.9
+separation,Q4,,,5,F0=91.8;wps=2.75;db=-31.0
+effect_size,rate: high-vs-low arousal,words_per_s,3.025,,
+effect_size,loudness: high-vs-low arousal,rms_dbfs,8.539,,
+effect_size,pitch: pos-vs-neg valence,f0_hz,2.861,,

@@ -2,6 +2,16 @@ pydantic>=2.6
 openai>=1.30
 requests>=2.31
 soundfile>=0.12
+numpy>=1.24                                    # acoustic analysis (analyze_acoustics.py)
+praat-parselmouth>=0.4.3                        # validated Praat backend: F0 + jitter/shimmer/HNR
+# eSpeak NG engine ('--engine espeak') is a SYSTEM binary, not a pip package —
+# install separately: Linux `apt install espeak-ng` · macOS `brew install espeak-ng` · Windows `choco install espeak-ng`
+# kokoro-onnx  # ('--engine kokoro') optional neural engine: `pip install kokoro-onnx`
+#              # + download kokoro-v1.0.onnx & voices-v1.0.bin (set ECHO_KOKORO_MODEL / ECHO_KOKORO_VOICES)
+# torch torchaudio librosa  # (naturalness.py, UTMOS) optional eval-only: `pip install torch torchaudio librosa`
+#                           # UTMOS model auto-downloads via torch.hub (tarepan/SpeechMOS) on first use
+# transformers              # (emotion_conveyance.py, dimensional SER) optional eval-only: `pip install transformers`
+#                           # audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim downloads from HF on first use
 pyttsx3>=2.90
 pytest>=8.0
 ruff>=0.4

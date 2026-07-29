@@ -12,9 +12,16 @@ venv/
 *.wav
 audio_out/
 
-# TTS model files (downloaded, not committed)
+# Model files (downloaded, never committed — hundreds of MB; GitHub rejects >100 MB)
 *.onnx
-voices-*.bin
+*.bin
+*.safetensors
+*.pt
+*.pth
+# local SER model folder (emotion_conveyance.py --model ser_model)
+# NOTE: .gitignore does NOT support trailing comments on a pattern line —
+# the comment must be on its own line or the whole line becomes the pattern.
+ser_model/
 
 # Reference copy of the pre-built code (kept, not tracked)
 _reference/

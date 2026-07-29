@@ -20,6 +20,9 @@ from strategies import VoiceParams
 
 class TTSAdapter(ABC):
     engine_id: str = "abstract"
+    renders: frozenset = frozenset()   # which dials this engine actually renders (rate/volume/pitch)
+    natural: bool = False              # neural/natural voice (vs formant/concatenative)
+    note: str = ""
 
     @abstractmethod
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path: ...
@@ -29,6 +32,8 @@ class MockTTSAdapter(TTSAdapter):
     """Writes a valid silent WAV whose length shrinks as rate rises (no deps)."""
 
     engine_id = "mock"
+    renders = frozenset()                       # silent; renders no audible dial
+    note = "silent WAV; tests only"
     _SR = 24000
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
@@ -48,6 +53,8 @@ class Pyttsx3Adapter(TTSAdapter):
     """Offline OS voice (Windows SAPI5). Renders rate + volume (no pitch)."""
 
     engine_id = "pyttsx3"
+    renders = frozenset({"rate", "volume"})     # OS voice: no pitch control
+    note = "OS voice (SAPI/espeak/nsss); no pitch; not cross-platform-consistent"
     _BASE_WPM = 175
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
@@ -63,12 +70,34 @@ class Pyttsx3Adapter(TTSAdapter):
         return out_path
 
 
-def _to_scale(value: float, lo: float, hi: float) -> int:
-    """Map a value in [lo, hi] onto SAPI's integer scale [-10, 10]."""
-    if hi == lo:
-        return 0
-    frac = (value - lo) / (hi - lo)              # 0..1
-    return max(-10, min(10, int(round((frac * 2.0 - 1.0) * 10))))
+# --- SAPI dial calibration -------------------------------------------------
+# SAPI's tags run -10..+10, but those extremes are NOT linear and NOT modest:
+#   absspeed=+10 is ~3x speaking rate; absmiddle=+10 is a chipmunk-level pitch jump.
+# The intended dials are gentle (rate 0.7-1.3, pitch 0.8-1.2). The earlier code
+# stretched that gentle band across SAPI's whole extreme range, so a "1.3x" intent
+# rendered as ~2-3x actual speed (unlistenable). These helpers instead map each
+# dial onto the SMALL part of SAPI's scale that reproduces the intended factor.
+
+def _sapi_rate(rate_factor: float) -> int:
+    """Rate factor -> SAPI absspeed. Gain 17 gives a CLEAR fast/slow contrast between
+    quadrants (1.18 -> +3 ~1.4x, 0.82 -> -3 ~0.7x); the +-5 cap keeps even the extremes
+    listenable (never SAPI's +10 ~= 3x, which was unlistenable)."""
+    return max(-5, min(5, round((rate_factor - 1.0) * 17.0)))
+
+
+def _sapi_pitch(pitch_factor: float) -> int:
+    """Pitch factor -> SAPI absmiddle. This is the valence channel: gain 20 turns the
+    +-0.2 pitch range into an audible +-4 shift (Q1 high vs Q2 low), clamped +-5 so it
+    can never chipmunk."""
+    return max(-5, min(5, round((pitch_factor - 1.0) * 20.0)))
+
+
+def _sapi_volume(volume: float) -> int:
+    """Loudness dial (0.6..1.0) -> SAPI volume 50..95: a WIDE dynamic range so 'loud'
+    quadrants (~86) are clearly louder than 'soft' ones (~59); floor 50 stays audible,
+    ceiling 95 avoids blasting."""
+    v = max(0.6, min(1.0, volume))
+    return max(0, min(100, round(50.0 + (v - 0.6) / 0.4 * 45.0)))
 
 
 def _xml_escape(text: str) -> str:
@@ -84,14 +113,16 @@ class Sapi5XmlAdapter(TTSAdapter):
     """
 
     engine_id = "sapi5xml"
+    renders = frozenset({"rate", "volume", "pitch"})   # full dial set (pitch via XML)
+    note = "Windows-only; not OSS; rough voice quality"
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
         import win32com.client  # Windows only (pywin32)
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        rate_i = _to_scale(voice_params.rate, 0.7, 1.3)
-        pitch_i = _to_scale(voice_params.pitch, 0.8, 1.2)
-        vol_pct = int(round(max(0.0, min(1.0, voice_params.volume)) * 100))
+        rate_i = _sapi_rate(voice_params.rate)
+        pitch_i = _sapi_pitch(voice_params.pitch)
+        vol_pct = _sapi_volume(voice_params.volume)
 
         xml = (
             f'<volume level="{vol_pct}">'
@@ -114,18 +145,40 @@ class KokoroAdapter(TTSAdapter):
     """High-quality open-source neural TTS via kokoro-onnx. Renders rate + volume."""
 
     engine_id = "kokoro"
+    renders = frozenset({"rate", "volume"})     # neural: speed + loudness; no explicit pitch dial
+    natural = True
+    note = "neural, Apache-2.0, local (ONNX); high naturalness; no explicit pitch"
 
     def __init__(self, model_path: str, voices_path: str, lang: str = "en-us") -> None:
-        from kokoro_onnx import Kokoro
-
-        self._kokoro = Kokoro(model_path, voices_path)
+        self._model_path = model_path
+        self._voices_path = voices_path
         self._lang = lang
+        self._kokoro = None                        # lazy: model loaded on first synthesize
+
+    def _engine(self):
+        """Load the ONNX model on first use, with clear errors for the two failure modes."""
+        if self._kokoro is None:
+            try:
+                from kokoro_onnx import Kokoro
+            except Exception as exc:               # package not installed
+                raise RuntimeError(
+                    "kokoro-onnx not installed — `pip install kokoro-onnx` (optional neural engine)."
+                ) from exc
+            missing = [p for p in (self._model_path, self._voices_path) if not Path(p).exists()]
+            if missing:
+                raise RuntimeError(
+                    f"Kokoro model files not found: {missing}. Download kokoro-v1.0.onnx + "
+                    "voices-v1.0.bin (kokoro-onnx releases) and set ECHO_KOKORO_MODEL / ECHO_KOKORO_VOICES."
+                )
+            self._kokoro = Kokoro(self._model_path, self._voices_path)
+        return self._kokoro
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
+        engine = self._engine()                    # validate package + model first (clear errors)
         import soundfile as sf
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        samples, sample_rate = self._kokoro.create(
+        samples, sample_rate = engine.create(
             text,
             voice=voice_params.voice_id,
             speed=voice_params.rate,
@@ -133,6 +186,76 @@ class KokoroAdapter(TTSAdapter):
         )
         samples = samples * max(0.0, min(1.0, voice_params.volume))  # apply loudness
         sf.write(str(out_path), samples, sample_rate)
+        return out_path
+
+
+def _espeak_speed(rate: float) -> int:
+    """Rate factor -> eSpeak words-per-minute (base 175), clamped to eSpeak's range."""
+    return max(80, min(450, round(175 * rate)))
+
+
+def _espeak_pitch(pitch: float) -> int:
+    """Pitch factor (~0.8..1.2) -> eSpeak pitch 0..99 (50 = default). eSpeak gives REAL
+    pitch control, so +-0.2 maps to a clear +-20 -- unlike SAPI's compressed absmiddle."""
+    return max(0, min(99, round(50 + (pitch - 1.0) * 100)))
+
+
+def _espeak_amp(volume: float) -> int:
+    """Loudness 0..1 -> eSpeak amplitude 0..200 (100 = default)."""
+    return max(0, min(200, round(max(0.0, min(1.0, volume)) * 150)))
+
+
+def _find_espeak() -> "str | None":
+    """Locate the eSpeak NG binary robustly: the ECHO_ESPEAK_BIN override first, then PATH,
+    then the standard Windows install dirs (the MSI does not always add itself to PATH)."""
+    import os
+    import shutil
+
+    env = os.getenv("ECHO_ESPEAK_BIN")
+    if env and Path(env).exists():
+        return env
+    for name in ("espeak-ng", "espeak"):
+        found = shutil.which(name)
+        if found:
+            return found
+    for cand in (r"C:\Program Files\eSpeak NG\espeak-ng.exe",
+                 r"C:\Program Files (x86)\eSpeak NG\espeak-ng.exe"):
+        if Path(cand).exists():
+            return cand
+    return None
+
+
+class EspeakNgAdapter(TTSAdapter):
+    """Open-source, cross-platform formant synthesizer (eSpeak NG) via its CLI.
+
+    Full explicit control of rate, volume, AND pitch -- a controllable open-source
+    baseline that supersedes SAPI's role without the Windows lock-in. Robotic (low
+    naturalness): a controllability baseline, not a naturalness contender.
+    Needs the `espeak-ng` binary on PATH (apt / brew / choco / installer).
+    """
+
+    engine_id = "espeak"
+    renders = frozenset({"rate", "volume", "pitch"})
+    note = "open-source, cross-platform (GPLv3); full parametric control; robotic"
+
+    def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
+        import subprocess
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        exe = _find_espeak()
+        if not exe:
+            raise RuntimeError(
+                "espeak-ng not found. Install it (Windows: choco install espeak-ng; "
+                "Linux: apt install espeak-ng; macOS: brew install espeak-ng), then REOPEN the "
+                "terminal so PATH updates — or set ECHO_ESPEAK_BIN to the full path of espeak-ng.exe."
+            )
+        subprocess.run(
+            [exe, "-w", str(out_path),
+             "-s", str(_espeak_speed(voice_params.rate)),
+             "-p", str(_espeak_pitch(voice_params.pitch)),
+             "-a", str(_espeak_amp(voice_params.volume))],
+            input=text.encode("utf-8"), check=True,
+        )
         return out_path
 
 
@@ -149,6 +272,8 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
         return Pyttsx3Adapter()
     if choice in ("sapi", "sapi5", "sapi5xml"):
         return Sapi5XmlAdapter()
+    if choice in ("espeak", "espeak-ng", "espeakng"):
+        return EspeakNgAdapter()
     if choice == "kokoro":
         return KokoroAdapter(kokoro_model, kokoro_voices)
     # auto
@@ -158,3 +283,33 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
         except Exception:
             pass
     return Pyttsx3Adapter()
+
+
+# --- per-engine capability matrix ------------------------------------------
+# Engines differ in which dials they render; this makes that explicit so cross-engine
+# comparisons stay honest (e.g. pyttsx3 has no pitch, so its "pitch dial" is not testable).
+_ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, EspeakNgAdapter, KokoroAdapter]
+_DIALS = ("rate", "volume", "pitch")
+
+
+def capability_matrix() -> list[dict]:
+    """One row per engine: which dials it renders (yes/no), whether it is a natural voice,
+    and a short note. Used to keep engine comparisons honest and to set register flags."""
+    rows = []
+    for cls in _ENGINE_CLASSES:
+        row = {"engine": cls.engine_id}
+        row.update({d: ("yes" if d in cls.renders else "no") for d in _DIALS})
+        row["natural"] = "yes" if cls.natural else "no"
+        row["note"] = cls.note
+        rows.append(row)
+    return rows
+
+
+def format_capability_matrix() -> str:
+    """Human-readable capability matrix table."""
+    lines = [f"  {'engine':<10}{'rate':>6}{'volume':>8}{'pitch':>7}{'natural':>9}   note",
+             "  " + "-" * 74]
+    for r in capability_matrix():
+        lines.append(f"  {r['engine']:<10}{r['rate']:>6}{r['volume']:>8}{r['pitch']:>7}"
+                     f"{r['natural']:>9}   {r['note']}")
+    return "\n".join(lines)
