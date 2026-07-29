@@ -18,7 +18,10 @@ audio_out/
 *.safetensors
 *.pt
 *.pth
-ser_model/          # local SER model folder (emotion_conveyance.py --model ser_model)
+# local SER model folder (emotion_conveyance.py --model ser_model)
+# NOTE: .gitignore does NOT support trailing comments on a pattern line —
+# the comment must be on its own line or the whole line becomes the pattern.
+ser_model/
 
 # Reference copy of the pre-built code (kept, not tracked)
 _reference/
