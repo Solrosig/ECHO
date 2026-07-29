@@ -26,6 +26,18 @@ from synth_stimuli import REGISTER_FIELDS as SESSION_FIELDS
 MASTER_FIELDS = ["source", "session"] + SESSION_FIELDS
 
 
+def resolve_audio_path(raw: str) -> Path:
+    """Resolve an `audio_path` from a register in a CROSS-PLATFORM way.
+
+    Registers written on Windows store backslash paths (`research\\sessions\\...`), which are
+    not path separators on Linux/macOS — so a corpus produced on one OS appeared 100 % 'missing'
+    on another (discovered by the M4 integrity check). Normalising separators here makes the
+    stored corpus portable without rewriting existing registers, which the reproducibility
+    package (C2) requires.
+    """
+    return Path(str(raw).replace("\\", "/"))
+
+
 def sha256_file(p: Path) -> str:
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
@@ -48,7 +60,7 @@ def verify(root: str) -> int:
     for reg in regs:
         for r in csv.DictReader(open(reg, encoding="utf-8")):
             total += 1
-            p = Path(r["audio_path"])
+            p = resolve_audio_path(r["audio_path"])
             if not p.exists():
                 missing += 1
                 print("MISSING      ", r["clip_id"], p)

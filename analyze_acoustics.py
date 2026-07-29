@@ -263,6 +263,12 @@ def _before_after(rows: list[dict], before: str = "neutral", after: str = "rate_
         print(line)
 
 
+def _audio_path(raw: str) -> Path:
+    """Cross-platform resolution of a register `audio_path` (Windows-written registers store
+    backslashes, which are not separators on Linux/macOS). See build_register.resolve_audio_path."""
+    return Path(str(raw).replace("\\", "/"))
+
+
 def _resolve_out(path: Path, force: bool) -> Path:
     """Never overwrite: if the target already exists (and --force is not given), return a
     timestamped sibling (..._YYYYMMDD-HHMMSS[-n].csv) so no prior result is ever lost."""
@@ -295,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
 
     measured, missing = [], 0
     for r in csv.DictReader(open(src, encoding="utf-8")):
-        p = Path(r.get("audio_path", ""))
+        p = _audio_path(r.get("audio_path", ""))
         if not p.exists():
             missing += 1
             continue

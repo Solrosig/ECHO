@@ -292,7 +292,8 @@ def main(argv: list[str] | None = None) -> int:
             and (not args.param_set or r.get("param_set") in (args.param_set, "", None))]
     scored, missing = [], 0
     for r in rows:
-        p = Path(r.get("audio_path", ""))
+        # backslash-normalised: registers written on Windows must still resolve on Linux/macOS
+        p = Path(str(r.get("audio_path", "")).replace("\\", "/"))
         if not p.exists():
             missing += 1
             continue

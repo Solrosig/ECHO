@@ -91,6 +91,41 @@ def _summary(rows: list[dict]) -> None:
     for eng in sorted(groups, key=lambda e: -mean(groups[e])):     # most natural first
         vals = groups[eng]
         print(f"  {eng:<12}{mean(vals):12.3f}{len(vals):5d}")
+    _confound_check(rows, groups)
+
+
+def _confound_check(rows: list[dict], groups: dict) -> None:
+    """CONFOUND CHECK (monitoring plan M3): is the naturalness difference driven by the ENGINE
+    or by ECHO's own dial settings? Prints mean UTMOS per engine x param_set and compares the
+    between-engine spread with the largest within-engine (dial) spread. A large ratio means the
+    comparison measures the engine, as intended. A monotonic decline across param-sets is itself
+    a finding: the cost in naturalness of adding expressive dials."""
+    cells: dict[tuple, list[float]] = defaultdict(list)
+    for r in rows:
+        try:
+            cells[(r.get("engine", "?"), r.get("param_set", "?"))].append(float(r["utmos"]))
+        except (KeyError, TypeError, ValueError):
+            pass
+    psets = [p for p in ("neutral", "rate", "rate_volume", "rate_volume_pitch")
+             if any(k[1] == p for k in cells)]
+    if len(psets) < 2 or not groups:
+        return
+    print("\n== Confound check — mean UTMOS per engine x param_set (M3) ==")
+    print(f"  {'engine':<12}" + "".join(f"{p[:13]:>15}" for p in psets) + f"{'dial spread':>13}")
+    worst = 0.0
+    for eng in sorted(groups, key=lambda e: -mean(groups[e])):
+        vals = [mean(cells[(eng, p)]) for p in psets if (eng, p) in cells]
+        spread = max(vals) - min(vals) if vals else 0.0
+        worst = max(worst, spread)
+        print(f"  {eng:<12}" + "".join(
+            f"{mean(cells[(eng, p)]):15.3f}" if (eng, p) in cells else f"{'-':>15}" for p in psets
+        ) + f"{spread:13.3f}")
+    eng_means = [mean(v) for v in groups.values()]
+    eng_spread = max(eng_means) - min(eng_means)
+    ratio = eng_spread / worst if worst > 0 else float("inf")
+    verdict = "PASS — engine effect dominates" if ratio >= 3 else "CHECK — dial effect is comparable"
+    print(f"  engine spread {eng_spread:.3f}  vs  max dial spread {worst:.3f}   "
+          f"(ratio {ratio:.1f}x)  ->  {verdict}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,7 +145,8 @@ def main(argv: list[str] | None = None) -> int:
     rows = [r for r in csv.DictReader(open(src, encoding="utf-8")) if r.get("silent") != "yes"]
     measured, missing = [], 0
     for r in rows:
-        p = Path(r.get("audio_path", ""))
+        # backslash-normalised: registers written on Windows must still resolve on Linux/macOS
+        p = Path(str(r.get("audio_path", "")).replace("\\", "/"))
         if not p.exists():
             missing += 1
             continue

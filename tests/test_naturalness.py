@@ -42,6 +42,27 @@ def test_scores_and_ranks_engines(tmp_path, monkeypatch):
     assert by["kokoro"] > by["sapi5xml"]         # more-natural engine ranks higher
 
 
+def test_confound_check_reports_engine_vs_dial_spread(tmp_path, monkeypatch, capsys):
+    """M3: the summary must show mean UTMOS per engine x param_set and judge whether the
+    engine effect dominates ECHO's own dial settings."""
+    rows, scores = [], {}
+    for eng, base in (("kokoro", 4.5), ("espeak", 2.1)):
+        for ps in ("neutral", "rate_volume_pitch"):
+            p = tmp_path / f"{eng}_{ps}.wav"
+            _wav(p)
+            rows.append({"audio_path": str(p), "engine": eng, "param_set": ps,
+                         "quadrant": "Q1", "silent": "no"})
+            scores[str(p)] = base - (0.05 if ps != "neutral" else 0.0)   # small dial effect
+    reg = tmp_path / "register.csv"
+    _register(reg, rows)
+    monkeypatch.setattr(naturalness, "predict_mos", lambda p: scores[str(p)])
+
+    assert naturalness.main(["--register", str(reg), "--out", str(tmp_path / "n.csv")]) == 0
+    text = capsys.readouterr().out
+    assert "Confound check" in text and "neutral" in text
+    assert "PASS" in text          # engine spread (2.4) >> dial spread (0.05)
+
+
 def test_output_never_overwrites(tmp_path, monkeypatch):
     w = tmp_path / "a.wav"
     _wav(w)
