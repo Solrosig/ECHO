@@ -22,6 +22,7 @@ class TTSAdapter(ABC):
     engine_id: str = "abstract"
     renders: frozenset = frozenset()   # which dials this engine actually renders (rate/volume/pitch)
     natural: bool = False              # neural/natural voice (vs formant/concatenative)
+    native_emotion: bool = False       # conditions on the EMOTION itself, not on prosody dials
     note: str = ""
 
     @abstractmethod
@@ -189,6 +190,146 @@ class KokoroAdapter(TTSAdapter):
         return out_path
 
 
+def arousal_to_exaggeration(arousal: float, lo: float = 0.30, hi: float = 0.85) -> float:
+    """Arousal (-1..1) -> Chatterbox `exaggeration` (0..1, default 0.5): the engine's NATIVE
+    expressiveness control. Low arousal -> subdued delivery, high arousal -> emphatic."""
+    return round(lo + (max(-1.0, min(1.0, arousal)) + 1.0) / 2.0 * (hi - lo), 3)
+
+
+def arousal_to_cfg_weight(arousal: float, lo: float = 0.30, hi: float = 0.60) -> float:
+    """Arousal -> Chatterbox `cfg_weight` (default 0.5). Higher exaggeration speeds speech up,
+    and LOWERING cfg_weight restores slower, more deliberate pacing — so high-arousal clips get
+    a lower cfg to stay intelligible, low-arousal clips a higher one."""
+    return round(hi - (max(-1.0, min(1.0, arousal)) + 1.0) / 2.0 * (hi - lo), 3)
+
+
+class _NoWatermark:
+    """No-op stand-in for Chatterbox's Perth watermarker (same call signature)."""
+
+    def apply_watermark(self, wav, sample_rate=None, **kwargs):
+        return wav
+
+
+def _disable_perth_watermark() -> None:
+    """Disable Chatterbox's inaudible audio watermarking — for TWO reasons.
+
+    1. MEASUREMENT VALIDITY (the important one): the watermarker deliberately perturbs the
+       output waveform, and ECHO *measures* that waveform (F0, jitter, shimmer, HNR, UTMOS).
+       Watermarked audio is therefore not a clean sample of what the engine synthesised, so it
+       is switched off for research use. Any published clip can be re-rendered with it enabled.
+    2. ROBUSTNESS: `resemble-perth` only imports fully when its own optional dependencies are
+       present; otherwise `perth.PerthImplicitWatermarker` is left as None and Chatterbox dies
+       with `TypeError: 'NoneType' object is not callable` while loading the model.
+    """
+    try:
+        import perth
+    except Exception:
+        return                                  # not installed at all -> Chatterbox handles it
+    perth.PerthImplicitWatermarker = lambda *a, **k: _NoWatermark()
+
+
+class ChatterboxAdapter(TTSAdapter):
+    """Chatterbox (Resemble AI, MIT) — neural TTS with NATIVE emotion conditioning.
+
+    This adapter is the experiment behind Phase X: the Phase-N result showed a neutral neural
+    engine discards externally-applied prosody (flat F0, emotion collapsed), so emotion is
+    injected here through the engine's OWN interfaces instead of ECHO's dials:
+      * `exaggeration`  <- AROUSAL   (native expressiveness scalar)
+      * `cfg_weight`    <- AROUSAL   (pacing compensation; see arousal_to_cfg_weight)
+      * `audio_prompt`  <- QUADRANT  (a per-quadrant emotional reference clip -> style transfer;
+                                      this is the channel intended to carry VALENCE, the axis
+                                      that prosodic dials failed to convey)
+    Loudness is still applied as a post-scale. Rate and pitch are NOT sent — deliberately, since
+    the point is to test native conditioning rather than to re-impose external prosody.
+
+    Optional reference clips: a directory (config `chatterbox_refs`) containing Q1.wav..Q4.wav.
+    Without them the engine still runs (expressiveness only, no valence style transfer).
+    """
+
+    engine_id = "chatterbox"
+    renders = frozenset({"volume"})          # loudness only, as a post-scale
+    natural = True
+    native_emotion = True
+    note = "neural, MIT; native emotion (exaggeration<-arousal, reference style<-quadrant)"
+
+    #: files ChatterboxTTS.from_local() expects in a model directory
+    MODEL_FILES = ("ve.safetensors", "t3_cfg.safetensors", "s3gen.safetensors",
+                   "tokenizer.json", "conds.pt")
+
+    def __init__(self, refs_dir: str = "", device: str = "cpu", model_dir: str = "") -> None:
+        self._refs_dir = refs_dir
+        self._device = device
+        self._model_dir = model_dir
+        self._model = None                    # lazy: heavy model loaded on first synthesis
+
+    def _engine(self):
+        if self._model is None:
+            try:
+                from chatterbox.tts import ChatterboxTTS
+            except Exception as exc:
+                raise RuntimeError(
+                    "chatterbox-tts not installed — `pip install chatterbox-tts` (optional "
+                    "expressive engine; needs torch)."
+                ) from exc
+            _disable_perth_watermark()
+            # Prefer a LOCAL model directory when provided: networks that intercept TLS block
+            # the Hugging Face download entirely (WinError 10054), so the files can be fetched
+            # once in a browser instead — the same workaround used for the SER model.
+            local = Path(self._model_dir) if self._model_dir else None
+            if local and local.is_dir():
+                missing = [f for f in self.MODEL_FILES if not (local / f).exists()]
+                if missing:
+                    raise RuntimeError(
+                        f"Chatterbox model dir '{local}' is missing: {missing}. Download the five "
+                        "files from https://huggingface.co/ResembleAI/chatterbox/tree/main"
+                    )
+                self._model = ChatterboxTTS.from_local(str(local), device=self._device)
+                self._model.watermarker = _NoWatermark()      # unwatermarked audio for analysis
+                return self._model
+            try:
+                self._model = ChatterboxTTS.from_pretrained(device=self._device)
+                self._model.watermarker = _NoWatermark()      # unwatermarked audio for analysis
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Could not load the Chatterbox model ({exc}).\n"
+                    "If the Hugging Face download is blocked by your network, either retry (it is "
+                    "often intermittent), or set HF_HUB_DISABLE_XET=1 and retry, or download these "
+                    f"files once in a BROWSER from\n"
+                    "  https://huggingface.co/ResembleAI/chatterbox/tree/main\n"
+                    f"  {', '.join(self.MODEL_FILES)}\n"
+                    "into a folder and pass it via ECHO_CHATTERBOX_MODEL (e.g. cb_model)."
+                ) from exc
+        return self._model
+
+    def _reference_for(self, quadrant: str) -> "str | None":
+        """Per-quadrant emotional reference clip, if one has been provided."""
+        if not self._refs_dir or not quadrant:
+            return None
+        cand = Path(self._refs_dir) / f"{quadrant}.wav"
+        return str(cand) if cand.exists() else None
+
+    def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
+        model = self._engine()
+        import numpy as np
+        import soundfile as sf
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        kwargs = {
+            "exaggeration": arousal_to_exaggeration(voice_params.arousal),
+            "cfg_weight": arousal_to_cfg_weight(voice_params.arousal),
+        }
+        ref = self._reference_for(voice_params.quadrant)
+        if ref:
+            kwargs["audio_prompt_path"] = ref          # style/valence via reference audio
+        wav = model.generate(text, **kwargs)
+
+        samples = np.asarray(wav.squeeze().detach().cpu().numpy() if hasattr(wav, "detach")
+                             else wav).astype("float32")
+        samples = samples * max(0.0, min(1.0, voice_params.volume))       # loudness post-scale
+        sf.write(str(out_path), samples, int(getattr(model, "sr", 24000)))
+        return out_path
+
+
 def _espeak_speed(rate: float) -> int:
     """Rate factor -> eSpeak words-per-minute (base 175), clamped to eSpeak's range."""
     return max(80, min(450, round(175 * rate)))
@@ -259,7 +400,9 @@ class EspeakNgAdapter(TTSAdapter):
         return out_path
 
 
-def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapter:
+def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
+             chatterbox_refs: str = "", chatterbox_device: str = "cpu",
+             chatterbox_model: str = "") -> TTSAdapter:
     """Select an engine.
 
     'mock' | 'pyttsx3' | 'sapi' (=sapi5xml, renders pitch) | 'kokoro' | 'auto'.
@@ -276,6 +419,8 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
         return EspeakNgAdapter()
     if choice == "kokoro":
         return KokoroAdapter(kokoro_model, kokoro_voices)
+    if choice in ("chatterbox", "cb"):
+        return ChatterboxAdapter(chatterbox_refs, chatterbox_device, chatterbox_model)
     # auto
     if Path(kokoro_model).exists() and Path(kokoro_voices).exists():
         try:
@@ -288,18 +433,21 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str) -> TTSAdapte
 # --- per-engine capability matrix ------------------------------------------
 # Engines differ in which dials they render; this makes that explicit so cross-engine
 # comparisons stay honest (e.g. pyttsx3 has no pitch, so its "pitch dial" is not testable).
-_ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, EspeakNgAdapter, KokoroAdapter]
+_ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, EspeakNgAdapter,
+                   KokoroAdapter, ChatterboxAdapter]
 _DIALS = ("rate", "volume", "pitch")
 
 
 def capability_matrix() -> list[dict]:
-    """One row per engine: which dials it renders (yes/no), whether it is a natural voice,
-    and a short note. Used to keep engine comparisons honest and to set register flags."""
+    """One row per engine: which prosody dials it renders, whether it is a natural voice, and
+    whether it accepts NATIVE emotion conditioning (emotion as input rather than as prosody).
+    Keeps engine comparisons honest and drives the register flags."""
     rows = []
     for cls in _ENGINE_CLASSES:
         row = {"engine": cls.engine_id}
         row.update({d: ("yes" if d in cls.renders else "no") for d in _DIALS})
         row["natural"] = "yes" if cls.natural else "no"
+        row["native_emotion"] = "yes" if cls.native_emotion else "no"
         row["note"] = cls.note
         rows.append(row)
     return rows
@@ -307,9 +455,10 @@ def capability_matrix() -> list[dict]:
 
 def format_capability_matrix() -> str:
     """Human-readable capability matrix table."""
-    lines = [f"  {'engine':<10}{'rate':>6}{'volume':>8}{'pitch':>7}{'natural':>9}   note",
-             "  " + "-" * 74]
+    lines = [f"  {'engine':<11}{'rate':>6}{'volume':>8}{'pitch':>7}{'natural':>9}"
+             f"{'native-emo':>12}   note",
+             "  " + "-" * 92]
     for r in capability_matrix():
-        lines.append(f"  {r['engine']:<10}{r['rate']:>6}{r['volume']:>8}{r['pitch']:>7}"
-                     f"{r['natural']:>9}   {r['note']}")
+        lines.append(f"  {r['engine']:<11}{r['rate']:>6}{r['volume']:>8}{r['pitch']:>7}"
+                     f"{r['natural']:>9}{r['native_emotion']:>12}   {r['note']}")
     return "\n".join(lines)

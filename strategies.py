@@ -105,12 +105,28 @@ def emotion_to_pitch(valence: float, arousal: float) -> float:
 
 @dataclass(frozen=True)
 class VoiceParams:
-    """Engine-agnostic voice parameters produced by a strategy."""
+    """Engine-agnostic voice parameters produced by a strategy.
+
+    Carries BOTH the prosodic projection of the emotion (rate/volume/pitch — for engines that
+    expose those dials) AND the emotion itself (valence/arousal/intensity/quadrant — for
+    engines with NATIVE emotion conditioning, e.g. an expressiveness scalar or a per-quadrant
+    reference style).
+
+    Why both (architectural consequence of the Phase-N result): a neutral neural engine
+    ignores externally-applied prosody, so emotion must reach it through the engine's own
+    conditioning interface. An adapter therefore needs the emotion, not only its prosodic
+    encoding. The emotion fields are optional with neutral defaults, so every existing adapter
+    and test is unaffected.
+    """
 
     voice_id: str
     rate: float           # speed factor; 1.0 = natural pace     (from arousal)
     volume: float = 1.0   # loudness 0..1                        (from arousal)
     pitch: float = 1.0    # relative voice height; 1.0 = normal  (from arousal+valence)
+    valence: float = 0.0    # -1..1  pleasantness  (native-conditioning engines)
+    arousal: float = 0.0    # -1..1  activation    (native-conditioning engines)
+    intensity: float = 0.0  # 0..1   emotion strength
+    quadrant: str = ""      # "Q1".."Q4" — lets an engine select a per-quadrant reference style
 
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
@@ -153,4 +169,9 @@ class SymmetricStrategy(EncodingStrategy):
             rate=emotion_to_rate(contract.valence, contract.arousal),
             volume=emotion_to_volume(contract.valence, contract.arousal),
             pitch=emotion_to_pitch(contract.valence, contract.arousal),
+            # the emotion itself, for engines that condition natively rather than on prosody
+            valence=contract.valence,
+            arousal=contract.arousal,
+            intensity=contract.intensity,
+            quadrant=contract.quadrant.value,
         )

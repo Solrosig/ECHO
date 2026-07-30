@@ -65,7 +65,12 @@ def apply_param_set(vp, param_set: str):
     SAME clip is the clear, audible Before/After; the rate->...->full steps are the
     (subtle) per-dial research ablation."""
     if param_set == "neutral":
-        return replace(vp, rate=1.0, volume=1.0, pitch=1.0)  # flat carrier -> emotionless baseline
+        # A TRUE baseline must be emotionless for EVERY engine class — so the emotion fields are
+        # zeroed too, not only the prosody dials. Without this, an engine that conditions natively
+        # (e.g. Chatterbox: exaggeration<-arousal, reference style<-quadrant) would still receive
+        # the full emotion here and the "neutral" condition would silently not be neutral.
+        return replace(vp, rate=1.0, volume=1.0, pitch=1.0,
+                       valence=0.0, arousal=0.0, intensity=0.0, quadrant="")
     if param_set == "rate":
         return replace(vp, volume=1.0, pitch=1.0)   # arousal->rate only (= MVP baseline)
     if param_set == "rate_volume":
@@ -128,6 +133,23 @@ def _write_session_md(path: Path, purpose: str, engine_id: str, param_sets: list
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _new_session_dir(root: Path, label: str) -> Path:
+    """A FRESH session folder — never an existing one.
+
+    The stamp has minute resolution, so two runs within the same minute under the same label
+    would previously land in the same folder (`exist_ok=True`) and silently overwrite the clips,
+    register.csv and SESSION.md. Every generated audio set must be preserved for later analysis
+    and reporting, so a collision now yields `..._label-2`, `-3`, … instead of clobbering.
+    """
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    cand = root / f"{stamp}_{label}"
+    i = 2
+    while cand.exists():
+        cand = root / f"{stamp}_{label}-{i}"
+        i += 1
+    return cand
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--engine", default="pyttsx3")
@@ -140,16 +162,18 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     cfg = load_config()
-    tts = make_tts(args.engine, kokoro_model=cfg.kokoro_model_path, kokoro_voices=cfg.kokoro_voices_path)
+    tts = make_tts(args.engine, kokoro_model=cfg.kokoro_model_path,
+                   kokoro_voices=cfg.kokoro_voices_path,
+                   chatterbox_refs=cfg.chatterbox_refs, chatterbox_device=cfg.chatterbox_device,
+                   chatterbox_model=cfg.chatterbox_model)
     engine_id = tts.engine_id
     strat = SymmetricStrategy(voice_id=cfg.kokoro_voice)
     stimuli = load_stimuli(args.stimuli)
     param_sets = PARAM_SETS if args.param_set == "all" else [args.param_set]
     commit, tag = _git(["rev-parse", "--short", "HEAD"]), _git(["describe", "--tags", "--abbrev=0"])
 
-    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
-    session_dir = Path(args.sessions_root) / f"{stamp}_{args.label}"
-    session_dir.mkdir(parents=True, exist_ok=True)
+    session_dir = _new_session_dir(Path(args.sessions_root), args.label)
+    session_dir.mkdir(parents=True, exist_ok=False)
 
     rows: list[dict] = []
     n_flagged = 0

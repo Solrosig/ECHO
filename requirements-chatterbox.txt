@@ -1,0 +1,26 @@
+# ECHO — Chatterbox engine, ISOLATED ENVIRONMENT (Phase X: native emotion conditioning).
+#
+# Chatterbox requires numpy<2.0.0, which is IRRECONCILABLE with the main environment
+# (kokoro-onnx needs numpy>=2.0.2; numba/librosa need <=2.4). It therefore gets its own env:
+#
+#   conda create -n echo-cb python=3.11 -y
+#   conda activate echo-cb
+#   pip install -r requirements-chatterbox.txt
+#
+# Render clips here, then analyse in the main `echo` env — the WAV corpus and register.csv
+# are the interface between environments, so nothing needs to co-exist:
+#
+#   (echo-cb)  python synth_stimuli.py --engine chatterbox --param-set all --label chatterbox_test \
+#                     --purpose "Native emotion conditioning (X2)"
+#   (echo)     python build_register.py --build
+#   (echo)     python naturalness.py --register research/register.csv
+#   (echo)     python emotion_conveyance.py --register research/register.csv --model ser_model
+#
+# Optional: place per-quadrant emotional reference clips in refs/Q1.wav .. refs/Q4.wav to
+# condition VALENCE via style transfer (ECHO_CHATTERBOX_REFS). Without them the engine still
+# runs on the `exaggeration` (arousal) channel alone — which is a useful ablation in itself.
+
+chatterbox-tts>=0.1.7       # MIT; native emotion: exaggeration + reference-style conditioning
+numpy>=1.24,<2.0            # pinned BY chatterbox-tts — the reason this env is separate
+soundfile>=0.12             # writing the rendered WAVs
+pydantic>=2.6               # ECHO's EmotionContract (contracts.py) — needed by synth_stimuli.py

@@ -1,0 +1,31 @@
+# ECHO — OPTIONAL evaluation layer (not needed to run the system itself).
+# Install into the main `echo` environment:  pip install -r requirements-eval.txt
+#
+# WHY THIS FILE EXISTS (empirically discovered 2026-07-29): a plain `pip install` of a new
+# engine silently downgraded numpy/torch/transformers and broke the working analysis stack.
+# The version windows below are the ones verified to work together; the comments record the
+# constraint that pins each one, so a future reader can re-derive them.
+#
+# The binding constraint chain:
+#   kokoro-onnx   requires numpy >= 2.0.2
+#   numba (via librosa) requires numpy <= 2.4   ("Numba needs NumPy 2.4 or less")
+#   => the ONLY workable window is numpy >= 2.0.2, < 2.5   (resolves to 2.4.6)
+
+numpy>=2.0.2,<2.5           # kokoro-onnx needs >=2.0.2 ; numba/librosa need <=2.4  -> 2.4.6
+praat-parselmouth>=0.4.3    # validated Praat backend: F0 + jitter/shimmer/HNR (verified 0.4.7)
+librosa>=0.11               # audio loading for the neural scorers (pulls numba, see above)
+torch>=2.6                  # UTMOS + dimensional SER          (verified 2.6.0+cpu)
+torchaudio>=2.6             # REQUIRED by the UTMOS model itself, not by our code
+transformers>=4.30          # dimensional SER; our loader is version-independent (verified 5.2.0)
+
+# Optional neural TTS engine (naturalness): kokoro-onnx + the model files
+#   pip install kokoro-onnx
+#   download kokoro-v1.0.onnx + voices-v1.0.bin -> repo root (or ECHO_KOKORO_MODEL/_VOICES)
+# kokoro-onnx>=0.5
+
+# NOT INSTALLABLE HERE — chatterbox-tts requires numpy<2.0.0, which is incompatible with
+# kokoro-onnx (>=2.0.2) and numba. Use a SEPARATE environment:
+#   conda create -n echo-cb python=3.11 -y && conda activate echo-cb
+#   pip install -r requirements-chatterbox.txt
+# The audio corpus + register.csv are the hand-off between environments, so no single env
+# needs every engine (see PROJECT_LOG: per-engine environment isolation).

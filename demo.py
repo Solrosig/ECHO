@@ -60,7 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quadrant", choices=[q.value for q in Quadrant], help="single target emotion")
     parser.add_argument("--all-quadrants", action="store_true", help="sweep Q1..Q4")
     parser.add_argument("--mock", action="store_true", help="use mock LLM/TTS (no external tools)")
-    parser.add_argument("--engine", choices=["auto", "mock", "pyttsx3", "sapi", "sapi5xml", "espeak", "kokoro"],
+    parser.add_argument("--engine", choices=["auto", "mock", "pyttsx3", "sapi", "sapi5xml",
+                                             "espeak", "kokoro", "chatterbox"],
                         default=None, help="TTS engine (overrides config ECHO_TTS_ENGINE)")
     parser.add_argument("--list-engines", action="store_true",
                         help="print the per-engine capability matrix and exit")
@@ -100,7 +101,9 @@ def main(argv: list[str] | None = None) -> int:
     # TTS: --engine wins; else --mock implies the silent mock engine; else config default.
     engine_choice = args.engine or ("mock" if args.mock else cfg.tts_engine)
     tts = make_tts(engine_choice, kokoro_model=cfg.kokoro_model_path,
-                   kokoro_voices=cfg.kokoro_voices_path)
+                   kokoro_voices=cfg.kokoro_voices_path,
+                   chatterbox_refs=cfg.chatterbox_refs, chatterbox_device=cfg.chatterbox_device,
+                   chatterbox_model=cfg.chatterbox_model)
 
     store = ProvenanceStore(cfg.db_path)
     print(f'message: "{args.message}"   [db={cfg.db_path}, tts={tts.engine_id}]')

@@ -19,6 +19,12 @@ class Config:
     kokoro_model_path: str = os.getenv("ECHO_KOKORO_MODEL", "kokoro-v1.0.onnx")
     kokoro_voices_path: str = os.getenv("ECHO_KOKORO_VOICES", "voices-v1.0.bin")
     kokoro_voice: str = os.getenv("ECHO_KOKORO_VOICE", "af_heart")
+    # Chatterbox (native-emotion engine): optional folder with per-quadrant reference clips
+    # Q1.wav..Q4.wav — the channel through which VALENCE is conditioned (style transfer).
+    chatterbox_refs: str = os.getenv("ECHO_CHATTERBOX_REFS", "refs")
+    chatterbox_device: str = os.getenv("ECHO_CHATTERBOX_DEVICE", "cpu")
+    # local model folder (browser-downloaded) used when the HF download is blocked
+    chatterbox_model: str = os.getenv("ECHO_CHATTERBOX_MODEL", "cb_model")
 
     # storage / output
     db_path: str = os.getenv("ECHO_DB", "echo.db")
