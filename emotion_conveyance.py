@@ -106,12 +106,22 @@ def _load_model(model_id: str | None = None):
                 return self.classifier(torch.mean(hidden, dim=1))
 
         src = model_id or MODEL_ID
+        # A local dir is only usable if it actually holds the model files. An EMPTY or partial
+        # folder (e.g. the weights were deleted to reclaim disk space) previously surfaced as
+        # "Unrecognized model in ser_model" — so fall back to the hub id, which resolves from the
+        # local HF cache when the model has been downloaded once.
+        if src != MODEL_ID and not (Path(src) / "config.json").exists():
+            print(f"  (note: '{src}' has no config.json — falling back to '{MODEL_ID}' "
+                  "via the Hugging Face cache)")
+            src = MODEL_ID
         try:
             # Build from config + load weights DIRECTLY, bypassing from_pretrained():
             # transformers 5.x's loading finalizer expects attributes (all_tied_weights_keys)
             # that this custom model class (written for 4.x) does not define.
-            from transformers import AutoConfig
-            cfg = AutoConfig.from_pretrained(src)
+            # Wav2Vec2Config (explicit) rather than AutoConfig: auto-detection needs a
+            # `model_type` key and its strictness varies across transformers versions.
+            from transformers import Wav2Vec2Config as _Cfg
+            cfg = _Cfg.from_pretrained(src)
             model = EmotionModel(cfg)
             state = _load_state_dict(src)
             result = model.load_state_dict(state, strict=False)
