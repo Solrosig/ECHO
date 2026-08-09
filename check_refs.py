@@ -27,7 +27,8 @@ MIN_S, MAX_S = 3.0, 15.0          # too short -> weak style; too long -> slow + 
 MIN_SR = 16000                    # below this the style embedding degrades
 PEAK_MAX = 0.99                   # peak at/above this -> advisory only (see CLIP_FAIL)
 CLIP_FAIL = 0.001                 # >=0.1% of samples pinned at full scale -> real clipping
-PEAK_MIN = 0.10                   # quiet recording -> weak/noisy style transfer
+PEAK_MIN = 0.10                   # below this a clip is "quiet" (see set-relative logic)
+SILENT_MAX = 0.01                 # below this it is effectively silence -> always a failure
 
 
 def _read(path: Path):
@@ -47,8 +48,16 @@ def _read(path: Path):
     return x, sr, ch
 
 
-def check_clip(path: Path) -> dict:
-    """Measure one reference clip and collect problems/warnings."""
+def check_clip(path: Path, set_peak: float = 0.0) -> dict:
+    """Measure one reference clip and collect problems/warnings.
+
+    `set_peak` = the loudest peak across the whole reference SET. It matters because a set of
+    emotional references is *supposed* to have a wide dynamic range — in RAVDESS, 'angry' peaks
+    at 0.82 while 'calm' peaks at 0.02 (35x), which is the loudness cue for arousal, not a
+    recording fault. Judging each clip against an absolute floor would therefore reject exactly
+    the property we want to preserve, so a clip that is quiet *relative to a loud set* is treated
+    as intentional dynamics; only near-digital-silence, or a set that is uniformly quiet (a real
+    gain problem), is a failure."""
     import numpy as np
 
     out = {"file": path.name, "problems": [], "warnings": []}
@@ -63,7 +72,11 @@ def check_clip(path: Path) -> dict:
 
     dur = len(x) / sr if sr else 0.0
     peak = float(np.max(np.abs(x))) if x.size else 0.0
-    quiet_share = float(np.mean(np.abs(x) < 0.01)) if x.size else 1.0
+    # Silence share must be measured RELATIVE to the clip's own peak (~ -34 dB below it),
+    # otherwise a quiet-but-clean professional recording is reported as ~99 % "silence" purely
+    # because its absolute level is low. Relative thresholding measures actual pause structure.
+    floor = max(0.02 * peak, 1e-4)
+    quiet_share = float(np.mean(np.abs(x) < floor)) if x.size else 1.0
     # Clipping must be judged by the PROPORTION of samples pinned at the ceiling, not by peak
     # alone: a handful of samples touching full scale is inaudible and does not measurably affect
     # HNR/jitter, whereas sustained clipping flattens the waveform and corrupts voice quality.
@@ -87,10 +100,21 @@ def check_clip(path: Path) -> dict:
         out["warnings"].append(
             f"peak {peak:.3f} touches full scale ({clip_share:.3%} of samples) — audibly harmless, "
             "but lower the gain slightly next time")
-    if peak < PEAK_MIN:
-        out["problems"].append(f"peak {peak:.2f} — too quiet; move closer to the mic")
-    if quiet_share > 0.6:
-        out["warnings"].append(f"{quiet_share:.0%} near-silence — trim leading/trailing silence")
+    # Level: distinguish "silent/broken" from "quiet on purpose" from "whole set under-recorded".
+    rel = peak / set_peak if set_peak > 0 else 1.0
+    if peak < SILENT_MAX:
+        out["problems"].append(f"peak {peak:.3f} — effectively silent; re-record")
+    elif peak < PEAK_MIN and rel > 0.5:
+        # quiet AND close to the loudest clip in the set -> the whole set is under-recorded
+        out["problems"].append(f"peak {peak:.2f} — the whole set is too quiet; raise input gain")
+    elif peak < PEAK_MIN:
+        out["notes"] = out.get("notes", [])
+        out["notes"].append(
+            f"quiet ({peak:.3f}, {rel:.0%} of the loudest clip) — expected for a low-arousal "
+            "emotion; kept as intentional dynamics")
+    if quiet_share > 0.75:
+        out["warnings"].append(
+            f"{quiet_share:.0%} below −34 dB relative to its own peak — trim leading/trailing silence")
     return out
 
 
@@ -101,10 +125,15 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.dir)
 
     print(f"Reference clips in '{root}' (the VALENCE channel for the native-emotion engine)\n")
+    # First pass: the loudest peak in the set, so quiet low-arousal clips are judged relative to
+    # it rather than against an absolute floor (see check_clip).
+    peaks = [check_clip(root / f"{q}.wav").get("peak", 0.0) for q in QUADRANTS]
+    set_peak = max([p for p in peaks if isinstance(p, float)] or [0.0])
+
     print(f"  {'clip':<8}{'emotion':<20}{'sec':>6}{'sr':>8}{'ch':>4}{'peak':>7}{'sil':>6}  status")
     failures = 0
     for q in QUADRANTS:
-        r = check_clip(root / f"{q}.wav")
+        r = check_clip(root / f"{q}.wav", set_peak=set_peak)
         status = "FAIL" if r["problems"] else ("WARN" if r["warnings"] else "PASS")
         failures += 1 if r["problems"] else 0
         if "seconds" in r:
@@ -116,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"           FAIL: {p}")
         for w in r["warnings"]:
             print(f"           warn: {w}")
+        for nte in r.get("notes", []):
+            print(f"           note: {nte}")
 
     if failures:
         print(f"\n{failures} clip(s) need attention — fix before rendering (a render costs ~20 min).")

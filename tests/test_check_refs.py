@@ -66,6 +66,32 @@ def test_a_few_samples_at_full_scale_warn_but_do_not_fail(tmp_path):
     assert any("full scale" in w for w in r["warnings"])
 
 
+def test_quiet_low_arousal_clip_is_intentional_dynamics_not_a_fault(tmp_path):
+    """A set of emotional references SHOULD have a wide dynamic range (RAVDESS: angry peaks 0.82,
+    calm 0.02 = 35x). A quiet clip within a loud set is the arousal cue, not a recording fault."""
+    quiet = tmp_path / "calm.wav"
+    _tone_wav(quiet, amp=0.023)                       # like RAVDESS 'calm'
+    r = check_refs.check_clip(quiet, set_peak=0.82)   # loudest clip in the set is 'angry'
+    assert r["problems"] == []                        # usable
+    assert any("intentional dynamics" in n for n in r.get("notes", []))
+
+
+def test_uniformly_quiet_set_still_fails(tmp_path):
+    """But if the whole set is quiet, that is a genuine gain problem and must fail."""
+    quiet = tmp_path / "q.wav"
+    _tone_wav(quiet, amp=0.05)
+    r = check_refs.check_clip(quiet, set_peak=0.06)   # nothing in the set is loud
+    assert any("whole set is too quiet" in p for p in r["problems"])
+
+
+def test_silence_share_is_relative_to_peak(tmp_path):
+    """A quiet but clean recording must not read as ~99% silence purely because its level is low."""
+    p = tmp_path / "lowlevel.wav"
+    _tone_wav(p, amp=0.02)                            # continuous tone, no silence at all
+    r = check_refs.check_clip(p, set_peak=0.8)
+    assert r["silence_share"] < 0.1                   # relative thresholding sees it as speech
+
+
 def test_stereo_warns_but_does_not_fail(tmp_path):
     p = tmp_path / "stereo.wav"
     _tone_wav(p, channels=2)
