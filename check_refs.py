@@ -25,7 +25,8 @@ LABELS = {"Q1": "happy / excited", "Q2": "upset / agitated",
           "Q3": "sad / subdued", "Q4": "calm / content"}
 MIN_S, MAX_S = 3.0, 15.0          # too short -> weak style; too long -> slow + no benefit
 MIN_SR = 16000                    # below this the style embedding degrades
-PEAK_MAX = 0.99                   # >= this suggests clipping
+PEAK_MAX = 0.99                   # peak at/above this -> advisory only (see CLIP_FAIL)
+CLIP_FAIL = 0.001                 # >=0.1% of samples pinned at full scale -> real clipping
 PEAK_MIN = 0.10                   # quiet recording -> weak/noisy style transfer
 
 
@@ -63,8 +64,13 @@ def check_clip(path: Path) -> dict:
     dur = len(x) / sr if sr else 0.0
     peak = float(np.max(np.abs(x))) if x.size else 0.0
     quiet_share = float(np.mean(np.abs(x) < 0.01)) if x.size else 1.0
+    # Clipping must be judged by the PROPORTION of samples pinned at the ceiling, not by peak
+    # alone: a handful of samples touching full scale is inaudible and does not measurably affect
+    # HNR/jitter, whereas sustained clipping flattens the waveform and corrupts voice quality.
+    clip_share = float(np.mean(np.abs(x) >= 0.995)) if x.size else 0.0
     out.update({"seconds": round(dur, 2), "sr": sr, "channels": ch,
-                "peak": round(peak, 3), "silence_share": round(quiet_share, 2)})
+                "peak": round(peak, 3), "silence_share": round(quiet_share, 2),
+                "clip_share": clip_share})
 
     if dur < MIN_S:
         out["problems"].append(f"too short ({dur:.1f}s < {MIN_S}s) — style embedding will be weak")
@@ -74,9 +80,14 @@ def check_clip(path: Path) -> dict:
         out["problems"].append(f"sample rate {sr} Hz < {MIN_SR} Hz")
     if ch > 1:
         out["warnings"].append(f"{ch} channels — mono is preferred")
-    if peak >= PEAK_MAX:
-        out["problems"].append(f"peak {peak:.2f} — clipped; re-record with lower input gain")
-    elif peak < PEAK_MIN:
+    if clip_share >= CLIP_FAIL:
+        out["problems"].append(
+            f"{clip_share:.2%} of samples clipped — re-record with lower input gain")
+    elif peak >= PEAK_MAX:
+        out["warnings"].append(
+            f"peak {peak:.3f} touches full scale ({clip_share:.3%} of samples) — audibly harmless, "
+            "but lower the gain slightly next time")
+    if peak < PEAK_MIN:
         out["problems"].append(f"peak {peak:.2f} — too quiet; move closer to the mic")
     if quiet_share > 0.6:
         out["warnings"].append(f"{quiet_share:.0%} near-silence — trim leading/trailing silence")
