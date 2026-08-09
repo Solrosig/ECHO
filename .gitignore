@@ -25,6 +25,9 @@ audio_out/
 ser_model/
 cb_model/
 refs/
+refs_ravdess/
+RAVDESS/
+Audio_Speech_Actors_01-24/
 
 # Reference copy of the pre-built code (kept, not tracked)
 _reference/
