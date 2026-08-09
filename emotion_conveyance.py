@@ -251,13 +251,30 @@ def _resolve_out(path: Path, force: bool) -> Path:
 
 
 def _report(rows: list[dict]) -> None:
-    """Per-engine accuracy + agreement, then a confusion matrix per engine."""
+    """Per-engine accuracy + agreement, then a confusion matrix per engine.
+
+    Engines that appear in several sessions are reported per session: in an A/B experiment only
+    an engine SETTING differs (e.g. Chatterbox arousal-only vs + reference style), so both rows
+    carry engine='chatterbox' and averaging by engine alone would merge the two conditions."""
+    per_engine: dict[str, set] = defaultdict(set)
+    for r in rows:
+        per_engine[r.get("engine", "?")].add(r.get("session", ""))
+    multi = {e for e, s in per_engine.items() if len(s) > 1}
+
+    def label(r: dict) -> str:
+        eng = r.get("engine", "?")
+        if eng not in multi:
+            return eng
+        sess = (r.get("session") or "").split("_", 2)[-1]
+        return f"{eng} [{sess}]" if sess else eng
+
     groups: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
-        groups[r.get("engine", "?")].append(r)
+        groups[label(r)].append(r)
 
     print("\n== Emotion conveyance per engine (machine listener vs intended) ==")
-    print(f"  {'engine':<12}{'quad acc':>9}{'arousal acc':>12}{'valence acc':>12}"
+    w = max(12, max(len(e) for e in groups) + 2)
+    print(f"  {'engine':<{w}}{'quad acc':>9}{'arousal acc':>12}{'valence acc':>12}"
           f"{'rho(aro)':>10}{'rho(val)':>10}{'n':>5}")
     for eng in sorted(groups):
         g = groups[eng]
@@ -266,7 +283,7 @@ def _report(rows: list[dict]) -> None:
         val_ok = mean([1.0 if (float(r["rec_valence"]) >= 0) == (float(r["valence"]) >= 0) else 0.0 for r in g])
         r_a = spearman([float(r["arousal"]) for r in g], [float(r["rec_arousal"]) for r in g])
         r_v = spearman([float(r["valence"]) for r in g], [float(r["rec_valence"]) for r in g])
-        print(f"  {eng:<12}{quad_ok:8.0%}{aro_ok:12.0%}{val_ok:12.0%}{r_a:10.2f}{r_v:10.2f}{len(g):5d}")
+        print(f"  {eng:<{w}}{quad_ok:8.0%}{aro_ok:12.0%}{val_ok:12.0%}{r_a:10.2f}{r_v:10.2f}{len(g):5d}")
     print("  (4-class chance = 25 %; arousal/valence sign chance = 50 %)")
 
     quads = ["Q1", "Q2", "Q3", "Q4"]

@@ -77,20 +77,39 @@ def _resolve_out(path: Path, force: bool) -> Path:
     return cand
 
 
+def _label(r: dict, multi: set) -> str:
+    """Engine name, qualified by session when one engine appears in several sessions.
+
+    Needed for A/B experiments where only an engine SETTING differs (e.g. Chatterbox condition A
+    = arousal only vs B = + reference style): both rows say engine='chatterbox', so averaging by
+    engine alone would silently merge the two conditions and hide the comparison."""
+    eng = r.get("engine", "?")
+    if eng not in multi:
+        return eng
+    sess = (r.get("session") or "").split("_", 2)[-1]        # drop the date/time prefix
+    return f"{eng} [{sess}]" if sess else eng
+
+
 def _summary(rows: list[dict]) -> None:
+    per_engine: dict[str, set] = defaultdict(set)
+    for r in rows:
+        per_engine[r.get("engine", "?")].add(r.get("session", ""))
+    multi = {e for e, s in per_engine.items() if len(s) > 1}
+
     groups: dict[str, list[float]] = defaultdict(list)
     for r in rows:
         try:
-            groups[r.get("engine", "?")].append(float(r["utmos"]))
+            groups[_label(r, multi)].append(float(r["utmos"]))
         except (KeyError, TypeError, ValueError):
             pass
     if not groups:
         return
     print("\n== Mean UTMOS naturalness per engine (higher = more natural; ~1-5) ==")
-    print(f"  {'engine':<12}{'mean UTMOS':>12}{'n':>5}")
+    width = max(12, max(len(e) for e in groups) + 2)
+    print(f"  {'engine':<{width}}{'mean UTMOS':>12}{'n':>5}")
     for eng in sorted(groups, key=lambda e: -mean(groups[e])):     # most natural first
         vals = groups[eng]
-        print(f"  {eng:<12}{mean(vals):12.3f}{len(vals):5d}")
+        print(f"  {eng:<{width}}{mean(vals):12.3f}{len(vals):5d}")
     _confound_check(rows, groups)
 
 

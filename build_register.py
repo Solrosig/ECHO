@@ -81,13 +81,20 @@ def _write_master(out: Path, rows: dict) -> None:
 
 
 def build(root: str, out: str, db: str | None = None) -> int:
-    rows: dict[str, dict] = {}
+    rows: dict[tuple, dict] = {}
     for reg in session_registers(root):
         session = reg.parent.name
         for r in csv.DictReader(open(reg, encoding="utf-8")):
             row = {"source": "controlled", "session": session}
             row.update({k: r.get(k, "") for k in SESSION_FIELDS})
-            rows[r["clip_id"]] = row
+            # Dedup key includes the SESSION. clip_id is sha256(engine|param_set|stimulus|quadrant),
+            # so two renders of the same design — e.g. an A/B experiment where only an engine
+            # SETTING differs (Chatterbox condition A: arousal only, vs B: + reference style) —
+            # collide on clip_id and the later session would silently overwrite the earlier one,
+            # destroying the comparison at consolidation. Sessions are immutable and uniquely
+            # named, so keying on (session, clip_id) preserves every rendered clip while still
+            # removing genuine duplicates within a session.
+            rows[(session, r["clip_id"])] = row
     n_ctrl = len(rows)
 
     if db:
