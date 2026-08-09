@@ -39,12 +39,31 @@ def test_missing_and_short_and_clipped_and_quiet_are_caught(tmp_path):
     assert any("too short" in p for p in check_refs.check_clip(short)["problems"])
 
     clipped = tmp_path / "clip.wav"
-    _tone_wav(clipped, amp=1.0)
+    _tone_wav(clipped, amp=1.0)                       # a sine at full scale -> sustained clipping
     assert any("clipped" in p for p in check_refs.check_clip(clipped)["problems"])
 
     quiet = tmp_path / "quiet.wav"
     _tone_wav(quiet, amp=0.02)
     assert any("too quiet" in p for p in check_refs.check_clip(quiet)["problems"])
+
+
+def test_a_few_samples_at_full_scale_warn_but_do_not_fail(tmp_path):
+    """3 samples touching the ceiling in a 5 s clip is inaudible and must NOT force a re-record;
+    only a sustained proportion of pinned samples counts as clipping."""
+    sr, seconds = 24000, 5.0
+    t = np.arange(int(sr * seconds)) / sr
+    x = 0.6 * np.sin(2 * math.pi * 150 * t)
+    x[1000:1003] = 1.0                                # exactly 3 samples at full scale
+    p = tmp_path / "edge.wav"
+    with wave.open(str(p), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes((x * 32767).astype("<i2").tobytes())
+
+    r = check_refs.check_clip(p)
+    assert r["problems"] == []                        # usable
+    assert any("full scale" in w for w in r["warnings"])
 
 
 def test_stereo_warns_but_does_not_fail(tmp_path):
