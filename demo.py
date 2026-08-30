@@ -67,7 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--list-engines", action="store_true",
                         help="print the per-engine capability matrix and exit")
     parser.add_argument("--no-audio", action="store_true", help="synthesise but do not play")
-    parser.add_argument("--judge", choices=["self-report", "blind-llm", "lexicon"],
+    parser.add_argument("--judge",
+                        choices=["self-report", "blind-llm", "lexicon", "cascade"],
                         help="who decides the emotion of the reply (default from config; "
                              "self-report is L0 legacy and leaks the target)")
     args = parser.parse_args(argv)
@@ -97,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
                 cfg.ollama_host, cfg.ollama_model,
                 temperature=cfg.llm_temperature, timeout_s=cfg.llm_timeout_s,
             )
+            llm.ping()          # fail fast and readably if the server is not up
         except Exception as exc:
             print(f"ERROR: could not reach Ollama at {cfg.ollama_host} ({exc}).")
             print("Is `ollama serve` running and the model pulled? Or try --mock.")

@@ -34,8 +34,15 @@ class Config:
     max_retries: int = int(os.getenv("ECHO_MAX_RETRIES", "2"))
     # G6: which EmotionJudge decides the emotion of a generated reply.
     # self-report (L0, legacy/leaky) | blind-llm (L1) | lexicon (L2, default)
-    judge: str = os.getenv("ECHO_JUDGE", "lexicon")
-    affect_norms: str = os.getenv("ECHO_AFFECT_NORMS", "")
+    # cascade = lexicon (L2, independent) with the blinded LLM (L1) as fallback when the
+    # lexicon has no rated vocabulary for a reply. Measured 2026-08-30: lexicon alone
+    # abstains on ~12% of real replies even with the full Warriner norms, and an
+    # abstention fails the gate and burns the retry budget.
+    judge: str = os.getenv("ECHO_JUDGE", "cascade")
+    # Warriner, Kuperman & Brysbaert (2013) norms, 13,915 lemmas, as published
+    # (BRM-emot-submit.csv). Falls back to the small built-in table if absent -- which is
+    # NOT usable for a reported result; run check_norms.py to verify.
+    affect_norms: str = os.getenv("ECHO_AFFECT_NORMS", "BRM-emot-submit.csv")
 
     # evaluation — audible-duration band. Clips outside [min, max] are FLAGGED
     # (duration_ok=False), never silently altered, so the emotion signal stays intact.
