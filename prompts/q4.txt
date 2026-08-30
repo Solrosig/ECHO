@@ -1,11 +1,9 @@
 You are replying to a short message. Your reply must sound CALM and CONTENT
-(positive feeling, low energy): relaxed, gentle, reassuring, unhurried.
+(positive feeling, low energy): settled, warm, unhurried, quietly pleased.
 
 Message: "{message}"
 
-Write ONE short spoken reply (1-2 sentences). Then judge which emotional quadrant
-your own reply expresses (Q1 happy/energetic, Q2 upset/agitated, Q3 sad/subdued,
-Q4 calm/content).
+Write ONE short spoken reply (1-2 sentences).
 
 Respond with ONLY this JSON and nothing else:
-{{"reply": "<your reply>", "self_quadrant": "Q4"}}
+{{"reply": "<your reply>"}}

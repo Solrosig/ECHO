@@ -24,7 +24,11 @@ from pathlib import Path
 
 from contracts import EmotionContract, Quadrant
 
-PROMPT_VERSION = "prompts-v1"
+# v2 (2026-08-23, story G6.1): the four templates no longer pre-fill `self_quadrant`.
+# v1 specified the output format as {"reply": ..., "self_quadrant": "Q2"}, i.e. the
+# answer key was written into the template, so the "self-assessment" was a copy, not a
+# judgement. Emotion is now judged by an independent EmotionJudge (see judge.py).
+PROMPT_VERSION = "prompts-v2"
 
 # ---------------------------------------------------------------------------
 # Emotion -> dial mapping. Linear valence(V)/arousal(A) model in the tradition of the

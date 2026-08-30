@@ -12,6 +12,7 @@ from llm import LLMAdapter
 from tts import TTSAdapter
 from contracts import EmotionContract
 from gate import run_gated
+from judge import EmotionJudge, SelfReportJudge
 from persistence import ProvenanceStore, TurnRecord
 from strategies import PROMPT_VERSION, EncodingStrategy
 
@@ -26,11 +27,23 @@ def run_turn(
     store: ProvenanceStore,
     audio_dir: str,
     max_retries: int = 2,
+    judge: EmotionJudge | None = None,
+    llm_temperature: float | None = None,
 ) -> TurnRecord:
-    """Run one message + emotion end-to-end and persist it. Returns the record."""
-    prompt = strategy.build_prompt(contract, message)
+    """Run one message + emotion end-to-end and persist it. Returns the record.
 
-    attempts = run_gated(lambda: llm.generate(prompt), contract.quadrant, max_retries=max_retries)
+    `judge` decides what emotion the generated text expresses. It defaults to the
+    legacy self-report judge so existing callers keep working, but that setting is
+    L0 (no independence) and is not defensible for a reported result — pass an
+    independent judge and the level is recorded alongside the turn.
+    """
+    prompt = strategy.build_prompt(contract, message)
+    judge = judge or SelfReportJudge()
+
+    attempts = run_gated(
+        lambda: llm.generate(prompt), contract.quadrant,
+        max_retries=max_retries, judge=judge,
+    )
     accepted = next(a for a in attempts if a.accepted)
 
     voice_params = strategy.build_voice_params(contract)
@@ -47,6 +60,9 @@ def run_turn(
         voice_params=voice_params,
         engine=tts.engine_id,
         audio_path=str(audio_path),
+        judge_id=judge.judge_id,
+        judge_level=judge.level,
+        llm_temperature=llm_temperature,
     )
     store.save_turn(record)
     return record

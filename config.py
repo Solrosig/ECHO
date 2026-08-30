@@ -32,6 +32,10 @@ class Config:
 
     # gate
     max_retries: int = int(os.getenv("ECHO_MAX_RETRIES", "2"))
+    # G6: which EmotionJudge decides the emotion of a generated reply.
+    # self-report (L0, legacy/leaky) | blind-llm (L1) | lexicon (L2, default)
+    judge: str = os.getenv("ECHO_JUDGE", "lexicon")
+    affect_norms: str = os.getenv("ECHO_AFFECT_NORMS", "")
 
     # evaluation — audible-duration band. Clips outside [min, max] are FLAGGED
     # (duration_ok=False), never silently altered, so the emotion signal stays intact.

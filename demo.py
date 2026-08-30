@@ -18,6 +18,7 @@ import argparse
 import platform
 import sys
 
+from judge import make_judge
 from llm import MockLLMAdapter, OllamaAdapter
 from tts import make_tts
 from config import load_config
@@ -43,7 +44,7 @@ def _play(path: str) -> None:
 def _print_turn(rec) -> None:
     c = rec.contract
     acc = rec.accepted
-    detected = acc.self_quadrant.value if acc.self_quadrant else "unparsed"
+    detected = acc.self_quadrant.value if acc.self_quadrant else "no-opinion"
     mark = "PASS" if rec.gate_passed else "no-match"
     vp = rec.voice_params
     print(f"\n== {c.quadrant.value} ({c.label}) | val={c.valence:+.1f} aro={c.arousal:+.1f}"
@@ -66,6 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--list-engines", action="store_true",
                         help="print the per-engine capability matrix and exit")
     parser.add_argument("--no-audio", action="store_true", help="synthesise but do not play")
+    parser.add_argument("--judge", choices=["self-report", "blind-llm", "lexicon"],
+                        help="who decides the emotion of the reply (default from config; "
+                             "self-report is L0 legacy and leaks the target)")
     args = parser.parse_args(argv)
 
     if args.list_engines:
@@ -105,8 +109,11 @@ def main(argv: list[str] | None = None) -> int:
                    chatterbox_refs=cfg.chatterbox_refs, chatterbox_device=cfg.chatterbox_device,
                    chatterbox_model=cfg.chatterbox_model)
 
+    judge = make_judge(args.judge or cfg.judge, llm=llm, norms_path=cfg.affect_norms or None)
+
     store = ProvenanceStore(cfg.db_path)
-    print(f'message: "{args.message}"   [db={cfg.db_path}, tts={tts.engine_id}]')
+    print(f'message: "{args.message}"   [db={cfg.db_path}, tts={tts.engine_id}, '
+          f'judge={judge.judge_id} L{judge.level}]')
 
     for q in quadrants:
         contract = EmotionContract.from_quadrant(q)
@@ -114,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
             contract, args.message,
             strategy=strategy, llm=llm, tts=tts, store=store,
             audio_dir=cfg.audio_dir, max_retries=cfg.max_retries,
+            judge=judge, llm_temperature=cfg.llm_temperature,
         )
         _print_turn(rec)
         if not args.no_audio:
