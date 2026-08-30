@@ -3,6 +3,7 @@ import pytest
 from contracts import Quadrant
 from judge import (
     BlindLLMJudge,
+    CascadeJudge,
     LexiconJudge,
     SelfReportJudge,
     load_norms,
@@ -132,3 +133,57 @@ def test_make_judge_rejects_unknown_and_missing_llm():
         make_judge("telepathy")
     with pytest.raises(ValueError):
         make_judge("blind-llm")
+
+# --- cascade: lexicon first, blinded LLM only on abstention -------------------
+
+def _cascade(scripted='{"quadrant": "Q2"}'):
+    return CascadeJudge(LexiconJudge(), BlindLLMJudge(MockLLMAdapter(scripted=scripted)))
+
+
+def test_cascade_uses_the_lexicon_when_it_has_an_opinion():
+    """Independence is preserved wherever the lexicon can actually speak."""
+    j = _cascade(scripted='{"quadrant": "Q1"}')      # LLM would disagree
+    assert j.judge("I feel lonely and miserable and tired") == Quadrant.Q3
+    assert j.judge_id.endswith("[lexicon]")
+    assert j.level == 2
+
+
+def test_cascade_falls_back_only_when_the_lexicon_abstains():
+    """Real case from 2026-08-30: 'Thursday already? I'm not ready for it yet.' carries
+    no rated vocabulary, the lexicon abstains, and the turn would otherwise fail."""
+    j = _cascade(scripted='{"quadrant": "Q3"}')
+    assert LexiconJudge().judge("the appliance sits on the shelf") is None
+    assert j.judge("the appliance sits on the shelf") == Quadrant.Q3
+    assert j.judge_id.endswith("[blind-llm:mock]")
+    assert j.level == 1                               # the level ACTUALLY achieved
+
+
+def test_cascade_records_which_judge_decided_each_time():
+    j = _cascade()
+    j.judge("everything is calm, peaceful and relaxed")   # lexicon
+    j.judge("the appliance sits on the shelf")            # fallback
+    assert j.decisions["lexicon"] == 1
+    assert j.decisions["blind-llm:mock"] == 1
+
+
+def test_cascade_returns_none_only_if_both_abstain():
+    j = CascadeJudge(LexiconJudge(), BlindLLMJudge(MockLLMAdapter(scripted="no idea")))
+    assert j.judge("the appliance sits on the shelf") is None
+
+
+def test_make_judge_builds_a_cascade_and_needs_an_llm():
+    j = make_judge("cascade", llm=MockLLMAdapter())
+    assert isinstance(j, CascadeJudge) and j.level == 2
+    with pytest.raises(ValueError):
+        make_judge("cascade")
+
+
+def test_self_report_warns_once_when_the_prompt_no_longer_supplies_the_field(capsys):
+    """Under prompts-v2 the field is gone, so L0 can only abstain. It must say so."""
+    SelfReportJudge._warned = False
+    j = SelfReportJudge()
+    assert j.judge("text", _result(q=None)) is None
+    err = capsys.readouterr().err
+    assert "prompts-v2" in err and "self_quadrant" in err
+    j.judge("text", _result(q=None))                  # warns once, not per turn
+    assert capsys.readouterr().err == ""

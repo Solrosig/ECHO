@@ -1,0 +1,17 @@
+turn_uuid,ts,target_quadrant,reply,clf_label,clf_score,clf_valence,clf_arousal,clf_quadrant,clf_match,lex_quadrant,lex_match,agree
+ee75a733-c3e6-4fac-ab51-405cbb32b687,2026-08-30T15:07:50.273305+00:00,Q1,"YAY! Thursday can be a great day to get things done, let's make it productive!",joy,0.9339,0.803,0.137,Q1,1,Q4,0,0
+3b4657b9-7b41-4ffc-b888-4ebf44fdab2f,2026-08-30T15:07:58.390213+00:00,Q2,What's going on with the meeting schedule? First today and now it's being pushed back again?,surprise,0.6776,0.61,0.393,Q1,0,Q4,0,0
+022a2617-9ded-403d-8652-51e8cdd48d9f,2026-08-30T15:08:04.096158+00:00,Q3,I guess that's okay... I'll just have to get through it on Thursday,neutral,0.9364,,,,0,Q4,0,0
+5d815e84-809a-43f8-98c3-149ca3ecc551,2026-08-30T15:08:10.811687+00:00,Q4,"That works for me, sounds good.",joy,0.7224,0.803,0.137,Q1,0,Q4,1,0
+7e102826-3d5c-4da4-808f-292a73161a92,2026-08-30T15:08:24.827811+00:00,Q1,Yessss! Got my Thursday schedule cleared up!,surprise,0.4468,0.61,0.393,Q1,1,Q3,0,0
+5c01d1dd-7b16-40ba-9a08-c8b465115414,2026-08-30T15:08:30.520494+00:00,Q2,ARE YOU KIDDING ME?! They're moving it AGAIN?!,anger,0.5377,-0.625,0.232,Q2,1,,0,0
+7687a27f-0129-4bd2-a98a-c0bf210755e7,2026-08-30T15:08:34.117989+00:00,Q3,"it doesn't matter when it is, it's still going to be a chore",neutral,0.8198,,,,0,Q4,0,0
+bd8166b6-3da8-404b-b40d-39d6467c5236,2026-08-30T15:08:37.406407+00:00,Q4,"Sounds good, I'll make sure to adjust my schedule",neutral,0.6738,,,,0,Q4,1,0
+d989c17c-023d-4c16-840c-31bf6d532b3b,2026-08-30T15:18:21.128682+00:00,Q1,YESSSS! Let's shake off Monday blues and CRUSH that meeting on Thursday!,fear,0.5882,-0.517,0.285,Q2,0,Q3,0,0
+683932a8-116b-412a-bb37-18a2cf086405,2026-08-30T15:18:30.227983+00:00,Q2,That's not fair! Now I have to adjust my whole schedule to accommodate the last-minute change!,anger,0.7718,-0.625,0.232,Q2,1,Q4,0,0
+1ed85fb0-2bc1-4721-9117-91a3fd170153,2026-08-30T15:18:34.840597+00:00,Q3,Thursday already? I'm not ready for it yet.,neutral,0.6743,,,,0,Q4,0,0
+e0b93901-86e0-4e51-b0d3-56b35c22a972,2026-08-30T15:18:37.805698+00:00,Q4,"That's fine, I can adjust my schedule.",neutral,0.7892,,,,0,Q4,1,0
+5bc8522a-8feb-4c75-bdb5-20fe526fb67a,2026-08-30T16:59:23.877585+00:00,Q1,That's awesome! Can't wait for an early win on Thursday!,joy,0.9178,0.803,0.137,Q1,1,Q1,1,1
+94c16f62-edd8-44f2-a58e-ceacaf2cf222,2026-08-30T16:59:30.751734+00:00,Q2,Are you kidding me? It just got rescheduled AGAIN!,surprise,0.5564,0.61,0.393,Q1,0,,0,0
+8b8865d0-ff16-48bb-ab10-18f83d4736c0,2026-08-30T16:59:35.205130+00:00,Q3,"it doesn't really matter when it is, anyway",neutral,0.7503,,,,0,Q4,0,0
+43710ea6-4485-4b2d-9f6f-052f6000f656,2026-08-30T16:59:37.838599+00:00,Q4,"that sounds good, thursday works for me",joy,0.8599,0.803,0.137,Q1,0,Q4,1,0

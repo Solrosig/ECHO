@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
 import os
 import re
 from abc import ABC, abstractmethod
@@ -114,9 +115,24 @@ class SelfReportJudge(EmotionJudge):
 
     judge_id = "self-report"
     level = 0
+    _warned = False
 
     def judge(self, text: str, result: LLMResult | None = None) -> Quadrant | None:
-        return result.self_quadrant if result is not None else None
+        q = result.self_quadrant if result is not None else None
+        if q is None and not SelfReportJudge._warned:
+            SelfReportJudge._warned = True
+            print(
+                "WARNING: the self-report judge found no `self_quadrant` in the model's "
+                "reply.\r\n"
+                "         Since prompts-v2 (story G6.1) the templates no longer ASK for "
+                "that field,\r\n"
+                "         so L0 cannot form an opinion and every turn will fail the gate. "
+                "This judge\r\n"
+                "         is kept only to reproduce the pre-G6 behaviour against "
+                "`prompts-v1`.",
+                file=sys.stderr,
+            )
+        return q
 
 
 class BlindLLMJudge(EmotionJudge):
@@ -228,14 +244,54 @@ class LexiconJudge(EmotionJudge):
         return quadrant_for(valence, arousal)
 
 
-_JUDGES = {"self-report": 0, "blind-llm": 1, "lexicon": 2}
+class CascadeJudge(EmotionJudge):
+    """Primary judge first; fall back to a second one only when the primary ABSTAINS.
+
+    Why this exists (evidence, 2026-08-30). The lexicon judge is the independent
+    instrument the project wants, but it can only speak about words it has ratings for.
+    On the first real run it abstained on three of four replies with the placeholder
+    table, and still abstains on roughly one in eight with the full Warriner norms —
+    "Thursday already? I'm not ready for it yet." carries little rated vocabulary. An
+    abstention fails the gate, so those turns burn the whole retry budget and are then
+    accepted anyway: the strictness costs latency without buying correctness.
+
+    Meanwhile the blinded LLM judge answered correctly on every quadrant the lexicon went
+    silent on. Cascading keeps L2 independence wherever the lexicon HAS something to say,
+    and gets an answer from L1 where it does not.
+
+    `judge_id` and `level` are updated after each decision to name the judge that actually
+    decided, so the provenance row records the independence level genuinely achieved on
+    that attempt rather than the best case.
+    """
+
+    def __init__(self, primary: EmotionJudge, fallback: EmotionJudge) -> None:
+        self._primary = primary
+        self._fallback = fallback
+        self._name = f"cascade:{primary.judge_id}->{fallback.judge_id}"
+        self.judge_id = self._name
+        self.level = primary.level
+        self.decisions: dict[str, int] = {primary.judge_id: 0, fallback.judge_id: 0}
+
+    def judge(self, text: str, result: LLMResult | None = None) -> Quadrant | None:
+        quadrant = self._primary.judge(text, result)
+        decider = self._primary if quadrant is not None else self._fallback
+        if quadrant is None:
+            quadrant = self._fallback.judge(text, result)
+        # Report the judge that actually decided — gate.py reads these AFTER judge().
+        self.judge_id = f"{self._name}[{decider.judge_id}]"
+        self.level = decider.level
+        self.decisions[decider.judge_id] = self.decisions.get(decider.judge_id, 0) + 1
+        return quadrant
+
+
+_JUDGES = {"self-report": 0, "blind-llm": 1, "lexicon": 2, "cascade": 2}
 
 
 def make_judge(kind: str, *, llm: LLMAdapter | None = None,
                norms_path: str | None = None) -> EmotionJudge:
     """Factory so the judge is configuration, not a code change.
 
-    kind: self-report (L0) | blind-llm (L1) | lexicon (L2)
+    kind: self-report (L0) | blind-llm (L1) | lexicon (L2) | cascade (L2 with L1 fallback)
     """
     kind = (kind or "").strip().lower()
     if kind == "self-report":
@@ -246,4 +302,8 @@ def make_judge(kind: str, *, llm: LLMAdapter | None = None,
         return BlindLLMJudge(llm)
     if kind == "lexicon":
         return LexiconJudge(load_norms(norms_path))
+    if kind == "cascade":
+        if llm is None:
+            raise ValueError("cascade judge needs an LLMAdapter for its fallback")
+        return CascadeJudge(LexiconJudge(load_norms(norms_path)), BlindLLMJudge(llm))
     raise ValueError(f"unknown judge {kind!r}; expected one of {sorted(_JUDGES)}")

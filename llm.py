@@ -121,6 +121,17 @@ class OllamaAdapter(LLMAdapter):
         self._client = OpenAI(base_url=host, api_key="ollama", timeout=timeout_s)
         self.model_id = model
         self._temperature = temperature
+        self._host = host
+
+    def ping(self) -> None:
+        """Verify the endpoint is actually reachable. Raises on failure.
+
+        Constructing the client makes NO network call, so a caller that only wraps
+        __init__ in try/except cannot detect an unreachable server: the failure surfaces
+        much later, inside generate(), as a 60-line httpx traceback. Observed 2026-08-30
+        when Ollama was not running. This gives callers something to fail fast on.
+        """
+        self._client.models.list()
 
     def generate(self, prompt: str) -> LLMResult:
         resp = self._client.chat.completions.create(

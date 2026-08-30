@@ -1,0 +1,23 @@
+message: "The meeting was moved to Thursday"   [db=echo.db, tts=kokoro, judge=cascade:lexicon->blind-llm:llama3.2:3b L2]
+
+== Q1 (happy and energetic) | val=+0.6 aro=+0.6 -> rate=1.17 vol=0.89 pitch=1.20 ==
+   reply     : That's awesome! Can't wait for an early win on Thursday!
+   coherence : target=Q1 detected=Q1 [PASS] after 3 attempt(s)
+   audio     : audio_out\5bc8522a-8feb-4c75-bdb5-20fe526fb67a_Q1.wav  (engine=kokoro)
+
+== Q2 (upset and agitated) | val=-0.6 aro=+0.6 -> rate=1.07 vol=0.95 pitch=0.96 ==
+   reply     : Are you kidding me? It just got rescheduled AGAIN!
+   coherence : target=Q2 detected=Q2 [PASS] after 1 attempt(s)
+   audio     : audio_out\94c16f62-edd8-44f2-a58e-ceacaf2cf222_Q2.wav  (engine=kokoro)
+
+== Q3 (sad and subdued) | val=-0.6 aro=-0.6 -> rate=0.83 vol=0.71 pitch=0.80 ==
+   reply     : it doesn't really matter when it is, anyway
+   coherence : target=Q3 detected=Q4 [no-match] after 3 attempt(s)
+   audio     : audio_out\8b8865d0-ff16-48bb-ab10-18f83d4736c0_Q3.wav  (engine=kokoro)
+
+== Q4 (calm and content) | val=+0.6 aro=-0.6 -> rate=0.93 vol=0.65 pitch=1.04 ==
+   reply     : that sounds good, thursday works for me
+   coherence : target=Q4 detected=Q4 [PASS] after 1 attempt(s)
+   audio     : audio_out\43710ea6-4485-4b2d-9f6f-052f6000f656_Q4.wav  (engine=kokoro)
+
+Done. 4 turn(s) logged to echo.db.
