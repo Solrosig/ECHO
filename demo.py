@@ -109,7 +109,12 @@ def main(argv: list[str] | None = None) -> int:
     tts = make_tts(engine_choice, kokoro_model=cfg.kokoro_model_path,
                    kokoro_voices=cfg.kokoro_voices_path,
                    chatterbox_refs=cfg.chatterbox_refs, chatterbox_device=cfg.chatterbox_device,
-                   chatterbox_model=cfg.chatterbox_model)
+                   chatterbox_model=cfg.chatterbox_model,
+                   zipvoice_refs=cfg.zipvoice_refs, zipvoice_python=cfg.zipvoice_python,
+                   zipvoice_model=cfg.zipvoice_model, zipvoice_model_dir=cfg.zipvoice_model_dir,
+                   zipvoice_seed=cfg.zipvoice_seed, zipvoice_num_step=cfg.zipvoice_num_step,
+                   zipvoice_target_rms=cfg.zipvoice_target_rms,
+                   zipvoice_threads=cfg.zipvoice_threads)
 
     judge = make_judge(args.judge or cfg.judge, llm=llm, norms_path=cfg.affect_norms or None)
 

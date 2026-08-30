@@ -25,6 +25,28 @@ class Config:
     chatterbox_device: str = os.getenv("ECHO_CHATTERBOX_DEVICE", "cpu")
     # local model folder (browser-downloaded) used when the HF download is blocked
     chatterbox_model: str = os.getenv("ECHO_CHATTERBOX_MODEL", "cb_model")
+    # ZipVoice (k2-fsa, Apache-2.0): the CONTROLLED COMPARISON against Chatterbox
+    # Condition C — same per-quadrant RAVDESS references, different model, so the Phase-X
+    # result can be attributed to the mechanism or to the engine. Defaults point at
+    # refs_ravdess because ZipVoice has NO default voice: without a reference clip and its
+    # transcript it cannot synthesise at all.
+    zipvoice_refs: str = os.getenv("ECHO_ZIPVOICE_REFS", "refs_ravdess")
+    # ZipVoice pins its own torch/k2/lhotse stack, so it runs OUT OF PROCESS in its own
+    # environment; point this at that environment's interpreter. Empty = this interpreter.
+    zipvoice_python: str = os.getenv("ECHO_ZIPVOICE_PYTHON", "")
+    zipvoice_model: str = os.getenv("ECHO_ZIPVOICE_MODEL", "zipvoice")  # or zipvoice_distill
+    zipvoice_model_dir: str = os.getenv("ECHO_ZIPVOICE_MODEL_DIR", "")  # local ckpt if HF blocked
+    # Flow matching samples from noise. The seed is pinned and RECORDED so clips can be
+    # re-rendered byte-for-byte; 666 is ZipVoice's own default, kept so runs match the
+    # published configuration unless deliberately varied.
+    zipvoice_seed: int = int(os.getenv("ECHO_ZIPVOICE_SEED", "666"))
+    zipvoice_num_step: int = int(os.getenv("ECHO_ZIPVOICE_STEPS", "0"))  # 0 = model default
+    # ZipVoice RMS-normalises the PROMPT before conditioning (default 0.1). The RAVDESS
+    # references span a ~35x loudness range across quadrants and that loudness is an arousal
+    # cue, so normalisation may erase part of the arousal channel. Set 0 to disable — the
+    # A/B that tests this prediction.
+    zipvoice_target_rms: float = float(os.getenv("ECHO_ZIPVOICE_TARGET_RMS", "0.1"))
+    zipvoice_threads: int = int(os.getenv("ECHO_ZIPVOICE_THREADS", "4"))
 
     # storage / output
     db_path: str = os.getenv("ECHO_DB", "echo.db")

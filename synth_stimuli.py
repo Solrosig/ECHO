@@ -15,7 +15,7 @@ Usage:
     python synth_stimuli.py --engine sapi --param-set all --label sapi_ablation \
         --purpose "Ablation of the voice dials on the SAPI engine at v0.2."
 
-  --engine     pyttsx3 | sapi | kokoro | mock
+  --engine     pyttsx3 | sapi | espeak | kokoro | chatterbox | zipvoice | mock
   --param-set  neutral | rate | rate_volume | rate_volume_pitch | all   (neutral = flat BEFORE)
   --label      short slug for the session folder
   --purpose    one-line objective recorded in SESSION.md
@@ -165,7 +165,12 @@ def main(argv: list[str] | None = None) -> int:
     tts = make_tts(args.engine, kokoro_model=cfg.kokoro_model_path,
                    kokoro_voices=cfg.kokoro_voices_path,
                    chatterbox_refs=cfg.chatterbox_refs, chatterbox_device=cfg.chatterbox_device,
-                   chatterbox_model=cfg.chatterbox_model)
+                   chatterbox_model=cfg.chatterbox_model,
+                   zipvoice_refs=cfg.zipvoice_refs, zipvoice_python=cfg.zipvoice_python,
+                   zipvoice_model=cfg.zipvoice_model, zipvoice_model_dir=cfg.zipvoice_model_dir,
+                   zipvoice_seed=cfg.zipvoice_seed, zipvoice_num_step=cfg.zipvoice_num_step,
+                   zipvoice_target_rms=cfg.zipvoice_target_rms,
+                   zipvoice_threads=cfg.zipvoice_threads)
     engine_id = tts.engine_id
     strat = SymmetricStrategy(voice_id=cfg.kokoro_voice)
     stimuli = load_stimuli(args.stimuli)
