@@ -24,6 +24,7 @@ audio_out/
 # the comment must be on its own line or the whole line becomes the pattern.
 ser_model/
 cb_model/
+zv_model/
 refs/
 refs_ravdess/
 RAVDESS/
