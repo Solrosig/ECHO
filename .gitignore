@@ -35,3 +35,4 @@ _reference/
 # OS / editor
 .DS_Store
 .vscode/
+text_model/ 
