@@ -49,8 +49,35 @@ def test_registered_and_declared_in_capability_matrix():
     assert m["kokoro"]["native_emotion"] == "no"       # contrast: prosody-only neural engine
 
 
-def test_missing_package_raises_actionable_error(tmp_path):
+def test_missing_package_raises_actionable_error(tmp_path, monkeypatch):
+    """The error path must be tested WITHOUT depending on the package being absent.
+
+    Previously this test simply called synthesize() and relied on `import chatterbox`
+    failing. Once chatterbox-tts is installed in the environment the import succeeds, the
+    adapter loads the real 0.5B model and begins a full neural inference — the run observed
+    on 2026-08-30 took over three minutes and reported an ETA above an hour. A regression
+    gate must never do that. The import is therefore forced to fail, so the branch under
+    test is exercised deterministically whether or not the package is installed.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def no_chatterbox(name, *args, **kwargs):
+        if name == "chatterbox" or name.startswith("chatterbox."):
+            raise ImportError("simulated: chatterbox-tts not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_chatterbox)
+
     a = tts.ChatterboxAdapter()
     vp = VoiceParams(voice_id="v", rate=1.0, volume=1.0, pitch=1.0, quadrant="Q1")
     with pytest.raises(RuntimeError, match="chatterbox"):
         a.synthesize("hello", vp, tmp_path / "o.wav")
+
+
+def test_engine_load_never_triggered_by_construction():
+    """Constructing the adapter must not load the model — laziness is the guard that keeps
+    the suite fast and offline."""
+    a = tts.ChatterboxAdapter()
+    assert a._model is None

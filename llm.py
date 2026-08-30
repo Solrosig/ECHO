@@ -63,6 +63,19 @@ class LLMAdapter(ABC):
     def generate(self, prompt: str) -> LLMResult: ...
 
 
+# Cue -> (quadrant, reply), matching the wording of prompts/q*.txt.
+# The replies carry real affect words so the mock exercises an INDEPENDENT judge
+# (lexicon) rather than only the legacy self-report path: a placeholder like
+# "[mock Q1 reply]" has no emotional content, so an honest judge would - correctly -
+# refuse to certify it, and the mock pipeline would never pass its own gate.
+_MOCK_CUES = {
+    "HAPPY and ENERGETIC": ("Q1", "That is wonderful, I am delighted and excited."),
+    "UPSET and AGITATED": ("Q2", "This is outrageous and unacceptable, I am furious."),
+    "SAD and SUBDUED": ("Q3", "I feel lonely and miserable and tired."),
+    "CALM and CONTENT": ("Q4", "Everything is calm, peaceful and relaxed."),
+}
+
+
 class MockLLMAdapter(LLMAdapter):
     """Deterministic adapter for tests and offline demos.
 
@@ -80,9 +93,13 @@ class MockLLMAdapter(LLMAdapter):
         if self._scripted is not None:
             raw = self._scripted
         else:
-            m = re.search(r'"self_quadrant":\s*"(Q[1-4])"', prompt)
-            q = m.group(1) if m else "Q1"
-            raw = json.dumps({"reply": f"[mock {q} reply]", "self_quadrant": q})
+            # Simulates a COOPERATIVE model: reads the emotion the prompt asks for and
+            # complies. Since G6.1 the prompt no longer contains `self_quadrant`, so the
+            # cue is the emotion description itself. `self_quadrant` is still emitted so
+            # the legacy L0 judge remains testable; independent judges ignore it.
+            q, reply = next((v for k, v in _MOCK_CUES.items() if k in prompt),
+                            _MOCK_CUES["HAPPY and ENERGETIC"])
+            raw = json.dumps({"reply": reply, "self_quadrant": q})
         reply, quadrant = parse_llm_json(raw)
         return LLMResult(reply=reply, self_quadrant=quadrant, model_id=self.model_id, raw=raw)
 

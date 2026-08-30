@@ -35,8 +35,14 @@ def test_parse_bad_quadrant_label():
     assert q is None
 
 
-def test_mock_adapter_echoes_prompt_quadrant():
+def test_mock_adapter_complies_with_the_emotion_the_prompt_asks_for():
+    # Since G6.1 the prompt no longer names the quadrant, so the mock reads the
+    # emotion description - the same cue a real model has.
     adapter = MockLLMAdapter()
-    result = adapter.generate('... {"reply": "<r>", "self_quadrant": "Q2"}')
+    result = adapter.generate("Your reply must sound UPSET and AGITATED (negative...)")
     assert result.self_quadrant == Quadrant.Q2
     assert result.model_id == "mock"
+
+
+def test_mock_adapter_defaults_when_no_cue_present():
+    assert MockLLMAdapter().generate("no emotion cue here").self_quadrant == Quadrant.Q1

@@ -40,7 +40,13 @@ CREATE TABLE IF NOT EXISTS turns (
     volume         REAL,
     pitch          REAL,
     engine         TEXT NOT NULL,
-    audio_path     TEXT NOT NULL
+    audio_path     TEXT NOT NULL,
+    -- G6 (2026-08-23): how the emotion was judged, and how independent that judge was.
+    -- Recorded per turn so every result declares its own independence level rather
+    -- than leaving it to be inferred from the commit date.
+    judge_id       TEXT,
+    judge_level    INTEGER,
+    llm_temperature REAL
 );
 
 CREATE TABLE IF NOT EXISTS attempts (
@@ -51,7 +57,9 @@ CREATE TABLE IF NOT EXISTS attempts (
     self_quadrant TEXT,
     passed        INTEGER NOT NULL,
     accepted      INTEGER NOT NULL,
-    raw           TEXT
+    raw           TEXT,
+    judged_by     TEXT,
+    judge_level   INTEGER
 );
 """
 
@@ -60,7 +68,7 @@ _TURN_COLUMNS = [
     "turn_uuid", "ts", "message", "intent", "quadrant", "valence", "arousal",
     "intensity", "strategy", "prompt_version", "anchor_version", "model", "reply",
     "self_quadrant", "gate_passed", "n_attempts", "voice_id", "rate", "volume",
-    "pitch", "engine", "audio_path",
+    "pitch", "engine", "audio_path", "judge_id", "judge_level", "llm_temperature",
 ]
 
 
@@ -75,6 +83,11 @@ class TurnRecord:
     voice_params: VoiceParams
     engine: str
     audio_path: str
+    # G6: which judge decided the emotion, how independent it was, and the sampling
+    # temperature. Defaults keep every existing caller working unchanged.
+    judge_id: str = ""
+    judge_level: int = -1
+    llm_temperature: float | None = None
 
     @property
     def accepted(self) -> Attempt:
@@ -97,9 +110,18 @@ class ProvenanceStore:
     def _migrate(self) -> None:
         """Add newer columns to a pre-existing turns table (no-op if already present)."""
         existing = {row[1] for row in self._conn.execute("PRAGMA table_info(turns)")}
-        for col in ("volume", "pitch"):
+        for col in ("volume", "pitch", "llm_temperature"):
             if col not in existing:
                 self._conn.execute(f"ALTER TABLE turns ADD COLUMN {col} REAL")
+        if "judge_id" not in existing:
+            self._conn.execute("ALTER TABLE turns ADD COLUMN judge_id TEXT")
+        if "judge_level" not in existing:
+            self._conn.execute("ALTER TABLE turns ADD COLUMN judge_level INTEGER")
+        att = {row[1] for row in self._conn.execute("PRAGMA table_info(attempts)")}
+        if "judged_by" not in att:
+            self._conn.execute("ALTER TABLE attempts ADD COLUMN judged_by TEXT")
+        if "judge_level" not in att:
+            self._conn.execute("ALTER TABLE attempts ADD COLUMN judge_level INTEGER")
 
     def save_turn(self, rec: TurnRecord) -> str:
         c = rec.contract
@@ -128,6 +150,9 @@ class ProvenanceStore:
             vp.pitch,
             rec.engine,
             rec.audio_path,
+            rec.judge_id,
+            rec.judge_level,
+            rec.llm_temperature,
         )
         placeholders = ",".join("?" * len(_TURN_COLUMNS))
         with self._conn:  # transaction: commit on success, rollback on error
@@ -137,8 +162,9 @@ class ProvenanceStore:
             )
             self._conn.executemany(
                 "INSERT INTO attempts "
-                "(turn_uuid, attempt_index, reply, self_quadrant, passed, accepted, raw) "
-                "VALUES (?,?,?,?,?,?,?)",
+                "(turn_uuid, attempt_index, reply, self_quadrant, passed, accepted, raw, "
+                "judged_by, judge_level) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 [
                     (
                         c.turn_uuid,
@@ -148,6 +174,8 @@ class ProvenanceStore:
                         int(a.passed),
                         int(a.accepted),
                         a.raw,
+                        a.judged_by,
+                        a.judge_level,
                     )
                     for a in rec.attempts
                 ],

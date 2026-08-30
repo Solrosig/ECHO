@@ -39,7 +39,7 @@ def test_full_row_reconstructs(tmp_path):
     row = store.read_turn(rec.contract.turn_uuid)["turn"]
     for field in ("message", "model", "strategy", "voice_id", "rate", "engine", "audio_path"):
         assert row[field] not in (None, "")
-    assert row["prompt_version"] == "prompts-v1"
+    assert row["prompt_version"] == "prompts-v2"
     store.close()
 
 

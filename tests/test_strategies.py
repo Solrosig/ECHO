@@ -83,12 +83,16 @@ def test_quadrant_profiles_match_emotion_acoustics():
     assert q3.volume < q1.volume and q3.volume < q2.volume   # sad softer than the loud pair
 
 
-def test_symmetric_prompt_contains_message_and_quadrant_json():
+def test_symmetric_prompt_carries_message_and_asks_only_for_a_reply():
+    # G6.1: the generation prompt must NOT pre-fill self_quadrant. v1 wrote the
+    # expected answer into the output template, so the model copied it instead of
+    # judging - which made the coherence gate vacuous (5/5 passes, 0 retries).
     strat = SymmetricStrategy()
     c = EmotionContract.from_quadrant(Quadrant.Q2)
     prompt = strat.build_prompt(c, "the bus was late")
     assert "the bus was late" in prompt
-    assert '"self_quadrant": "Q2"' in prompt
+    assert '"reply"' in prompt
+    assert "self_quadrant" not in prompt
 
 
 def test_symmetric_voice_params_reflect_both_axes():
@@ -104,8 +108,30 @@ def test_symmetric_voice_params_reflect_both_axes():
     assert q1.pitch > q4.pitch  # arousal -> higher pitch (same valence)
 
 
-def test_all_four_templates_render():
+def test_all_four_templates_render_without_leaking_the_target():
     strat = SymmetricStrategy()
     for q in Quadrant:
         prompt = strat.build_prompt(EmotionContract.from_quadrant(q), "hello")
-        assert f'"self_quadrant": "{q.value}"' in prompt
+        assert "hello" in prompt
+        assert '"reply"' in prompt
+        # the answer key must not appear anywhere in the generation prompt
+        assert "self_quadrant" not in prompt
+        assert q.value not in prompt
+
+def test_prompt_output_contract_matches_the_parser():
+    """The prompt asks for a JSON shape; the parser reads a JSON shape. Nothing tested that
+    they agree — if a template were changed to ask for {"text": ...} the parser would
+    silently fall back to returning the whole raw string as the reply, and no test would
+    fail. This pins the contract across the strategy/LLM seam."""
+    from llm import parse_llm_json
+
+    prompt = SymmetricStrategy().build_prompt(
+        EmotionContract.from_quadrant(Quadrant.Q1), "hello"
+    )
+    assert '"reply"' in prompt                      # the key the parser looks for
+    assert "self_quadrant" not in prompt            # G6.1: no answer key in the prompt
+
+    # a response in exactly the shape the prompt requests must parse cleanly
+    reply, quadrant = parse_llm_json('{"reply": "a spoken line"}')
+    assert reply == "a spoken line"
+    assert quadrant is None                         # emotion now comes from the judge, not here
