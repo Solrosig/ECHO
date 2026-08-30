@@ -1,0 +1,46 @@
+Layer 1: research\text_emotion_20260830-190846.csv  (16 classified replies)
+Layer 2: scoring 16 clips with the dimensional SER ...
+  (note: 'ser_model' has no config.json — falling back to 'audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim' via the Hugging Face cache)
+
+=== Layer 3: classifier vs speech (SER) ===
+   text\speech    Q1    Q2    Q3    Q4     -
+        Q1        5     1     1     0     0
+        Q2        0     3     0     0     0
+        -         2     0     4     0     0
+  usable pairs      : 10/16  (6 excluded: no opinion)
+  observed agreement:  80.0%
+  expected by chance:  47.0%
+  Cohen's kappa     : +0.623
+
+=== Layer 3: lexicon vs speech (SER) ===
+   text\speech    Q1    Q2    Q3    Q4     -
+        Q1        1     0     0     0     0
+        Q3        1     1     0     0     0
+        Q4        5     1     5     0     0
+        -         0     2     0     0     0
+  usable pairs      : 14/16  (2 excluded: no opinion)
+  observed agreement:   7.1%
+  expected by chance:   8.7%
+  Cohen's kappa     : -0.017
+
+=== Layer 3 (continuous): lexicon vs SER, per axis ===
+  n with lexicon evidence : 14/16
+  Spearman rho, valence   : +0.620
+  Spearman rho, arousal   : -0.114
+  Both instruments are dimensional here, so this is a like-for-like
+  comparison; the classifier has no continuous output to compare.
+
+=== Displacement from the target anchor (lower is better) ===
+  speech (SER) : 0.653   95% CI [0.577, 0.729]   n=16
+  text (lexicon): 0.798   95% CI [0.617, 0.980]   n=14
+  For reference: a point at the ORIGIN is 0.849 from any anchor (+/-0.6, +/-0.6);
+  the far corner is 1.697. Above ~0.849 means worse than saying 'neutral'.
+
+=== Joint accuracy (BOTH channels match the user's target) ===
+  classifier + speech :  31.2%
+  lexicon + speech    :   6.2%
+
+Gap 3 is addressed by the kappa figures above: they measure agreement between
+the two channels directly, chance-corrected, rather than each against the target.
+
+written: research\cross_modal_20260830-202306.csv   (16 rows)

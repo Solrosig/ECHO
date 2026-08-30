@@ -37,12 +37,17 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from contracts import Quadrant
+from config import load_config
+from contracts import Quadrant, anchor_for
+from judge import LexiconJudge, load_norms
 
 QUADS = [q.value for q in Quadrant]
 FIELDS = ["turn_uuid", "target_quadrant", "reply", "audio_path",
           "text_clf_quadrant", "text_lex_quadrant",
+          "lex_valence", "lex_arousal", "lex_hits",
           "ser_valence", "ser_arousal", "ser_quadrant",
+          "target_valence", "target_arousal",
+          "ser_displacement", "lex_displacement",
           "clf_ser_agree", "lex_ser_agree", "joint_correct_clf", "joint_correct_lex"]
 
 
@@ -65,6 +70,34 @@ def cohens_kappa(pairs: list[tuple[str, str]]) -> tuple[float, float, float]:
     if expected >= 1.0:                       # both raters constant on the same label
         return float("nan"), observed, expected
     return (observed - expected) / (1 - expected), observed, expected
+
+
+def displacement(v: float, a: float, target: str) -> float:
+    """Euclidean distance from the recognised point to the target anchor.
+
+    Chapter 4 §4.5 specifies displacement for Layer 4 ("mean displacement from the target
+    anchor ... with 95% confidence intervals"). The machine layers use the same measure so
+    that machine and human results are comparable at RQ4, and because it does not have the
+    failure mode quadrant labels do: assignment thresholds at exactly zero, while the SER's
+    recognised valence is compressed into roughly +/-0.3 against targets at +/-0.6, so a
+    sign flip near the origin turns a weak-but-real estimate into a coin toss. Distance
+    keeps the magnitude the label discards.
+    """
+    tv, ta = anchor_for(Quadrant(target))
+    return ((v - tv) ** 2 + (a - ta) ** 2) ** 0.5
+
+
+def mean_ci(xs: list[float]) -> tuple[float, float, float]:
+    """Mean with a normal-approximation 95% interval. Returns (mean, lo, hi)."""
+    n = len(xs)
+    if n == 0:
+        return float("nan"), float("nan"), float("nan")
+    m = sum(xs) / n
+    if n < 2:
+        return m, float("nan"), float("nan")
+    var = sum((x - m) ** 2 for x in xs) / (n - 1)
+    half = 1.96 * (var ** 0.5) / (n ** 0.5)
+    return m, m - half, m + half
 
 
 def _norm_path(p: str) -> Path:
@@ -154,7 +187,8 @@ def main(argv: list[str] | None = None) -> int:
         print("No turns have both a Layer 1 classification and audio.")
         return 1
 
-    from emotion_conveyance import predict_va, quadrant_of      # lazy: heavy deps
+    from emotion_conveyance import predict_va, quadrant_of, spearman   # lazy: heavy deps
+    lex = LexiconJudge(load_norms(load_config().affect_norms or None))
     print(f"Layer 2: scoring {len(turns)} clips with the dimensional SER ...")
 
     rows: list[dict] = []
@@ -171,16 +205,22 @@ def main(argv: list[str] | None = None) -> int:
         v, a = float(va["rec_valence"]), float(va["rec_arousal"])
         sq = quadrant_of(v, a)
         l1 = layer1[t["turn_uuid"]]
-        clf, lex = l1.get("clf_quadrant") or None, l1.get("lex_quadrant") or None
+        clf, lexq = l1.get("clf_quadrant") or None, l1.get("lex_quadrant") or None
+        lv, la, hits = lex.score(t["reply"])
+        tv, ta = anchor_for(Quadrant(t["quadrant"]))
         rows.append({
             "turn_uuid": t["turn_uuid"], "target_quadrant": t["quadrant"],
             "reply": t["reply"], "audio_path": str(wav),
-            "text_clf_quadrant": clf, "text_lex_quadrant": lex,
+            "text_clf_quadrant": clf, "text_lex_quadrant": lexq,
+            "lex_valence": round(lv, 4), "lex_arousal": round(la, 4), "lex_hits": hits,
             "ser_valence": round(v, 4), "ser_arousal": round(a, 4), "ser_quadrant": sq,
+            "target_valence": tv, "target_arousal": ta,
+            "ser_displacement": round(displacement(v, a, t["quadrant"]), 4),
+            "lex_displacement": round(displacement(lv, la, t["quadrant"]), 4) if hits else "",
             "clf_ser_agree": int(clf is not None and clf == sq),
-            "lex_ser_agree": int(lex is not None and lex == sq),
+            "lex_ser_agree": int(lexq is not None and lexq == sq),
             "joint_correct_clf": int(clf == t["quadrant"] and sq == t["quadrant"]),
-            "joint_correct_lex": int(lex == t["quadrant"] and sq == t["quadrant"]),
+            "joint_correct_lex": int(lexq == t["quadrant"] and sq == t["quadrant"]),
         })
     if missing:
         print(f"  ({missing} turn(s) skipped — audio file not found)")
@@ -197,6 +237,28 @@ def main(argv: list[str] | None = None) -> int:
 
     _report(rows, "text_clf_quadrant", "classifier")
     _report(rows, "text_lex_quadrant", "lexicon")
+
+    # --- continuous comparison: the measure the quadrant label throws away ----------
+    both = [r for r in rows if r["lex_hits"]]
+    if len(both) >= 3:
+        sv = spearman([r["lex_valence"] for r in both], [r["ser_valence"] for r in both])
+        sa = spearman([r["lex_arousal"] for r in both], [r["ser_arousal"] for r in both])
+        print("\n=== Layer 3 (continuous): lexicon vs SER, per axis ===")
+        print(f"  n with lexicon evidence : {len(both)}/{len(rows)}")
+        print(f"  Spearman rho, valence   : {sv:+.3f}")
+        print(f"  Spearman rho, arousal   : {sa:+.3f}")
+        print("  Both instruments are dimensional here, so this is a like-for-like")
+        print("  comparison; the classifier has no continuous output to compare.")
+
+    print("\n=== Displacement from the target anchor (lower is better) ===")
+    sm, slo, shi = mean_ci([r["ser_displacement"] for r in rows])
+    print(f"  speech (SER) : {sm:.3f}   95% CI [{slo:.3f}, {shi:.3f}]   n={len(rows)}")
+    ld = [r["lex_displacement"] for r in rows if r["lex_displacement"] != ""]
+    if ld:
+        lm, llo, lhi = mean_ci(ld)
+        print(f"  text (lexicon): {lm:.3f}   95% CI [{llo:.3f}, {lhi:.3f}]   n={len(ld)}")
+    print("  For reference: a point at the ORIGIN is 0.849 from any anchor (+/-0.6, +/-0.6);")
+    print("  the far corner is 1.697. Above ~0.849 means worse than saying 'neutral'.")
 
     n = len(rows)
     jc = 100.0 * sum(r["joint_correct_clf"] for r in rows) / n

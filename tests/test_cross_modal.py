@@ -117,3 +117,61 @@ def test_ser_contract_keys_are_the_ones_this_module_reads():
 
     consumer = inspect.getsource(cm.main)
     assert 'va["rec_valence"]' in consumer and 'va["rec_arousal"]' in consumer
+
+
+# --- the two quadrant rules must not drift apart -------------------------------
+
+def test_the_two_quadrant_rules_agree_everywhere():
+    """`contracts.quadrant_for` and `emotion_conveyance.quadrant_of` are duplicate
+    implementations of the same rule, used by different layers: Layer 1 goes through
+    contracts, Layer 3 through emotion_conveyance. If they ever diverge the layers would
+    silently use different boundaries and kappa would be wrong with no error. Verified
+    identical over a 21x21 grid on 2026-08-30; this keeps it that way."""
+    from contracts import quadrant_for
+    from emotion_conveyance import quadrant_of
+
+    for i in range(-10, 11):
+        for j in range(-10, 11):
+            v, a = i / 10, j / 10
+            assert quadrant_for(v, a).value == quadrant_of(v, a), f"diverged at ({v}, {a})"
+
+
+# --- displacement --------------------------------------------------------------
+
+def test_displacement_is_zero_at_the_anchor_and_largest_at_the_opposite_corner():
+    assert cm.displacement(0.6, 0.6, "Q1") == pytest.approx(0.0)
+    assert cm.displacement(-0.6, -0.6, "Q1") == pytest.approx(1.697, abs=1e-3)
+
+
+def test_the_origin_is_the_do_nothing_baseline():
+    """A recogniser that always answers 'neutral' sits 0.849 from every anchor. Any mean
+    displacement above that is worse than abstaining, which is the number that makes the
+    measure interpretable."""
+    for q in ("Q1", "Q2", "Q3", "Q4"):
+        assert cm.displacement(0.0, 0.0, q) == pytest.approx(0.849, abs=1e-3)
+
+
+def test_displacement_keeps_the_magnitude_a_quadrant_label_discards():
+    """The reason this measure was added: quadrant assignment thresholds at exactly zero,
+    so v=+0.02 and v=+0.60 get the SAME label while being very different estimates."""
+    near = cm.displacement(0.02, 0.02, "Q1")
+    exact = cm.displacement(0.60, 0.60, "Q1")
+    assert near > exact                       # distance separates them
+    from contracts import quadrant_for        # the label does not
+    assert quadrant_for(0.02, 0.02) == quadrant_for(0.60, 0.60)
+
+
+# --- mean with interval ---------------------------------------------------------
+
+def test_mean_ci_returns_the_mean_and_a_symmetric_interval():
+    m, lo, hi = cm.mean_ci([1.0, 2.0, 3.0])
+    assert m == pytest.approx(2.0)
+    assert lo < m < hi and (m - lo) == pytest.approx(hi - m)
+
+
+def test_mean_ci_degrades_rather_than_dividing_by_zero():
+    import math
+    m, lo, hi = cm.mean_ci([5.0])
+    assert m == pytest.approx(5.0) and math.isnan(lo) and math.isnan(hi)
+    m, lo, hi = cm.mean_ci([])
+    assert math.isnan(m)
