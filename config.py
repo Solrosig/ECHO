@@ -102,18 +102,35 @@ class Config:
     # than code: placeholders {python} {text} {out} {ref_wav} {instruction} {speed}
     # {seed} {model_dir} {quadrant}. See .env.example and SubprocessTTSAdapter.
     # StyleTTS 2 — mechanism 4, explicit style vector (MIT, NeurIPS 2023)
-    styletts2_cmd: str = os.getenv("ECHO_STYLETTS2_CMD", "")
+    # DEFAULT TEMPLATES point at the bundled runners in runners/. None of these three
+    # engines ships a CLI — all are Python APIs — so a blank template would mean the adapter
+    # exists but can never run. The runner is the CLI, executed by the engine's own
+    # interpreter, and is the single place to change when an upstream API moves.
+    styletts2_cmd: str = os.getenv(
+        "ECHO_STYLETTS2_CMD",
+        '{python} runners/styletts2_run.py --text "{text}" --out {out} '
+        '--ref-wav "{ref_wav}" --seed {seed}')
     styletts2_python: str = os.getenv("ECHO_STYLETTS2_PYTHON", "")
     styletts2_repo: str = os.getenv("ECHO_STYLETTS2_REPO", "")
     styletts2_model_dir: str = os.getenv("ECHO_STYLETTS2_MODEL_DIR", "")
     styletts2_refs: str = os.getenv("ECHO_STYLETTS2_REFS", "refs_ravdess_matched")
     # CosyVoice 2 — mechanism 5, natural-language instruction (Apache-2.0)
-    cosyvoice2_cmd: str = os.getenv("ECHO_COSYVOICE2_CMD", "")
+    cosyvoice2_cmd: str = os.getenv(
+        "ECHO_COSYVOICE2_CMD",
+        '{python} runners/cosyvoice2_run.py --text "{text}" --out {out} '
+        '--instruction "{instruction}" --ref-wav "{ref_wav}" --seed {seed}')
     cosyvoice2_python: str = os.getenv("ECHO_COSYVOICE2_PYTHON", "")
     cosyvoice2_repo: str = os.getenv("ECHO_COSYVOICE2_REPO", "")
     cosyvoice2_model_dir: str = os.getenv("ECHO_COSYVOICE2_MODEL_DIR", "")
+    # inference_instruct2 takes a prompt clip: the clip fixes WHO speaks, the instruction
+    # fixes HOW. Same reference set as the other engines, so voice identity is constant and
+    # the instruction carries the emotion alone.
+    cosyvoice2_refs: str = os.getenv("ECHO_COSYVOICE2_REFS", "refs_ravdess_matched")
     # Parler-TTS — mechanism 5 second engine, so the mechanism claim is falsifiable
-    parlertts_cmd: str = os.getenv("ECHO_PARLERTTS_CMD", "")
+    parlertts_cmd: str = os.getenv(
+        "ECHO_PARLERTTS_CMD",
+        '{python} runners/parlertts_run.py --text "{text}" --out {out} '
+        '--instruction "{instruction}" --seed {seed}')
     parlertts_python: str = os.getenv("ECHO_PARLERTTS_PYTHON", "")
     parlertts_repo: str = os.getenv("ECHO_PARLERTTS_REPO", "")
     parlertts_model_dir: str = os.getenv("ECHO_PARLERTTS_MODEL_DIR", "")

@@ -134,3 +134,67 @@ def test_repo_goes_on_pythonpath(tmp_path):
     a = tts.ParlerTTSAdapter(template="{python}", repo=str(tmp_path))
     assert str(tmp_path.resolve()) in a._env()["PYTHONPATH"]
     assert tts.ParlerTTSAdapter(template="{python}")._env() is None
+
+
+# --- runners: the three engines have no CLI, so ECHO ships one -------------
+
+def test_default_templates_are_not_blank():
+    """A blank template means the adapter exists but can never run. None of these three
+    engines ships a CLI — all are Python APIs — so the bundled runner IS the CLI."""
+    from config import Config
+
+    cfg = Config()
+    for prefix in ("styletts2", "cosyvoice2", "parlertts"):
+        tmpl = getattr(cfg, prefix + "_cmd")
+        assert tmpl, f"{prefix} has no default command template"
+        assert f"runners/{prefix}_run.py" in tmpl
+        assert "{python}" in tmpl and "{text}" in tmpl and "{out}" in tmpl
+
+
+def test_every_runner_exists_and_compiles():
+    import py_compile
+    from pathlib import Path
+
+    for name in ("styletts2_run.py", "cosyvoice2_run.py", "parlertts_run.py"):
+        p = Path("runners") / name
+        assert p.exists(), f"missing runner {p}"
+        py_compile.compile(str(p), doraise=True)
+
+
+def test_runners_accept_the_shared_contract():
+    """Every runner takes the same arguments, so the adapter does not special-case engines."""
+    import re
+    from pathlib import Path
+
+    required = {"--text", "--out", "--seed"}
+    for name in ("styletts2_run.py", "cosyvoice2_run.py", "parlertts_run.py"):
+        src = (Path("runners") / name).read_text(encoding="utf-8")
+        args = set(re.findall(r'add_argument\("(--[a-z-]+)"', src))
+        assert required <= args, f"{name} missing {required - args}"
+
+
+def test_instruction_engines_can_carry_a_reference_clip(tmp_path):
+    """The clip means something different here than in mechanism 3: it fixes WHO speaks so
+    the instruction alone carries the emotion. CosyVoice 2 requires one."""
+    refs = tmp_path / "refs"
+    refs.mkdir()
+    (refs / "Q2.wav").write_bytes(b"RIFF")
+    a = tts.CosyVoice2Adapter(template="{python} --i {instruction} --r {ref_wav}",
+                              python="PY", refs_dir=str(refs))
+    f = a.emotion_fields(_vp(quadrant="Q2"))
+    assert f["ref_wav"].endswith("Q2.wav")
+    assert f["instruction"] == tts.QUADRANT_INSTRUCTIONS["Q2"]
+
+
+def test_cosyvoice_gets_refs_from_its_own_config_key():
+    """Each engine reads its OWN refs key — an earlier version read styletts2_refs for all
+    of them, which would have silently pointed CosyVoice at the wrong reference set."""
+    from config import Config
+
+    cfg = Config(cosyvoice2_refs="refs_cosy", styletts2_refs="refs_style")
+    assert tts.make_tts("cosyvoice2", kokoro_model="x", kokoro_voices="y",
+                        cfg=cfg)._refs_dir == "refs_cosy"
+    assert tts.make_tts("styletts2", kokoro_model="x", kokoro_voices="y",
+                        cfg=cfg)._refs_dir == "refs_style"
+    assert tts.make_tts("parlertts", kokoro_model="x", kokoro_voices="y",
+                        cfg=cfg)._refs_dir == ""       # names its speaker in the description

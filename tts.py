@@ -859,7 +859,16 @@ class InstructionTTSAdapter(SubprocessTTSAdapter):
     native_emotion = True
 
     def emotion_fields(self, voice_params: VoiceParams) -> dict:
+        # A reference clip is optional here and means something different from mechanism 3:
+        # it fixes WHO speaks, so that the instruction is the only thing carrying emotion.
+        # CosyVoice 2 requires one; Parler-TTS names its speaker in the description instead.
+        ref = ""
+        if self._refs_dir and voice_params.quadrant:
+            cand = Path(self._refs_dir) / f"{voice_params.quadrant}.wav"
+            if cand.exists():
+                ref = str(cand.resolve())
         return {"instruction": QUADRANT_INSTRUCTIONS.get(voice_params.quadrant, ""),
+                "ref_wav": ref,
                 "quadrant": voice_params.quadrant or ""}
 
 
@@ -986,7 +995,7 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
             cfg = load_config()
         spec = {
             "styletts2": (StyleTTS2Adapter, "styletts2", True),
-            "cosyvoice2": (CosyVoice2Adapter, "cosyvoice2", False),
+            "cosyvoice2": (CosyVoice2Adapter, "cosyvoice2", True),
             "parlertts": (ParlerTTSAdapter, "parlertts", False),
         }
         key = ({"styletts": "styletts2", "st2": "styletts2", "cosyvoice": "cosyvoice2",
@@ -996,7 +1005,7 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
                    python=getattr(cfg, prefix + "_python"),
                    repo=getattr(cfg, prefix + "_repo"),
                    model_dir=getattr(cfg, prefix + "_model_dir"),
-                   refs_dir=getattr(cfg, "styletts2_refs", "") if wants_refs else "",
+                   refs_dir=getattr(cfg, prefix + "_refs", "") if wants_refs else "",
                    seed=getattr(cfg, "engine_seed", 666))
     if choice in ("zipvoice", "zv"):
         return ZipVoiceAdapter(zipvoice_refs, zipvoice_python, zipvoice_model,
