@@ -1,9 +1,49 @@
-"""Central configuration. Nothing model/path/port is hard-coded elsewhere."""
+"""Central configuration. Nothing model/path/port is hard-coded elsewhere.
+
+Settings come from the environment, and from a `.env` file beside this one if it exists.
+
+The `.env` file is not convenience. Engine settings supplied with `set` live only in the
+terminal that typed them, so a run configured that way **cannot be reproduced** — and on
+2026-08-31 a render was started in a fresh terminal, silently lost ECHO_ZIPVOICE_PYTHON and
+ECHO_ZIPVOICE_REPO, and failed after the settings had already been correct twice. A file is
+readable, diff-able, and can be recorded into the session log alongside the results, which
+terminal state cannot.
+
+Real environment variables still win over the file, so a one-off override is still one
+`set` away.
+"""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+
+def _load_dotenv(path: "Path | None" = None) -> None:
+    """Read KEY=VALUE lines from `.env` into the environment, without overwriting.
+
+    Deliberately not python-dotenv: this is fifteen lines, and adding a dependency to the
+    module every other module imports is a poor trade. Blank lines and `#` comments are
+    skipped; surrounding quotes are stripped; malformed lines are ignored rather than
+    raising, because a typo in a settings file must not stop the system from starting.
+    """
+    env_path = path or Path(__file__).resolve().parent / ".env"
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except Exception:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and key not in os.environ:      # a real env var always wins
+            os.environ[key] = value
+
+
+_load_dotenv()
 
 
 @dataclass(frozen=True)
@@ -56,6 +96,29 @@ class Config:
     # independently of the model, so a blocked Hub blocks both and a local model folder
     # alone is not enough. Browser-download both when the network intercepts TLS.
     zipvoice_vocoder: str = os.getenv("ECHO_ZIPVOICE_VOCODER", "")
+
+    # --- Engines that ship as REPOSITORIES, not packages -------------------
+    # Their CLIs change between commits, so the invocation is a TEMPLATE in .env rather
+    # than code: placeholders {python} {text} {out} {ref_wav} {instruction} {speed}
+    # {seed} {model_dir} {quadrant}. See .env.example and SubprocessTTSAdapter.
+    # StyleTTS 2 — mechanism 4, explicit style vector (MIT, NeurIPS 2023)
+    styletts2_cmd: str = os.getenv("ECHO_STYLETTS2_CMD", "")
+    styletts2_python: str = os.getenv("ECHO_STYLETTS2_PYTHON", "")
+    styletts2_repo: str = os.getenv("ECHO_STYLETTS2_REPO", "")
+    styletts2_model_dir: str = os.getenv("ECHO_STYLETTS2_MODEL_DIR", "")
+    styletts2_refs: str = os.getenv("ECHO_STYLETTS2_REFS", "refs_ravdess_matched")
+    # CosyVoice 2 — mechanism 5, natural-language instruction (Apache-2.0)
+    cosyvoice2_cmd: str = os.getenv("ECHO_COSYVOICE2_CMD", "")
+    cosyvoice2_python: str = os.getenv("ECHO_COSYVOICE2_PYTHON", "")
+    cosyvoice2_repo: str = os.getenv("ECHO_COSYVOICE2_REPO", "")
+    cosyvoice2_model_dir: str = os.getenv("ECHO_COSYVOICE2_MODEL_DIR", "")
+    # Parler-TTS — mechanism 5 second engine, so the mechanism claim is falsifiable
+    parlertts_cmd: str = os.getenv("ECHO_PARLERTTS_CMD", "")
+    parlertts_python: str = os.getenv("ECHO_PARLERTTS_PYTHON", "")
+    parlertts_repo: str = os.getenv("ECHO_PARLERTTS_REPO", "")
+    parlertts_model_dir: str = os.getenv("ECHO_PARLERTTS_MODEL_DIR", "")
+    # Seed for every stochastic engine; recorded per clip (T0.3).
+    engine_seed: int = int(os.getenv("ECHO_ENGINE_SEED", "666"))
 
     # storage / output
     db_path: str = os.getenv("ECHO_DB", "echo.db")

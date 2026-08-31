@@ -72,3 +72,66 @@ def test_second_run_same_minute_never_overwrites(tmp_path):
     for s in root.glob("*dup*"):                   # each keeps its own clips + provenance
         assert (s / "register.csv").exists() and (s / "SESSION.md").exists()
         assert len(list(s.rglob("*.wav"))) == 4
+
+
+# --- session settings record (added 2026-08-31) -----------------------------
+
+def test_engine_settings_distinguish_conditions_of_the_same_engine():
+    """Conditions in this project often differ by a SETTING, not by an engine: the two
+    ZipVoice conditions of 2026-08-31 differed only in prompt normalisation and reference
+    set. Until this was recorded, they were distinguishable solely by the label typed at
+    the command line — so a mistyped label would silently mislabel a whole condition."""
+    import synth_stimuli as ss
+    from config import Config
+
+    a = ss.engine_settings("zipvoice", Config(zipvoice_target_rms=0.1,
+                                              zipvoice_refs="refs_ravdess"))
+    b = ss.engine_settings("zipvoice", Config(zipvoice_target_rms=0.0,
+                                              zipvoice_refs="refs_ravdess_matched"))
+    assert a != b
+    assert a["target_rms"] == 0.1 and b["target_rms"] == 0.0
+    assert b["refs"] == "refs_ravdess_matched"
+    assert "seed" in a                       # reproducibility: the seed is part of the condition
+
+
+def test_engine_settings_empty_for_engines_without_any():
+    import synth_stimuli as ss
+    from config import Config
+
+    assert ss.engine_settings("espeak", Config()) == {}
+
+
+def test_session_md_records_the_settings(tmp_path):
+    import synth_stimuli as ss
+
+    path = tmp_path / "SESSION.md"
+    ss._write_session_md(path, "purpose", "zipvoice", ["rate_volume_pitch"],
+                         [("S01", "hello")], "abc123", "v0.7", 20, 5, (2.5, 15.0),
+                         {"refs": "refs_ravdess_matched", "target_rms": 0.0})
+    text = path.read_text(encoding="utf-8")
+    assert "refs=refs_ravdess_matched" in text
+    assert "target_rms=0.0" in text
+
+
+def test_dotenv_is_read_but_never_overrides_a_real_variable(tmp_path, monkeypatch):
+    """A settings file must not silently beat an explicit override typed for one run."""
+    import config
+
+    env = tmp_path / ".env"
+    env.write_text('ECHO_TEST_FROM_FILE=file\nECHO_TEST_OVERRIDDEN="file"\n# comment\nbroken\n',
+                   encoding="utf-8")
+    monkeypatch.setenv("ECHO_TEST_OVERRIDDEN", "real")
+    monkeypatch.delenv("ECHO_TEST_FROM_FILE", raising=False)
+    config._load_dotenv(env)
+    import os
+
+    assert os.environ["ECHO_TEST_FROM_FILE"] == "file"      # supplied
+    assert os.environ["ECHO_TEST_OVERRIDDEN"] == "real"     # not clobbered
+    os.environ.pop("ECHO_TEST_FROM_FILE", None)
+
+
+def test_missing_dotenv_is_not_an_error(tmp_path):
+    """A typo in a settings file must not stop the system from starting."""
+    import config
+
+    config._load_dotenv(tmp_path / "does_not_exist.env")    # must not raise

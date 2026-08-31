@@ -395,6 +395,13 @@ class ZipVoiceAdapter(TTSAdapter):
     #: (charactr/vocos-mel-24khz) fetched independently of the model, so a network that
     #: blocks the Hub blocks both and a local model directory alone is not enough.
     VOCODER_FILES = ("config.yaml", "pytorch_model.bin")
+    #: pydub silence threshold hard-coded inside ZipVoice's `remove_silence`, in dBFS.
+    #: A property of the engine, not something ECHO can configure.
+    SILENCE_THRESH_DBFS = -50.0
+    #: Below this share of audible 10 ms chunks, the prompt is destroyed rather than
+    #: trimmed. 0.20 is well clear of the observed failure (Q4 at ~0.01) and of the
+    #: quietest reference that worked (Q3, which renders normally).
+    MIN_SURVIVING_FRACTION = 0.20
 
     def __init__(self, refs_dir: str = "refs_ravdess", python: str = "",
                  model_name: str = "zipvoice", model_dir: str = "", seed: int = 666,
@@ -459,6 +466,55 @@ class ZipVoiceAdapter(TTSAdapter):
             )
         return str(wav), txt.read_text(encoding="utf-8").strip()
 
+    def _assert_reference_is_audible(self, ref_wav: str, quadrant: str) -> None:
+        """Refuse a reference ZipVoice will delete as silence.
+
+        Measured 2026-08-31: ZipVoice preprocesses the prompt with
+        `remove_silence(..., silence_thresh=-50)` — a pydub gate with an ABSOLUTE threshold,
+        applied BEFORE any normalisation. The RAVDESS Q4 'calm' reference sits at about
+        -52 dBFS RMS because low arousal is quiet, so the engine discarded almost all of it
+        and emitted 0.10-0.21 s for every Q4 stimulus, in both rendered conditions. The
+        register recorded that only as `duration_ok=no`, which describes the symptom and
+        hides the cause.
+
+        `--target-rms 0` cannot help, because the gate runs first. The fix is a level-matched
+        reference set (`make_matched_refs.py`), and the point of failing here is that a
+        clip of 0.1 s is not a bad synthesis result — it is an absent one, and it must not
+        reach the corpus wearing the same row shape as a real measurement.
+        """
+        try:
+            import numpy as np
+            import soundfile as sf
+        except Exception:
+            return                                   # cannot check; do not block the render
+        try:
+            x, sr = sf.read(ref_wav, dtype="float32")
+        except Exception:
+            return
+        if x.ndim > 1:
+            x = x.mean(axis=1)
+        n = max(1, sr // 100)                        # pydub scans in 10 ms chunks
+        usable = (len(x) // n) * n
+        if usable == 0:
+            return
+        rms = np.sqrt((x[:usable].reshape(-1, n).astype("float64") ** 2).mean(axis=1))
+        surviving = float((rms > 10 ** (self.SILENCE_THRESH_DBFS / 20.0)).mean())
+        if surviving >= self.MIN_SURVIVING_FRACTION:
+            return
+        raise RuntimeError(
+            f"Reference clip for {quadrant or '(no quadrant)'} is too quiet for ZipVoice: only "
+            f"{surviving * 100:.0f}% of it is above the engine's {self.SILENCE_THRESH_DBFS:.0f} "
+            f"dBFS silence gate ({ref_wav}).\n"
+            "ZipVoice strips that as silence BEFORE normalising, so it would condition on "
+            "almost nothing and emit a fraction of a second of audio. Setting "
+            "ECHO_ZIPVOICE_TARGET_RMS=0 does not help — the gate runs first.\n"
+            "Fix:  python make_matched_refs.py\n"
+            "      set ECHO_ZIPVOICE_REFS=refs_ravdess_matched\n"
+            "Note that level-matching removes the between-quadrant loudness difference, which "
+            "is part of the arousal cue, and must be declared wherever the resulting clips "
+            "are reported."
+        )
+
     def _build_command(self, text: str, ref_wav: str, ref_text: str,
                        speed: float, out_path: Path) -> list[str]:
         """Assemble the CLI invocation. Kept separate from `synthesize` so the command —
@@ -521,6 +577,7 @@ class ZipVoiceAdapter(TTSAdapter):
                 "ECHO_ZIPVOICE_REFS at it."
             )
         ref_wav, ref_text = ref
+        self._assert_reference_is_audible(ref_wav, voice_params.quadrant)
         cmd = self._build_command(text, ref_wav, ref_text,
                                   _zipvoice_speed(voice_params.rate), out_path)
         try:
@@ -607,6 +664,224 @@ class ZipVoiceAdapter(TTSAdapter):
         return out_path
 
 
+class SubprocessTTSAdapter(TTSAdapter):
+    """Base for research engines that ship as a repository rather than a package.
+
+    ZipVoice taught the pattern the hard way (2026-08-31): five undeclared
+    dependencies, no `setup.py`, weights split across two Hugging Face repos, and an
+    unpinned torchaudio that changed its audio backend. StyleTTS 2, CosyVoice 2 and
+    Parler-TTS are the same kind of artefact — research code published to be *cloned*,
+    not installed — so the same five defences apply to all of them:
+
+      1. **Own interpreter.** Each engine pins its own torch stack; running it in ECHO's
+         process would repeat the numpy conflict that already forced separate environments.
+      2. **Checkout on PYTHONPATH.** No `setup.py` means pip never installs the package,
+         and upstream expects to be run from the repo root. PYTHONPATH rather than `cwd`,
+         so relative paths ECHO passes are not silently re-based.
+      3. **Local weights.** The Hugging Face hub is blocked on this network; every engine
+         needs a `--model-dir` escape hatch.
+      4. **Absolute paths.** A subprocess has its own notion of "here".
+      5. **PCM-16 output.** Engines write float32 or odd rates; the corpus must be one
+         container, or a format difference sits alongside the engine difference.
+
+    **The command is a TEMPLATE in configuration, not code.** Research CLIs change between
+    commits, and hard-coding one means a code change and a test run every time upstream
+    moves. The template uses named placeholders — {python} {text} {out} {ref_wav}
+    {ref_text} {speed} {seed} {instruction} {model_dir} — so an engine can be re-pointed
+    from `.env` without touching Python. Unknown placeholders are left untouched rather
+    than raising, so a template written for a future flag degrades to a visible literal in
+    the command instead of an exception three layers down.
+    """
+
+    engine_id = "subprocess-base"
+    natural = True
+    #: files the local model directory must contain; empty means no check
+    MODEL_FILES: tuple = ()
+
+    def __init__(self, template: str = "", python: str = "", repo: str = "",
+                 model_dir: str = "", refs_dir: str = "", seed: int = 0,
+                 timeout_s: float = 900.0) -> None:
+        self._template = template
+        self._python = python or sys.executable
+        self._repo = repo
+        self._model_dir = model_dir
+        self._refs_dir = refs_dir
+        self._seed = seed
+        self._timeout_s = timeout_s
+
+    # -- subclass hooks ----------------------------------------------------
+    def emotion_fields(self, voice_params: VoiceParams) -> dict:
+        """Engine-specific placeholders. Overridden per control mechanism."""
+        return {}
+
+    # -- shared machinery --------------------------------------------------
+    def _env(self) -> "dict[str, str] | None":
+        if not self._repo:
+            return None
+        import os
+
+        env = dict(os.environ)
+        repo = str(Path(self._repo).resolve())
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = repo + (os.pathsep + existing if existing else "")
+        return env
+
+    def _check_model_dir(self) -> None:
+        if not (self._model_dir and self.MODEL_FILES):
+            return
+        local = Path(self._model_dir)
+        missing = [f for f in self.MODEL_FILES if not (local / f).exists()]
+        if missing:
+            raise RuntimeError(
+                f"{self.engine_id} model dir '{local}' is missing: {missing}. Download them "
+                "once in a browser, or clear the model-dir setting to let the engine fetch them."
+            )
+
+    def build_command(self, text: str, voice_params: VoiceParams, out_path: Path) -> list[str]:
+        """Render the template into an argv list. Pure — testable without the engine."""
+        import shlex
+
+        if not self._template:
+            raise RuntimeError(
+                f"No command template configured for {self.engine_id}. Set it in .env "
+                f"(see .env.example) — research CLIs change, so the invocation is "
+                f"configuration rather than code."
+            )
+        self._check_model_dir()
+        fields = {
+            "python": self._python,
+            "text": text,
+            "out": str(out_path.resolve()),
+            "seed": str(self._seed),
+            "model_dir": str(Path(self._model_dir).resolve()) if self._model_dir else "",
+            "speed": str(round(max(0.5, min(2.0, voice_params.rate)), 3)),
+        }
+        fields.update(self.emotion_fields(voice_params))
+        # shlex.split first, then substitute per token: a placeholder whose value contains
+        # spaces (reply text, an instruction sentence) must stay ONE argv element.
+        out = []
+        for tok in shlex.split(self._template, posix=False):
+            for key, val in fields.items():
+                tok = tok.replace("{" + key + "}", val)
+            out.append(tok.strip('"'))
+        return [t for t in out if t != ""]
+
+    def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
+        import subprocess
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd = self.build_command(text, voice_params, out_path)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=self._timeout_s, env=self._env())
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                f"Could not start the {self.engine_id} interpreter '{self._python}'. Install "
+                f"the engine in its own environment and point ECHO at that python."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"{self.engine_id} exceeded {self._timeout_s:.0f}s on one clip.") from exc
+        if proc.returncode != 0:
+            output = proc.stderr or proc.stdout or ""
+            tail = output.strip().splitlines()[-15:]
+            hint = ""
+            if "No module named" in output:
+                hint = ("\n\nIf the missing module is the engine itself, it ships no "
+                        "setup.py — point ECHO at the checkout so it goes on PYTHONPATH.")
+            elif "LocalEntryNotFoundError" in output or "cannot find the requested files" in output:
+                hint = ("\n\nHugging Face is unreachable. Try HF_ENDPOINT=https://hf-mirror.com, "
+                        "or download the weights in a browser and set the model-dir.")
+            elif "torchcodec" in output:
+                hint = ("\n\ntorchaudio 2.11+ delegates decoding to torchcodec. In the engine's "
+                        "environment: pip install torchcodec — or pin torch/torchaudio 2.5.1.")
+            raise RuntimeError("%s failed (exit %d):\n  %s%s"
+                               % (self.engine_id, proc.returncode, "\n  ".join(tail), hint))
+        if not out_path.exists():
+            raise RuntimeError(f"{self.engine_id} reported success but wrote no file at {out_path}.")
+
+        import soundfile as sf                       # one container for the whole corpus
+
+        samples, sample_rate = sf.read(str(out_path), dtype="float32")
+        samples = samples * max(0.0, min(1.0, voice_params.volume))
+        sf.write(str(out_path), samples, sample_rate, subtype="PCM_16")
+        return out_path
+
+
+class StyleTTS2Adapter(SubprocessTTSAdapter):
+    """StyleTTS 2 (MIT; Li et al., NeurIPS 2023) — emotion via an explicit STYLE VECTOR.
+
+    Mechanism 4 of the taxonomy, and the only engine in the set with a peer-reviewed
+    venue. Its style vector may be *extracted* from reference audio or *sampled* from a
+    diffusion model — so it is the one engine that can produce a style ECHO never supplied,
+    which makes it the natural third member of the reference-conditioning family and a
+    bridge to the instruction family.
+    """
+
+    engine_id = "styletts2"
+    renders = frozenset({"rate", "volume"})
+    native_emotion = True
+    note = "neural, MIT, peer-reviewed (NeurIPS 2023); explicit style vector, diffusion-sampled or reference-extracted"
+
+    def emotion_fields(self, voice_params: VoiceParams) -> dict:
+        ref = ""
+        if self._refs_dir and voice_params.quadrant:
+            cand = Path(self._refs_dir) / f"{voice_params.quadrant}.wav"
+            if cand.exists():
+                ref = str(cand.resolve())
+        return {"ref_wav": ref, "quadrant": voice_params.quadrant or ""}
+
+
+#: Natural-language emotion instructions, one per quadrant. These are the ENTIRE emotional
+#: channel for instruction-conditioned engines — the wording is the experimental
+#: manipulation, so it is defined here, versioned, and reported, not typed at a prompt.
+#: Phrasing follows the circumplex definition of each quadrant rather than a bare emotion
+#: word, so that valence and arousal are both stated and the instruction cannot be read as
+#: a single categorical label.
+QUADRANT_INSTRUCTIONS = {
+    "Q1": "Speak in a happy, upbeat and energetic tone.",
+    "Q2": "Speak in an angry, agitated and tense tone.",
+    "Q3": "Speak in a sad, subdued and downhearted tone.",
+    "Q4": "Speak in a calm, warm and relaxed tone.",
+}
+INSTRUCTION_VERSION = "instructions-v1"
+
+
+class InstructionTTSAdapter(SubprocessTTSAdapter):
+    """Shared base for engines whose emotional channel is a SENTENCE OF ENGLISH.
+
+    Mechanism 5, and the last untested channel for valence in this project. Every other
+    mechanism measured so far routes emotion through *acoustics*; this one routes it through
+    *semantics*, which is why it can succeed where four acoustic mechanisms failed — or, by
+    failing too, close the argument that the limit is the channel rather than the control.
+    """
+
+    renders = frozenset({"volume"})    # loudness post-scale only; no prosodic dials
+    native_emotion = True
+
+    def emotion_fields(self, voice_params: VoiceParams) -> dict:
+        return {"instruction": QUADRANT_INSTRUCTIONS.get(voice_params.quadrant, ""),
+                "quadrant": voice_params.quadrant or ""}
+
+
+class CosyVoice2Adapter(InstructionTTSAdapter):
+    """CosyVoice 2 (FunAudioLLM, Apache-2.0 on the 0.5B checkpoint; arXiv:2412.10117)."""
+
+    engine_id = "cosyvoice2"
+    note = "neural, Apache-2.0; LLM + flow matching; emotion via natural-language instruction"
+
+
+class ParlerTTSAdapter(InstructionTTSAdapter):
+    """Parler-TTS (Apache-2.0) — emotion via a natural-language style DESCRIPTION.
+
+    Admitted alongside CosyVoice 2 rather than instead of it: one engine cannot separate
+    'the mechanism works' from 'this model works', so mechanism 5 needs two engines to make
+    a claim at all — the same reasoning that admitted ZipVoice beside Chatterbox.
+    """
+
+    engine_id = "parlertts"
+    note = "neural, Apache-2.0; emotion via natural-language style description"
+
+
 def _espeak_speed(rate: float) -> int:
     """Rate factor -> eSpeak words-per-minute (base 175), clamped to eSpeak's range."""
     return max(80, min(450, round(175 * rate)))
@@ -684,7 +959,7 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
              zipvoice_model_dir: str = "", zipvoice_seed: int = 666,
              zipvoice_num_step: int = 0, zipvoice_target_rms: float = 0.1,
              zipvoice_threads: int = 4, zipvoice_repo: str = "",
-             zipvoice_vocoder: str = "") -> TTSAdapter:
+             zipvoice_vocoder: str = "", cfg=None) -> TTSAdapter:
     """Select an engine.
 
     'mock' | 'pyttsx3' | 'sapi' (=sapi5xml, renders pitch) | 'espeak' | 'kokoro' |
@@ -704,6 +979,25 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
         return KokoroAdapter(kokoro_model, kokoro_voices)
     if choice in ("chatterbox", "cb"):
         return ChatterboxAdapter(chatterbox_refs, chatterbox_device, chatterbox_model)
+    if choice in ("styletts2", "styletts", "st2", "cosyvoice2", "cosyvoice", "cv2",
+                  "parlertts", "parler"):
+        if cfg is None:
+            from config import load_config
+            cfg = load_config()
+        spec = {
+            "styletts2": (StyleTTS2Adapter, "styletts2", True),
+            "cosyvoice2": (CosyVoice2Adapter, "cosyvoice2", False),
+            "parlertts": (ParlerTTSAdapter, "parlertts", False),
+        }
+        key = ({"styletts": "styletts2", "st2": "styletts2", "cosyvoice": "cosyvoice2",
+                "cv2": "cosyvoice2", "parler": "parlertts"}).get(choice, choice)
+        cls, prefix, wants_refs = spec[key]
+        return cls(template=getattr(cfg, prefix + "_cmd"),
+                   python=getattr(cfg, prefix + "_python"),
+                   repo=getattr(cfg, prefix + "_repo"),
+                   model_dir=getattr(cfg, prefix + "_model_dir"),
+                   refs_dir=getattr(cfg, "styletts2_refs", "") if wants_refs else "",
+                   seed=getattr(cfg, "engine_seed", 666))
     if choice in ("zipvoice", "zv"):
         return ZipVoiceAdapter(zipvoice_refs, zipvoice_python, zipvoice_model,
                                zipvoice_model_dir, zipvoice_seed, zipvoice_num_step,
@@ -722,7 +1016,8 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
 # Engines differ in which dials they render; this makes that explicit so cross-engine
 # comparisons stay honest (e.g. pyttsx3 has no pitch, so its "pitch dial" is not testable).
 _ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, EspeakNgAdapter,
-                   KokoroAdapter, ChatterboxAdapter, ZipVoiceAdapter]
+                   KokoroAdapter, ChatterboxAdapter, ZipVoiceAdapter,
+                   StyleTTS2Adapter, CosyVoice2Adapter, ParlerTTSAdapter]
 _DIALS = ("rate", "volume", "pitch")
 
 

@@ -101,15 +101,44 @@ def _git(args: list[str]) -> str:
         return ""
 
 
+def engine_settings(engine_id: str, cfg) -> dict:
+    """The engine settings that DEFINE this condition, for the session record.
+
+    Conditions in this project frequently differ by a setting rather than by an engine —
+    Chatterbox A/B/C differed in reference clips, and the ZipVoice conditions differ in
+    prompt normalisation and in which reference set is used. Until now the session recorded
+    only the engine name, so those conditions were distinguishable solely by the label the
+    operator typed, and a mistyped label would have silently mislabelled a whole condition.
+    Recording the settings makes the condition self-describing.
+    """
+    if engine_id == "zipvoice":
+        return {
+            "refs": cfg.zipvoice_refs,
+            "model": cfg.zipvoice_model,
+            "seed": cfg.zipvoice_seed,
+            "target_rms": cfg.zipvoice_target_rms,
+            "num_step": cfg.zipvoice_num_step or "(model default)",
+        }
+    if engine_id == "chatterbox":
+        return {"refs": cfg.chatterbox_refs or "(none)", "device": cfg.chatterbox_device}
+    if engine_id == "kokoro":
+        return {"voice": cfg.kokoro_voice}
+    return {}
+
+
 def _write_session_md(path: Path, purpose: str, engine_id: str, param_sets: list[str],
                       stimuli: list[tuple[str, str]], commit: str, tag: str,
-                      n_clips: int, n_flagged: int, band: tuple[float, float]) -> None:
+                      n_clips: int, n_flagged: int, band: tuple[float, float],
+                      settings: "dict | None" = None) -> None:
     lines = [
         f"# Generation session — {path.parent.name}",
         "",
         f"- **Created (UTC):** {datetime.now(timezone.utc).isoformat()}",
         f"- **Purpose / objective:** {purpose or '(not given)'}",
         f"- **Engine:** `{engine_id}`",
+        ("- **Engine settings:** "
+         + ", ".join(f"`{k}={v}`" for k, v in (settings or {}).items())
+         if settings else "- **Engine settings:** (none recorded for this engine)"),
         f"- **Parameter sets:** {', '.join(param_sets)}",
         f"- **Git commit:** `{commit or 'unknown'}`   **nearest tag:** `{tag or 'none'}`",
         f"- **Stimuli:** {len(stimuli)} fixed neutral sentences ({', '.join(s for s, _ in stimuli)})",
@@ -223,7 +252,8 @@ def main(argv: list[str] | None = None) -> int:
         w.writerows(rows)
     _write_session_md(session_dir / "SESSION.md", args.purpose, engine_id, param_sets,
                       stimuli, commit, tag, len(rows), n_flagged,
-                      (cfg.min_duration_s, cfg.max_duration_s))
+                      (cfg.min_duration_s, cfg.max_duration_s),
+                      engine_settings(engine_id, cfg))
 
     print(f"Session: {session_dir}")
     print(f"  clips: {len(rows)}  ({engine_id}; param-sets: {', '.join(param_sets)})")
