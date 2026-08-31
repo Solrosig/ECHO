@@ -104,7 +104,7 @@ def test_seed_is_always_pinned(tmp_path):
 def test_command_carries_prompt_text_and_target_rms(tmp_path):
     cmd = tts.ZipVoiceAdapter(refs_dir=_refs(tmp_path), target_rms=0.0)._build_command(
         "spoken text", "ref.wav", "prompt words", 1.15, tmp_path / "o.wav")
-    assert cmd[cmd.index("--prompt-wav") + 1] == "ref.wav"
+    assert cmd[cmd.index("--prompt-wav") + 1].endswith("ref.wav")   # resolved to absolute
     assert cmd[cmd.index("--prompt-text") + 1] == "prompt words"
     assert cmd[cmd.index("--text") + 1] == "spoken text"
     assert cmd[cmd.index("--speed") + 1] == "1.15"
@@ -140,6 +140,58 @@ def test_incomplete_local_model_dir_is_rejected_with_the_missing_names(tmp_path)
         a._build_command("hi", "r.wav", "t", 1.0, tmp_path / "o.wav")
 
 
+def test_repo_goes_on_pythonpath_not_cwd(tmp_path):
+    """ZipVoice ships no setup.py, so `pip install -r requirements.txt` never installs the
+    package — `python -m zipvoice.bin.infer_zipvoice` only resolves from the repo root.
+    PYTHONPATH is used rather than cwd because changing the working directory would
+    re-base every relative path ECHO passes onto the ZipVoice checkout."""
+    repo = tmp_path / "ZipVoice"
+    (repo / "zipvoice").mkdir(parents=True)
+    env = tts.ZipVoiceAdapter(refs_dir=_refs(tmp_path), repo=str(repo))._build_env()
+    assert env is not None
+    assert str(repo.resolve()) in env["PYTHONPATH"]
+
+
+def test_no_repo_means_no_env_override(tmp_path):
+    """Without a repo the interpreter is left to find zipvoice itself — an installed
+    package must keep working."""
+    assert tts.ZipVoiceAdapter(refs_dir=_refs(tmp_path))._build_env() is None
+
+
+def test_existing_pythonpath_is_preserved(tmp_path):
+    import os
+
+    repo = tmp_path / "ZipVoice"
+    (repo / "zipvoice").mkdir(parents=True)
+    os.environ["PYTHONPATH"] = "/already/here"
+    try:
+        env = tts.ZipVoiceAdapter(refs_dir=_refs(tmp_path), repo=str(repo))._build_env()
+    finally:
+        del os.environ["PYTHONPATH"]
+    assert env["PYTHONPATH"].endswith("/already/here")      # prepended, not replaced
+    assert str(repo.resolve()) in env["PYTHONPATH"]
+
+
+def test_repo_without_the_package_folder_is_rejected(tmp_path):
+    """A path to the wrong directory must be named as such, not fail later as an
+    inscrutable ModuleNotFoundError from a subprocess."""
+    wrong = tmp_path / "not_the_repo"
+    wrong.mkdir()
+    a = tts.ZipVoiceAdapter(refs_dir=_refs(tmp_path), repo=str(wrong))
+    with pytest.raises(RuntimeError, match="no 'zipvoice' folder"):
+        a._build_command("hi", "r.wav", "t", 1.0, tmp_path / "o.wav")
+
+
+def test_paths_are_absolute_in_the_command(tmp_path, monkeypatch):
+    """The subprocess is another process with its own notion of 'here', and ECHO passes
+    relative paths (refs_ravdess/Q1.wav, research/...)."""
+    monkeypatch.chdir(tmp_path)
+    cmd = tts.ZipVoiceAdapter(refs_dir=_refs(tmp_path))._build_command(
+        "hi", "refs/Q1.wav", "t", 1.0, Path("out/o.wav"))
+    assert Path(cmd[cmd.index("--prompt-wav") + 1]).is_absolute()
+    assert Path(cmd[cmd.index("--res-wav-path") + 1]).is_absolute()
+
+
 def test_complete_local_model_dir_is_used(tmp_path):
     model = tmp_path / "zv_model"
     model.mkdir()
@@ -151,6 +203,35 @@ def test_complete_local_model_dir_is_used(tmp_path):
 
 
 # --- registration and declared capabilities --------------------------------
+
+def test_output_is_converted_to_pcm16(tmp_path, monkeypatch):
+    """`torchaudio.save` writes float32 WAV. Every other engine ends up 16-bit PCM, and
+    `wave` (which synth_stimuli.py uses for duration) cannot read float at all — so leaving
+    ZipVoice as the one float32 engine would flag every clip duration_ok=False and put a
+    container difference alongside the engine difference in a comparison corpus."""
+    sf = pytest.importorskip("soundfile")
+    import numpy as np
+
+    out = tmp_path / "o.wav"
+
+    class Done:
+        returncode = 0
+        stderr = stdout = ""
+
+    def fake_run(cmd, **kw):
+        # stand in for the engine: write float32, as torchaudio.save does
+        sf.write(str(out), np.zeros(2400, dtype="float32"), 24000, subtype="FLOAT")
+        return Done()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    a = tts.ZipVoiceAdapter(refs_dir=_refs(tmp_path))
+    a.synthesize("hi", _vp(), out)
+    assert sf.info(str(out)).subtype == "PCM_16"
+    import wave
+
+    with wave.open(str(out), "rb") as w:                # the reader that previously failed
+        assert w.getframerate() == 24000
+
 
 def test_registered_and_declared_in_capability_matrix():
     a = tts.make_tts("zipvoice", kokoro_model="x", kokoro_voices="y", zipvoice_seed=7)

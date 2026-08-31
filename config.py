@@ -47,6 +47,15 @@ class Config:
     # A/B that tests this prediction.
     zipvoice_target_rms: float = float(os.getenv("ECHO_ZIPVOICE_TARGET_RMS", "0.1"))
     zipvoice_threads: int = int(os.getenv("ECHO_ZIPVOICE_THREADS", "4"))
+    # ZipVoice ships NO setup.py (its pyproject.toml is formatting config only), so
+    # `pip install -r requirements.txt` installs the dependencies but never the package.
+    # Upstream expects it to be run from the repo root, where cwd is implicitly on
+    # sys.path; ECHO runs it from elsewhere, so the checkout is put on PYTHONPATH instead.
+    zipvoice_repo: str = os.getenv("ECHO_ZIPVOICE_REPO", "")
+    # The vocoder (charactr/vocos-mel-24khz) is a SEPARATE Hugging Face repo fetched
+    # independently of the model, so a blocked Hub blocks both and a local model folder
+    # alone is not enough. Browser-download both when the network intercepts TLS.
+    zipvoice_vocoder: str = os.getenv("ECHO_ZIPVOICE_VOCODER", "")
 
     # storage / output
     db_path: str = os.getenv("ECHO_DB", "echo.db")

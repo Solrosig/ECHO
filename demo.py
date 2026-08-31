@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--all-quadrants", action="store_true", help="sweep Q1..Q4")
     parser.add_argument("--mock", action="store_true", help="use mock LLM/TTS (no external tools)")
     parser.add_argument("--engine", choices=["auto", "mock", "pyttsx3", "sapi", "sapi5xml",
-                                             "espeak", "kokoro", "chatterbox"],
+                                             "espeak", "kokoro", "chatterbox", "zipvoice"],
                         default=None, help="TTS engine (overrides config ECHO_TTS_ENGINE)")
     parser.add_argument("--list-engines", action="store_true",
                         help="print the per-engine capability matrix and exit")
@@ -114,7 +114,9 @@ def main(argv: list[str] | None = None) -> int:
                    zipvoice_model=cfg.zipvoice_model, zipvoice_model_dir=cfg.zipvoice_model_dir,
                    zipvoice_seed=cfg.zipvoice_seed, zipvoice_num_step=cfg.zipvoice_num_step,
                    zipvoice_target_rms=cfg.zipvoice_target_rms,
-                   zipvoice_threads=cfg.zipvoice_threads)
+                   zipvoice_threads=cfg.zipvoice_threads,
+                   zipvoice_repo=cfg.zipvoice_repo,
+                   zipvoice_vocoder=cfg.zipvoice_vocoder)
 
     judge = make_judge(args.judge or cfg.judge, llm=llm, norms_path=cfg.affect_norms or None)
 

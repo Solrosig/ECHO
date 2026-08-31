@@ -25,6 +25,7 @@ audio_out/
 ser_model/
 cb_model/
 zv_model/
+zv_vocoder/
 refs/
 refs_ravdess/
 RAVDESS/

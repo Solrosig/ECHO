@@ -391,11 +391,15 @@ class ZipVoiceAdapter(TTSAdapter):
 
     #: files `--model-dir` must contain when a local checkpoint is used instead of the download
     MODEL_FILES = ("model.pt", "model.json", "tokens.txt")
+    #: files `--vocoder-path` must contain. The vocoder is a SEPARATE Hugging Face repo
+    #: (charactr/vocos-mel-24khz) fetched independently of the model, so a network that
+    #: blocks the Hub blocks both and a local model directory alone is not enough.
+    VOCODER_FILES = ("config.yaml", "pytorch_model.bin")
 
     def __init__(self, refs_dir: str = "refs_ravdess", python: str = "",
                  model_name: str = "zipvoice", model_dir: str = "", seed: int = 666,
                  num_step: int = 0, target_rms: float = 0.1, num_thread: int = 4,
-                 timeout_s: float = 900.0) -> None:
+                 repo: str = "", vocoder_dir: str = "", timeout_s: float = 900.0) -> None:
         self._refs_dir = refs_dir
         self._python = python or sys.executable
         self._model_name = model_name
@@ -404,7 +408,35 @@ class ZipVoiceAdapter(TTSAdapter):
         self._num_step = num_step          # 0 = leave ZipVoice's per-model default (16 / 8)
         self._target_rms = target_rms
         self._num_thread = num_thread
+        self._repo = repo
+        self._vocoder_dir = vocoder_dir
         self._timeout_s = timeout_s
+
+    def _build_env(self) -> "dict[str, str] | None":
+        """Environment for the subprocess, with the ZipVoice checkout on PYTHONPATH.
+
+        ZipVoice ships **no `setup.py`** and a `pyproject.toml` containing only formatting
+        configuration, so `pip install -r requirements.txt` installs its dependencies but
+        never the package itself. Upstream expects `python -m zipvoice.bin.infer_zipvoice`
+        to be run from the repository root, where the current directory is implicitly on
+        `sys.path`. ECHO runs it from ECHO's directory, so the package is invisible and the
+        module lookup fails.
+
+        PYTHONPATH is used rather than `cwd=<repo>` deliberately: changing the working
+        directory would silently re-base every relative path ECHO passes — the reference
+        clip and the output file — onto the ZipVoice checkout. Paths are resolved to
+        absolute as well, so neither mechanism can misfire, but only one of the two changes
+        the meaning of the caller's arguments and it is not this one.
+        """
+        if not self._repo:
+            return None                    # rely on the interpreter finding zipvoice itself
+        import os
+
+        env = dict(os.environ)
+        existing = env.get("PYTHONPATH", "")
+        repo = str(Path(self._repo).resolve())
+        env["PYTHONPATH"] = repo + (os.pathsep + existing if existing else "")
+        return env
 
     def _reference_for(self, quadrant: str) -> "tuple[str, str] | None":
         """Return (wav_path, transcript) for a quadrant, or None if the clip is absent.
@@ -431,12 +463,22 @@ class ZipVoiceAdapter(TTSAdapter):
                        speed: float, out_path: Path) -> list[str]:
         """Assemble the CLI invocation. Kept separate from `synthesize` so the command —
         the part that carries every experimental parameter — is testable without a model."""
+        if self._repo:
+            repo = Path(self._repo)
+            if not (repo / "zipvoice").is_dir():
+                raise RuntimeError(
+                    f"ECHO_ZIPVOICE_REPO points at '{repo}', which has no 'zipvoice' folder. "
+                    "It must be the root of the cloned repository — the directory containing "
+                    "the 'zipvoice' package and requirements.txt."
+                )
+        # Absolute paths: the subprocess is another process with its own notion of 'here',
+        # and ECHO passes relative paths (refs_ravdess/Q1.wav, research/...).
         cmd = [self._python, "-m", "zipvoice.bin.infer_zipvoice",
                "--model-name", self._model_name,
-               "--prompt-wav", ref_wav,
+               "--prompt-wav", str(Path(ref_wav).resolve()),
                "--prompt-text", ref_text,
                "--text", text,
-               "--res-wav-path", str(out_path),
+               "--res-wav-path", str(out_path.resolve()),
                "--speed", str(speed),
                "--seed", str(self._seed),                  # reproducibility (T0.3)
                "--target-rms", str(self._target_rms),
@@ -453,6 +495,16 @@ class ZipVoiceAdapter(TTSAdapter):
                     "clear ECHO_ZIPVOICE_MODEL_DIR to let ZipVoice fetch them itself."
                 )
             cmd += ["--model-dir", str(local)]
+        if self._vocoder_dir:
+            voc = Path(self._vocoder_dir)
+            missing = [f for f in self.VOCODER_FILES if not (voc / f).exists()]
+            if missing:
+                raise RuntimeError(
+                    f"ZipVoice vocoder dir '{voc}' is missing: {missing}. Download them once "
+                    "from https://huggingface.co/charactr/vocos-mel-24khz/tree/main, or clear "
+                    "ECHO_ZIPVOICE_VOCODER to let ZipVoice fetch the vocoder itself."
+                )
+            cmd += ["--vocoder-path", str(voc.resolve())]
         return cmd
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
@@ -473,7 +525,7 @@ class ZipVoiceAdapter(TTSAdapter):
                                   _zipvoice_speed(voice_params.rate), out_path)
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
-                                  timeout=self._timeout_s)
+                                  timeout=self._timeout_s, env=self._build_env())
         except FileNotFoundError as exc:
             raise RuntimeError(
                 f"Could not start the ZipVoice interpreter '{self._python}'. Install ZipVoice "
@@ -488,22 +540,70 @@ class ZipVoiceAdapter(TTSAdapter):
                 "ECHO_ZIPVOICE_THREADS."
             ) from exc
         if proc.returncode != 0:
-            tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-15:]
-            raise RuntimeError("ZipVoice failed (exit %d):\n  %s"
-                               % (proc.returncode, "\n  ".join(tail)))
+            output = (proc.stderr or proc.stdout or "")
+            tail = output.strip().splitlines()[-15:]
+            hint = ""
+            if "TorchCodec is required" in output or "torchcodec" in output:
+                # torchaudio 2.11 removed its own audio backends and delegates decoding to
+                # torchcodec. ZipVoice's requirements.txt does not pin torchaudio, so pip
+                # resolves to a version whose loader is not self-contained.
+                hint = ("\n\ntorchaudio 2.11+ delegates audio loading to torchcodec, which "
+                        "ZipVoice's unpinned requirements never install. In the ZipVoice "
+                        "environment:\n"
+                        "  pip install torchcodec\n"
+                        "If torchcodec will not build (it needs FFmpeg libraries), pin the "
+                        "older pair whose loader is self-contained instead:\n"
+                        "  pip install \"torch==2.5.1\" \"torchaudio==2.5.1\"")
+            elif "LocalEntryNotFoundError" in output or "we cannot find the requested files" in output:
+                # Hugging Face is unreachable. Seen on this network for the SER model and
+                # for Chatterbox as well, so it is the environment rather than the engine.
+                hint = ("\n\nHugging Face could not be reached and nothing is cached, so the "
+                        "model was never downloaded. Two ways round it, in order of effort:\n"
+                        "  1) set HF_ENDPOINT=https://hf-mirror.com   (the mirror ZipVoice "
+                        "itself recommends), then re-run;\n"
+                        "  2) download both repos once in a BROWSER and point ECHO at them:\n"
+                        "       https://huggingface.co/k2-fsa/ZipVoice  -> zipvoice/ folder: "
+                        f"{', '.join(self.MODEL_FILES)}\n"
+                        "       https://huggingface.co/charactr/vocos-mel-24khz -> "
+                        f"{', '.join(self.VOCODER_FILES)}\n"
+                        "     then  set ECHO_ZIPVOICE_MODEL_DIR=zv_model\n"
+                        "           set ECHO_ZIPVOICE_VOCODER=zv_vocoder\n"
+                        "   The vocoder is a SEPARATE repo, so a local model folder alone is "
+                        "not enough when the Hub is blocked.")
+            elif "No module named 'zipvoice'" in output or "No module named zipvoice" in output:
+                # The commonest failure, and it is not a broken install: ZipVoice ships no
+                # setup.py, so its package is never placed on the interpreter's path.
+                hint = ("\n\nZipVoice's dependencies are installed but the package itself is "
+                        "not on the path — it ships no setup.py, so pip never installs it. "
+                        "Point ECHO at the checkout:\n"
+                        "  set ECHO_ZIPVOICE_REPO=C:\\path\\to\\ZipVoice")
+            raise RuntimeError("ZipVoice failed (exit %d):\n  %s%s"
+                               % (proc.returncode, "\n  ".join(tail), hint))
         if not out_path.exists():
             raise RuntimeError(
                 f"ZipVoice reported success but wrote no file at {out_path}."
             )
 
-        # Loudness post-scale, applied AFTER the engine's own RMS normalisation — so this
-        # dial sets relative level between clips, it does not restore the reference's dynamics.
-        volume = max(0.0, min(1.0, voice_params.volume))
-        if volume < 1.0:
-            import soundfile as sf
+        # Post-process, ALWAYS — two jobs in one read/write pass.
+        #
+        # 1. FORMAT NORMALISATION. `torchaudio.save` writes float32 WAV (format code 3).
+        #    Every other engine in this project ends up 16-bit PCM: espeak/SAPI/pyttsx3
+        #    natively, and Kokoro/Chatterbox because `soundfile.write` defaults float input
+        #    to PCM_16. Leaving ZipVoice as the one float32 engine would put a container
+        #    difference alongside the engine difference in a corpus whose entire purpose is
+        #    cross-engine comparison — and Python's `wave` module, which synth_stimuli.py
+        #    uses for duration, cannot read float WAV at all, so every ZipVoice clip would
+        #    be flagged duration_ok=False for a reason that has nothing to do with the audio.
+        #    This converts the CONTAINER, not the signal.
+        #
+        # 2. LOUDNESS post-scale, applied AFTER the engine's own RMS normalisation — so the
+        #    dial sets relative level between clips; it does not restore the reference's
+        #    dynamics, which ZipVoice normalised away before conditioning.
+        import soundfile as sf
 
-            samples, sample_rate = sf.read(str(out_path))
-            sf.write(str(out_path), samples * volume, sample_rate)
+        samples, sample_rate = sf.read(str(out_path), dtype="float32")
+        samples = samples * max(0.0, min(1.0, voice_params.volume))
+        sf.write(str(out_path), samples, sample_rate, subtype="PCM_16")
         return out_path
 
 
@@ -583,7 +683,8 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
              zipvoice_python: str = "", zipvoice_model: str = "zipvoice",
              zipvoice_model_dir: str = "", zipvoice_seed: int = 666,
              zipvoice_num_step: int = 0, zipvoice_target_rms: float = 0.1,
-             zipvoice_threads: int = 4) -> TTSAdapter:
+             zipvoice_threads: int = 4, zipvoice_repo: str = "",
+             zipvoice_vocoder: str = "") -> TTSAdapter:
     """Select an engine.
 
     'mock' | 'pyttsx3' | 'sapi' (=sapi5xml, renders pitch) | 'espeak' | 'kokoro' |
@@ -606,7 +707,8 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
     if choice in ("zipvoice", "zv"):
         return ZipVoiceAdapter(zipvoice_refs, zipvoice_python, zipvoice_model,
                                zipvoice_model_dir, zipvoice_seed, zipvoice_num_step,
-                               zipvoice_target_rms, zipvoice_threads)
+                               zipvoice_target_rms, zipvoice_threads, zipvoice_repo,
+                               zipvoice_vocoder)
     # auto
     if Path(kokoro_model).exists() and Path(kokoro_voices).exists():
         try:

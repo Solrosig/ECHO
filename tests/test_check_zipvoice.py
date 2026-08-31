@@ -126,6 +126,34 @@ def test_probe_clips_are_kept_and_timestamped(tmp_path, monkeypatch):
     assert all("_seed" in n for n in first)
 
 
+def test_every_setting_reaches_the_adapter(tmp_path, monkeypatch):
+    """Regression guard for a real failure (2026-08-30).
+
+    `repo` was added to ZipVoiceAdapter and to make_tts but NOT to this script's adapter
+    construction, so the check ran with no PYTHONPATH and reported `No module named
+    'zipvoice'` for a package that was present — a confusing failure caused entirely by a
+    settings mapping that exists in two places. This pins the mapping.
+    """
+    seen = {}
+
+    class Spy:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+        def synthesize(self, text, vp, out_path):
+            _wav(out_path)
+            return out_path
+
+    monkeypatch.setattr(cz, "ZipVoiceAdapter", Spy)
+    cz.main(["--refs", str(_refs(tmp_path)), "--out", str(tmp_path / "o"),
+             "--python", "PY", "--repo", "REPO", "--model", "zipvoice_distill",
+             "--seed", "7"])
+    assert seen["repo"] == "REPO"            # the setting that was missed
+    assert seen["python"] == "PY"
+    assert seen["model_name"] == "zipvoice_distill"
+    assert "num_thread" in seen and "target_rms" in seen and "num_step" in seen
+
+
 def test_helpers(tmp_path):
     p = _wav(tmp_path / "a.wav", seconds=0.5, sr=24000)
     assert cz.sha256_of(p) == cz.sha256_of(p)

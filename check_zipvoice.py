@@ -55,7 +55,24 @@ def sha256_of(path: Path) -> str:
 
 
 def wav_info(path: Path) -> "tuple[float, int] | None":
-    """(duration_seconds, sample_rate), or None if the file is not a readable WAV."""
+    """(duration_seconds, sample_rate), or None if the file is genuinely unreadable.
+
+    `soundfile` is tried FIRST and `wave` only as a fallback, because the standard library's
+    `wave` module reads integer PCM only and raises on float32 WAV — which is what
+    `torchaudio.save` produces. Checking with `wave` alone reported a perfectly valid
+    ZipVoice render as "not a valid WAV", which is this project's fourth instance of an
+    instrument reporting a defect in something that was working: check_refs.py failing the
+    RAVDESS set for having dynamics, quadrant thresholding erasing a real valence
+    correlation, UTMOS mis-scoring paralinguistic tokens, and now this. When a check
+    disagrees with an engine, the check is the more likely to be wrong.
+    """
+    try:
+        import soundfile as sf
+
+        info = sf.info(str(path))
+        return info.frames / float(info.samplerate), info.samplerate
+    except Exception:
+        pass
     try:
         with wave.open(str(path), "rb") as w:
             return w.getnframes() / float(w.getframerate()), w.getframerate()
@@ -88,6 +105,11 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--model", default=cfg.zipvoice_model,
                     help="zipvoice | zipvoice_distill")
     ap.add_argument("--model-dir", default=cfg.zipvoice_model_dir)
+    ap.add_argument("--repo", default=cfg.zipvoice_repo,
+                    help="the ZipVoice checkout (it ships no setup.py, so the package is "
+                         "not importable without this)")
+    ap.add_argument("--vocoder", default=cfg.zipvoice_vocoder,
+                    help="local vocos-mel-24khz folder (separate HF repo)")
     ap.add_argument("--seed", type=int, default=cfg.zipvoice_seed)
     ap.add_argument("--text", default=DEFAULT_TEXT)
     ap.add_argument("--out", default="research/zipvoice_check",
@@ -117,15 +139,22 @@ def main(argv: "list[str] | None" = None) -> int:
     stamp = time.strftime("%Y%m%d-%H%M%S")            # never overwrite a previous check
     interpreter = args.python or "(this interpreter)"
     print(f"\n2. Rendering three probe clips   [model={args.model}, interpreter={interpreter}]")
+    print(f"   repo: {args.repo or 'NOT SET — zipvoice must already be importable'}")
     print(f"   text: \"{args.text}\"")
     print("   The first render loads the model (and may download it) — please wait.")
 
     def adapter_with(seed: int) -> ZipVoiceAdapter:
+        # Every setting the render depends on must be passed here. This function is the
+        # second place config is mapped onto the adapter (make_tts is the first), and that
+        # duplication has already cost one failed run: `repo` was added to the adapter and
+        # to make_tts but not here, so the check ran without a PYTHONPATH and reported a
+        # missing module that was in fact present.
         return ZipVoiceAdapter(refs_dir=str(refs), python=args.python, model_name=args.model,
                                model_dir=args.model_dir, seed=seed,
                                num_step=cfg.zipvoice_num_step,
                                target_rms=cfg.zipvoice_target_rms,
-                               num_thread=cfg.zipvoice_threads)
+                               num_thread=cfg.zipvoice_threads,
+                               repo=args.repo, vocoder_dir=args.vocoder)
 
     plan = [("A", args.seed), ("B", args.seed), ("C", args.seed + 1)]
     results: dict[str, tuple[Path, float, str]] = {}

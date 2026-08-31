@@ -170,7 +170,9 @@ def main(argv: list[str] | None = None) -> int:
                    zipvoice_model=cfg.zipvoice_model, zipvoice_model_dir=cfg.zipvoice_model_dir,
                    zipvoice_seed=cfg.zipvoice_seed, zipvoice_num_step=cfg.zipvoice_num_step,
                    zipvoice_target_rms=cfg.zipvoice_target_rms,
-                   zipvoice_threads=cfg.zipvoice_threads)
+                   zipvoice_threads=cfg.zipvoice_threads,
+                   zipvoice_repo=cfg.zipvoice_repo,
+                   zipvoice_vocoder=cfg.zipvoice_vocoder)
     engine_id = tts.engine_id
     strat = SymmetricStrategy(voice_id=cfg.kokoro_voice)
     stimuli = load_stimuli(args.stimuli)
