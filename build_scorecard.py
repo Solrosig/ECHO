@@ -138,6 +138,36 @@ def num(x) -> str:
     return "  —  " if x != x or x is None else f"{x:5.3f}"
 
 
+def reference_families(rows: "list[dict]") -> dict:
+    """Group scored rows by engine for the engine x reference-level contrast.
+
+    **Keyed by (reference set, SESSION) — never by reference set alone.** Two sessions can
+    share a reference set and differ by another setting: `zipvoice_b4_rms01` and
+    `zipvoice_b4_rms00` are both `refs=refs_ravdess` and differ only in `target_rms`. Keying
+    on the reference name alone silently dropped one of them, and the one it dropped was the
+    falsified `--target-rms 0` condition — **a comparison destroyed at display time because
+    the experimental variable was absent from the key.**
+
+    That is the third occurrence of one fault in this project: the `clip_id` collision of
+    2026-08-09 (design without session), the `(engine, session)` grouping rule that fixed the
+    scorecard, and now this. The rule is the same each time: **whatever varies between two
+    conditions must appear in the key that separates them.**
+
+    Returns {engine: [(reference_set, row), ...]} ordered by reference set then session, so
+    the printed block is stable across runs.
+    """
+    fam: dict = {}
+    for r in rows:
+        if "refs=" not in (r.get("settings") or ""):
+            continue
+        m = re.search(r"refs=(\S+?)(?:,|$)", r["settings"])
+        if m:
+            fam.setdefault(r["engine"], []).append((m.group(1), r))
+    for engine in fam:
+        fam[engine].sort(key=lambda pair: (pair[0], pair[1].get("session", "")))
+    return fam
+
+
 def rank_survivors(survivors: "list[dict]") -> "list[dict]":
     """Order the engines that cleared the naturalness floor: quadrant accuracy, then UTMOS.
 
@@ -281,27 +311,32 @@ def main(argv: "list[str] | None" = None) -> int:
     print("=" * 92)
     print("  Pairs the same engine against itself across reference sets, so the engine")
     print("  effect and the reference-level effect are separable rather than confounded.")
-    fam: dict = {}
-    for r in rows_out:
-        if "refs=" not in r["settings"]:
-            continue
-        refs = re.search(r"refs=(\S+?)(?:,|$)", r["settings"])
-        if refs:
-            fam.setdefault(r["engine"], {})[refs.group(1)] = r
+    fam = reference_families(rows_out)
     if not fam:
         print("\n  No reference-conditioned sessions carry recorded settings yet.")
         print("  (SESSION.md began recording engine settings on 2026-08-31; earlier")
         print("   sessions must be labelled by hand or re-rendered.)")
     else:
-        for engine, byref in sorted(fam.items()):
+        for engine, pairs in sorted(fam.items()):
             print(f"\n  {engine}")
-            for ref, r in sorted(byref.items()):
-                print(f"    {ref:<26} UTMOS {num(r['utmos'])}  quad {pct(r['quadrant'])}%"
-                      f"  aro {pct(r['arousal'])}%  n={r['n']}")
-            if len(byref) > 1:
-                vals = [x["utmos"] for x in byref.values() if x["utmos"] == x["utmos"]]
-                if len(vals) > 1:
-                    print(f"    reference-level effect on UTMOS: {max(vals) - min(vals):+.3f}")
+            for ref, r in pairs:
+                label = r["session"].split("_", 2)[-1]
+                print(f"    {ref:<24} UTMOS {num(r['utmos'])}  quad {pct(r['quadrant'])}%"
+                      f"  aro {pct(r['arousal'])}%  n={r['n']}   [{label}]")
+            # The spread is computed among conditions that actually CARRY references.
+            # `refs=(none)` is not a reference *level* — it is the absence of the mechanism,
+            # and it holds the highest UTMOS of the family (Chatterbox 4.336) because an
+            # unconditioned voice is the most natural one. Including it turns "what does
+            # changing the reference set buy?" into "how far is matched from having none at
+            # all?" and reports +0.967 where the answer to the asked question is +0.699.
+            # A number that answers a different question than its label is how a wrong
+            # figure reaches a results chapter.
+            withrefs = [r["utmos"] for ref, r in pairs
+                        if ref != "(none)" and r["utmos"] == r["utmos"]]
+            if len(withrefs) > 1:
+                print(f"    reference-level effect on UTMOS: {max(withrefs) - min(withrefs):+.3f}"
+                      f"  (across {len(withrefs)} reference sets; `(none)` excluded — it is"
+                      f" the absence of the mechanism, not a level of it)")
 
     # --- persist -----------------------------------------------------------
     out_dir = Path(args.out)

@@ -3,6 +3,8 @@
 - **Created (UTC):** 2026-08-09T18:37:23.306702+00:00
 - **Purpose / objective:** X2 condition B: + per-quadrant reference style (valence channel)
 - **Engine:** `chatterbox`
+- **Engine settings:** `refs=refs`, `device=cpu`
+- **Settings provenance:** BACKFILLED 2026-09-01 — NOT recorded at render time. `synth_stimuli.py` began writing the engine-settings line on 2026-08-31, so sessions before that date carry none, and `build_scorecard.py` could not show the engine x reference-level contrast for them. Basis: Purpose line states "condition B: + per-quadrant reference style"; `refs/Q1..Q4.wav` are the self-recorded human clips (PROJECT_LOG 2026-07-30 protocol entry). `refs` is also the `chatterbox_refs` default. Reconstructed, never observed — read it as such.
 - **Parameter sets:** rate_volume_pitch
 - **Git commit:** `55383b5`   **nearest tag:** `v0.4-naturalness2`
 - **Stimuli:** 5 fixed neutral sentences (S01, S02, S03, S04, S05)

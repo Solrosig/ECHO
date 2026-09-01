@@ -3,6 +3,8 @@
 - **Created (UTC):** 2026-08-31T00:53:35.262834+00:00
 - **Purpose / objective:** B4 condition 2: prompt normalisation disabled - tests whether RMS normalisation erases the arousal loudness cue
 - **Engine:** `zipvoice`
+- **Engine settings:** `refs=refs_ravdess`, `model=zipvoice`, `seed=666`, `target_rms=0.0`
+- **Settings provenance:** BACKFILLED 2026-09-01 — NOT recorded at render time. `synth_stimuli.py` began writing the engine-settings line on 2026-08-31, so sessions before that date carry none, and `build_scorecard.py` could not show the engine x reference-level contrast for them. Basis: Purpose line states "prompt normalisation disabled"; identical to the rms01 condition except `--target-rms 0`. Reconstructed, never observed — read it as such.
 - **Parameter sets:** rate_volume_pitch
 - **Git commit:** `5ccba87`   **nearest tag:** `v0.7-layers`
 - **Stimuli:** 5 fixed neutral sentences (S01, S02, S03, S04, S05)

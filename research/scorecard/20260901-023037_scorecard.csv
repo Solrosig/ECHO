@@ -1,0 +1,13 @@
+engine,session,settings,n,n_utmos,n_ser,utmos,utmos_lo,utmos_hi,quadrant,arousal,valence,duration_ok
+chatterbox,2026-07-30_0217_chatterbox_x2,"refs=(none), device=cpu",20,20,20,4.3359499999999995,4.28110437063136,4.390795629368639,0.35,0.65,0.45,1.0
+chatterbox,2026-08-09_1911_chatterbox_x2_refs,"refs=refs, device=cpu",20,20,20,3.3686999999999996,3.2725624600579706,3.4648375399420286,0.6,1.0,0.6,1.0
+chatterbox,2026-08-09_2337_chatterbox_x2_ravdess,"refs=refs_ravdess, device=cpu",20,20,20,3.9227499999999997,3.787949368363966,4.057550631636033,0.55,1.0,0.55,1.0
+chatterbox,2026-08-31_2302_chatterbox_x2_matched_v2,"refs=refs_ravdess_matched, device=cpu",20,20,20,4.068,3.8753797072503846,4.260620292749614,0.55,1.0,0.55,1.0
+espeak,2026-07-26_2340_espeak_check,,80,80,40,2.1129875,2.0721602597543898,2.1538147402456103,0.4,0.825,0.5,1.0
+kokoro,2026-07-27_0015_kokoro_check,,80,80,40,4.514275,4.510483806809178,4.518066193190821,0.35,0.6,0.55,1.0
+parlertts,2026-08-31_2226_parlertts_b4_negative,(none recorded for this engine),20,20,20,3.99515,3.8818722024717904,4.10842779752821,0.25,0.5,0.5,1.0
+parlertts,2026-09-01_0002_parlertts_b4_nodial,(none recorded for this engine),20,20,20,3.99375,3.8817906518183354,4.105709348181664,0.25,0.5,0.5,1.0
+sapi5xml,2026-07-26_1733_sapi_e6_realtest,,80,80,40,3.6656500000000003,3.624192143758978,3.7071078562410227,0.425,0.75,0.575,1.0
+zipvoice,2026-08-31_0113_zipvoice_b4_rms01,"refs=refs_ravdess, model=zipvoice, seed=666, target_rms=0.1",20,20,20,3.46305,3.077391803665747,3.848708196334253,0.55,0.75,0.55,0.75
+zipvoice,2026-08-31_0135_zipvoice_b4_rms00,"refs=refs_ravdess, model=zipvoice, seed=666, target_rms=0.0",20,20,20,3.24625,2.75944079066035,3.7330592093396495,0.5,1.0,0.5,0.75
+zipvoice,2026-08-31_1241_zipvoice_b4_matched,"refs=refs_ravdess_matched, model=zipvoice, seed=666, target_rms=0.1, num_step=(model default)",20,20,20,3.9827,3.7294544868360266,4.235945513163974,0.6,1.0,0.6,1.0

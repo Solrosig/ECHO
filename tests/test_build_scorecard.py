@@ -193,3 +193,50 @@ def test_ranking_sorts_unscored_last_and_never_raises():
         {"engine": "half", "quadrant": 0.60, "utmos": float("nan")},
     ]
     assert [r["engine"] for r in bs.rank_survivors(survivors)] == ["zipvoice", "half", "unscored"]
+def test_reference_families_do_not_collide_on_a_shared_reference_set():
+    """zipvoice rms01 and rms00 share `refs=refs_ravdess` and differ only in target_rms.
+
+    Keying on the reference set alone dropped one of them silently — the same fault as the
+    2026-08-09 clip_id collision. Both must survive.
+    """
+    rows = [
+        {"engine": "zipvoice", "session": "2026-08-31_0113_zipvoice_b4_rms01",
+         "settings": "refs=refs_ravdess, target_rms=0.1", "utmos": 3.463},
+        {"engine": "zipvoice", "session": "2026-08-31_0135_zipvoice_b4_rms00",
+         "settings": "refs=refs_ravdess, target_rms=0.0", "utmos": 3.246},
+    ]
+    fam = bs.reference_families(rows)
+    assert len(fam["zipvoice"]) == 2
+    assert {r["session"] for _, r in fam["zipvoice"]} == {r["session"] for r in rows}
+
+
+def test_reference_families_skip_rows_without_recorded_settings():
+    """A session with no settings line contributes nothing rather than raising."""
+    rows = [
+        {"engine": "kokoro", "session": "s1", "settings": "", "utmos": 4.5},
+        {"engine": "kokoro", "session": "s2", "utmos": 4.5},
+        {"engine": "chatterbox", "session": "s3", "settings": "refs=refs, device=cpu", "utmos": 3.4},
+    ]
+    fam = bs.reference_families(rows)
+    assert list(fam) == ["chatterbox"]
+    assert fam["chatterbox"][0][0] == "refs"
+def test_reference_families_keep_the_no_reference_baseline_visible():
+    """`refs=(none)` must appear as a row — it is the baseline the mechanism is measured against.
+
+    It must NOT be treated as a reference *level*: it holds the highest UTMOS of the
+    Chatterbox family precisely because an unconditioned voice is the most natural one, so
+    folding it into the spread answers a different question than the label claims.
+    """
+    rows = [
+        {"engine": "chatterbox", "session": "a_chatterbox_x2",
+         "settings": "refs=(none), device=cpu", "utmos": 4.336},
+        {"engine": "chatterbox", "session": "b_chatterbox_x2_refs",
+         "settings": "refs=refs, device=cpu", "utmos": 3.369},
+        {"engine": "chatterbox", "session": "c_chatterbox_x2_matched",
+         "settings": "refs=refs_ravdess_matched, device=cpu", "utmos": 4.068},
+    ]
+    fam = bs.reference_families(rows)
+    refs = [ref for ref, _ in fam["chatterbox"]]
+    assert "(none)" in refs and len(refs) == 3
+    withrefs = [r["utmos"] for ref, r in fam["chatterbox"] if ref != "(none)"]
+    assert round(max(withrefs) - min(withrefs), 3) == 0.699
