@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
-import sys
 from pathlib import Path
 
 from judge import LexiconJudge, _WORD_RE, load_norms
@@ -174,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\r\nVERDICT: opinion rate {rates[1]:.0f}% is too low — the judge would abstain "
               "on too many replies and the gate would fail them. Not usable alone.")
         return 1
-    print(f"\r\nVERDICT: usable. Set ECHO_AFFECT_NORMS to this path.")
+    print("\r\nVERDICT: usable. Set ECHO_AFFECT_NORMS to this path.")
     print(f"  Note: at min_hits=1 a single word can decide the quadrant. If robustness "
           f"matters more than\r\n  coverage, min_hits=2 costs {rates[1]-rates[2]:.0f} "
           f"percentage points of opinion rate.")

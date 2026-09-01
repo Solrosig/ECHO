@@ -1,0 +1,5 @@
+file,engine,model,target_quadrant,style_suffix,description,listener_verdict,duration_s,peak,rms,listener,date,seed
+20260831-221900_parlertts_v1_smoke.wav,parlertts,parler-tts-mini-v1,Q2,v1,"Speak in an angry, agitated and tense tone. Jon speaks at a moderate speed. The recording is very clear audio, close up, with no background noise.","not angry; fully intelligible, calm",3.34,0.744,0.1700,author,2026-08-31,666
+20260831-221900_parlertts_A.wav,parlertts,parler-tts-mini-v1,Q2,v2,"Speak in an angry, agitated and tense tone. Jon is speaking. The recording is very clear audio, close up.",not angry at all; calm and disinterested; too short to catch the meaning,2.28,0.849,0.2141,author,2026-08-31,666
+20260831-221900_parlertts_B.wav,parlertts,parler-tts-mini-v1,Q2,none,"Speak in an angry, agitated and tense tone.","a bit of tension, but not angry",2.67,0.947,0.1269,author,2026-08-31,666
+20260831-221900_parlertts_C.wav,parlertts,parler-tts-mini-v1,Q2,none,"Jon delivers a very expressive and animated performance, with a fast speaking rate and high pitch.",not angry at all; an unconfident voice,3.02,0.756,0.1507,author,2026-08-31,666

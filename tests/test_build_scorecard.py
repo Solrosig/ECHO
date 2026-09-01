@@ -162,3 +162,34 @@ def test_formatters_never_print_a_misleading_zero():
     assert bs.pct(None).strip() == "—"
     assert bs.num(float("nan")).strip() == "—"
     assert bs.pct(0.412).strip() == "41.2"
+def test_ranking_tiebreak_is_utmos_not_the_alphabet():
+    """The 2026-09-01 defect: chatterbox and zipvoice tied at 60 % and `c` < `z` decided it.
+
+    Insertion order here is deliberately the alphabetical one the real grouping produces, so
+    a regression to a single-key sort fails this test rather than passing by luck.
+    """
+    survivors = [
+        {"engine": "chatterbox", "quadrant": 0.60, "utmos": 3.369},
+        {"engine": "zipvoice", "quadrant": 0.60, "utmos": 3.983},
+        {"engine": "kokoro", "quadrant": 0.35, "utmos": 4.514},
+    ]
+    assert [r["engine"] for r in bs.rank_survivors(survivors)] == ["zipvoice", "chatterbox", "kokoro"]
+
+
+def test_ranking_puts_conveyance_before_naturalness():
+    """Lexicographic, not a weighted blend: higher UTMOS never outranks better conveyance."""
+    survivors = [
+        {"engine": "kokoro", "quadrant": 0.35, "utmos": 4.514},
+        {"engine": "zipvoice", "quadrant": 0.60, "utmos": 3.983},
+    ]
+    assert [r["engine"] for r in bs.rank_survivors(survivors)] == ["zipvoice", "kokoro"]
+
+
+def test_ranking_sorts_unscored_last_and_never_raises():
+    """Coverage is part of the result, so an engine with no figures must still appear."""
+    survivors = [
+        {"engine": "unscored", "quadrant": None, "utmos": float("nan")},
+        {"engine": "zipvoice", "quadrant": 0.60, "utmos": 3.983},
+        {"engine": "half", "quadrant": 0.60, "utmos": float("nan")},
+    ]
+    assert [r["engine"] for r in bs.rank_survivors(survivors)] == ["zipvoice", "half", "unscored"]

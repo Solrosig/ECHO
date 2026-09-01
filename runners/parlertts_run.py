@@ -16,12 +16,22 @@ from __future__ import annotations
 import argparse
 import sys
 
-#: Held constant across every clip so the only thing that varies is the emotion. "very clear
-#: audio" is the upstream README's documented lever for highest quality; naming one speaker
-#: keeps voice identity fixed across quadrants, as the RAVDESS reference set does for the
-#: reference-conditioned engines.
-STYLE_SUFFIX = (" Jon speaks at a moderate speed. The recording is very clear audio, "
-                "close up, with no background noise.")
+#: The style clause is part of the MANIPULATION, not a constant, so it is a parameter.
+#:
+#: The first version — "Jon speaks at a moderate speed. The recording is very clear audio,
+#: close up, with no background noise." — was written to hold everything but the emotion
+#: constant. It did the opposite: **"moderate speed" contradicts "agitated and tense"**, and
+#: "very clear, close up" is the upstream README's recipe for clean read speech. A listener
+#: check on 2026-08-31 confirmed the output was calm and fully intelligible. A control clause
+#: that neutralises the variable under study is not a control.
+#:
+#: The default now names the speaker and the recording quality ONLY — no speed, no delivery —
+#: leaving prosody entirely to the emotion clause.
+STYLE_SUFFIX = " Jon is speaking. The recording is very clear audio, close up."
+
+#: Retained for the record: the clause that cancelled the manipulation.
+STYLE_SUFFIX_V1 = (" Jon speaks at a moderate speed. The recording is very clear audio, "
+                   "close up, with no background noise.")
 
 
 def main() -> int:
@@ -32,6 +42,9 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=666)
     ap.add_argument("--model-dir", default="", help="local weights if the HF hub is blocked")
     ap.add_argument("--model-id", default="parler-tts/parler-tts-mini-v1")
+    ap.add_argument("--style-suffix", default=STYLE_SUFFIX,
+                    help="style clause appended to the emotion instruction; pass an empty "
+                         "string to send the emotion instruction alone")
     args = ap.parse_args()
 
     try:
@@ -57,7 +70,7 @@ def main() -> int:
               "and pass --model-dir.", file=sys.stderr)
         return 3
 
-    description = (args.instruction.strip() + STYLE_SUFFIX).strip()
+    description = (args.instruction.strip() + args.style_suffix).strip()
     input_ids = tokenizer(description, return_tensors="pt").input_ids.to(device)
     prompt_ids = tokenizer(args.text, return_tensors="pt").input_ids.to(device)
     audio = model.generate(input_ids=input_ids,

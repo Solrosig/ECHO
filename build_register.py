@@ -5,7 +5,10 @@
 
   python build_register.py --build [--ingest-db echo.db]
       Consolidate every session register into one master research/register.csv (dedup by
-      clip_id), optionally folding in full-system (LLM) turns from the provenance DB.
+      SESSION + clip_id), optionally folding in full-system (LLM) turns from the provenance DB.
+      The previous master is ARCHIVED as register_superseded-<stamp>.csv before rewriting —
+      the index keeps its canonical name so downstream tools still find it, and no version
+      of it is ever lost.
 
 The controlled corpus is written by synth_stimuli.py (one register.csv per session);
 this tool keeps them honest (integrity) and builds a single master register for analysis.
@@ -17,8 +20,10 @@ import argparse
 import contextlib
 import csv
 import hashlib
+import shutil
 import sqlite3
 import wave
+from datetime import datetime
 from pathlib import Path
 
 from synth_stimuli import REGISTER_FIELDS as SESSION_FIELDS
@@ -71,8 +76,42 @@ def verify(root: str) -> int:
     return 1 if (missing or bad) else 0
 
 
+def _archive_existing(out: Path) -> "Path | None":
+    """Move an existing master register aside before rewriting it. Returns the archive path.
+
+    **Why an archive rather than a timestamped output.** The other result writers
+    (`naturalness.py`, `emotion_conveyance.py`) never overwrite: they write to a timestamped
+    sibling and leave the original alone. That is right for a *result* — each run is its own
+    finding and both are kept.
+
+    The master register is not a result; it is an **index**, and downstream tools default to
+    its canonical path. Writing a timestamped index would leave every consumer reading a
+    stale file, so the non-overwrite rule is honoured the other way round: **the previous
+    index is archived, and the canonical name is rewritten.** Nothing is lost, and
+    `research/register.csv` still means "the current index".
+
+    This was added on 2026-08-31 after the function was found to call `open(out, "w")`
+    unconditionally. It had been rewriting a 300-row register with no copy taken — recoverable
+    only because the session folders it is derived from still existed, which is luck rather
+    than design.
+    """
+    if not out.exists():
+        return None
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    archive = out.with_name(f"{out.stem}_superseded-{stamp}{out.suffix}")
+    i = 1
+    while archive.exists():
+        archive = out.with_name(f"{out.stem}_superseded-{stamp}-{i}{out.suffix}")
+        i += 1
+    shutil.copy2(out, archive)
+    return archive
+
+
 def _write_master(out: Path, rows: dict) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
+    archive = _archive_existing(out)
+    if archive:
+        print(f"  previous index archived -> {archive}")
     with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=MASTER_FIELDS)
         w.writeheader()

@@ -263,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     if have_clf:
         print(f"\n=== Layer 1: classifier ({args.model}) ===")
         _matrix(rows, "clf_quadrant")
-    print(f"\n=== Lexicon, same texts (word-level aggregation) ===")
+    print("\n=== Lexicon, same texts (word-level aggregation) ===")
     _matrix(rows, "lex_quadrant")
     lex_f1, _ = macro_f1(rows, "lex_quadrant")
     if have_clf:

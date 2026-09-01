@@ -138,6 +138,38 @@ def num(x) -> str:
     return "  —  " if x != x or x is None else f"{x:5.3f}"
 
 
+def rank_survivors(survivors: "list[dict]") -> "list[dict]":
+    """Order the engines that cleared the naturalness floor: quadrant accuracy, then UTMOS.
+
+    **The secondary key is not decoration — without it the winner was the alphabet.**
+    Ranking on quadrant accuracy alone leaves ties to Python's stable sort, which preserves
+    insertion order, and rows are inserted `sorted(groups.items())` — alphabetically by
+    engine. On 2026-09-01 `chatterbox_x2_refs` and `zipvoice_b4_matched` tied at 60.0 % and
+    Chatterbox printed first for no reason other than `c` < `z`, while carrying **0.614 less
+    UTMOS** and a confidence interval that straddles the floor. The Tier-1 winner of the whole
+    engine comparison was being decided by the alphabet.
+
+    The selection criteria specify a lexicographic rule — naturalness as a hard filter, then
+    conveyance — and name no tiebreak. The specification is incomplete; an implementation
+    that fills such a gap **silently** is worse than one that fills it visibly, which is why
+    the printed header now names the tiebreak.
+
+    UTMOS is the tiebreak because it is the only other metric the criteria declare. Valence is
+    excluded because M1 measured the recogniser at 48.8 % on human speech, so it would rank the
+    instrument rather than the engine; arousal is excluded because four conditions saturate at
+    100 % and it cannot separate them.
+
+    A missing or NaN figure sorts **last** rather than raising — coverage is part of the
+    result (design decision 2), so an unscored engine must still appear in the ranking.
+    """
+    def key(r):
+        q, u = r.get("quadrant"), r.get("utmos")
+        q = q if isinstance(q, (int, float)) and q == q else -1.0
+        u = u if isinstance(u, (int, float)) and u == u else float("-inf")
+        return (-q, -u)
+    return sorted(survivors, key=key)
+
+
 def main(argv: "list[str] | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -231,8 +263,9 @@ def main(argv: "list[str] | None" = None) -> int:
             print(f"    REJECT  {r['engine']} · {r['session']}  UTMOS {r['utmos']:.3f}")
         if not rejected:
             print("    (none rejected)")
-        print("\n  Step 3 — survivors ranked by EMOTION CONVEYANCE (quadrant accuracy):")
-        for i, r in enumerate(sorted(survivors, key=lambda x: -(x["quadrant"] or 0)), 1):
+        print("\n  Step 3 — survivors ranked by EMOTION CONVEYANCE (quadrant accuracy),")
+        print("           ties broken by UTMOS — see rank_survivors() for why:")
+        for i, r in enumerate(rank_survivors(survivors), 1):
             print(f"    {i}. {r['engine']:<12} {r['session'].split('_', 2)[-1]:<28}"
                   f" quad {pct(r['quadrant'])}%  UTMOS {r['utmos']:.3f}")
         if ceil.get("arousal"):
