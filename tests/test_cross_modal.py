@@ -5,8 +5,6 @@ chance-corrected, that abstentions are excluded rather than counted as disagreem
 that both text instruments are carried separately.
 """
 
-import csv
-
 import pytest
 
 import cross_modal as cm
@@ -76,7 +74,8 @@ def test_turns_without_audio_or_reply_are_not_read(tmp_path):
         ("b", "2", "Q2", "", "audio_out/b.wav", "prompts-v2"),      # no reply
         ("c", "3", "Q3", "hi", None, "prompts-v2"),                 # no audio
     ])
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
     assert [t["turn_uuid"] for t in cm.read_turns(str(db))] == ["a"]
 
 

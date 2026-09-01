@@ -1,3 +1,6 @@
+# Machine-specific settings (paths differ per machine). .env.example IS committed.
+.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -24,8 +27,17 @@ audio_out/
 # the comment must be on its own line or the whole line becomes the pattern.
 ser_model/
 cb_model/
+zv_model/
+zv_vocoder/
+st2_model/
+cv2_model/
+parler_model/
 refs/
 refs_ravdess/
+# derived from refs_ravdess by make_matched_refs.py — regenerate, never commit.
+# Without this line the .txt transcripts would be committed while their .wav files stay
+# ignored, leaving a half-recorded reference set in the repository.
+refs_ravdess_matched/
 RAVDESS/
 Audio_Speech_Actors_01-24/
 

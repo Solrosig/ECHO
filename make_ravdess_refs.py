@@ -39,6 +39,32 @@ QUADRANT_EMOTION = {
     "Q4": ("02", "calm"),
 }
 
+#: RAVDESS actors speak exactly two carrier sentences, identified by the 5th filename field.
+#: The words are held constant across emotions BY DESIGN — which is what makes the corpus a
+#: clean emotion manipulation, and what lets the transcript be read off the filename.
+RAVDESS_STATEMENTS = {
+    "01": "Kids are talking by the door.",
+    "02": "Dogs are sitting by the door.",
+}
+
+
+def statement_text(filename: str) -> "str | None":
+    """Transcript of a RAVDESS clip, from the statement code in its filename.
+
+    ZipVoice is zero-shot: it clones from `--prompt-wav` AND `--prompt-text`, and has no
+    default voice to fall back on, so a reference clip without its transcript is unusable.
+    Chatterbox never needed this (it takes audio alone), which is why the transcript is
+    only being written now.
+
+    Returns None for a name that does not parse, so a malformed file is reported rather
+    than silently paired with the wrong sentence — the transcript must match the audio or
+    the clone is conditioned on a lie.
+    """
+    parts = Path(filename).stem.split("-")
+    if len(parts) != 7:
+        return None
+    return RAVDESS_STATEMENTS.get(parts[4])
+
 
 def find_clip(root: Path, emotion: str, actor: int, intensity: str, statement: str) -> "Path | None":
     """Locate one RAVDESS clip, relaxing intensity then statement if the exact match is absent.
@@ -86,16 +112,30 @@ def main(argv: list[str] | None = None) -> int:
             continue
         dst = out / f"{q}.wav"
         shutil.copyfile(src, dst)
-        print(f"  {q}  <- {label:<6} {src.name}")
+        # Transcript sidecar, required by zero-shot engines (ZipVoice) that clone from
+        # audio + text. Read from the ACTUAL file selected, not from --statement, because
+        # find_clip() relaxes the statement constraint when an exact match is unavailable —
+        # so assuming the requested sentence would sometimes write the wrong words.
+        text = statement_text(src.name)
+        if text is None:
+            print(f"  {q}  <- {label:<6} {src.name}  (WARNING: unparseable name, no transcript)")
+            missing += 1
+            continue
+        (out / f"{q}.txt").write_text(text, encoding="utf-8")
+        print(f"  {q}  <- {label:<6} {src.name}   \"{text}\"")
 
     if missing:
         print(f"\n{missing} quadrant(s) unmatched — check the folder path and actor number.")
         return 1
-    print(f"\nWrote 4 reference clips to {out}. Next:")
+    print(f"\nWrote 4 reference clips + 4 transcripts to {out}. Next:")
     print(f"  python check_refs.py --dir {out}")
-    print(f"  set ECHO_CHATTERBOX_REFS={out}")
+    print(f"  set ECHO_CHATTERBOX_REFS={out}          (Chatterbox: audio only)")
+    print(f"  set ECHO_ZIPVOICE_REFS={out}            (ZipVoice: audio + transcript)")
     print("  python synth_stimuli.py --engine chatterbox --param-set rate_volume_pitch "
           "--label chatterbox_x2_ravdess --purpose \"X2 condition C: professional RAVDESS references\"")
+    print("  python synth_stimuli.py --engine zipvoice --param-set rate_volume_pitch "
+          "--label zipvoice_b4_ravdess --purpose \"B4: ZipVoice on the same references — "
+          "mechanism vs engine\"")
     return 0
 
 

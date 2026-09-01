@@ -66,7 +66,7 @@ def cohens_kappa(pairs: list[tuple[str, str]]) -> tuple[float, float, float]:
     observed = sum(1 for a, b in pairs if a == b) / n
     a_counts, b_counts = Counter(a for a, _ in pairs), Counter(b for _, b in pairs)
     labels = set(a_counts) | set(b_counts)
-    expected = sum((a_counts[l] / n) * (b_counts[l] / n) for l in labels)
+    expected = sum((a_counts[lab] / n) * (b_counts[lab] / n) for lab in labels)
     if expected >= 1.0:                       # both raters constant on the same label
         return float("nan"), observed, expected
     return (observed - expected) / (1 - expected), observed, expected

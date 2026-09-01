@@ -1,0 +1,12 @@
+Instrument ceilings — 20260831-203638
+sample: 80 clips, 20/quadrant, 20 actors, seed 666
+mapping: happy->Q1 angry->Q2 sad->Q3 calm->Q4 (declared, per make_ravdess_refs.py)
+
+M1 quadrant 41.2%  arousal 88.8%  valence 48.8%
+M2 UTMOS natural anchor: 4.057 [3.922, 4.191] over 20 neutral clips
+
+         Q1     Q2     Q3     Q4     n   acc
+  Q1       1     17      2      0    20     5%
+  Q2       0     18      2      0    20    90%
+  Q3       1      4     14      1    20    70%
+  Q4       0      0     20      0    20     0%

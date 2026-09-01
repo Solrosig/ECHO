@@ -5,8 +5,6 @@ the label->quadrant map comes from PUBLISHED NORMS rather than assumption, that 
 is not silently turned into a Q4 prediction, and that results are never overwritten.
 """
 
-import csv
-
 import pytest
 
 import text_emotion as te
@@ -56,7 +54,8 @@ def test_reads_only_replies_that_exist(tmp_path):
         ("c", "2026-01-03", "Q3", "   ", "prompts-v2"),       # blank -> excluded
         ("d", "2026-01-04", "Q4", "all calm", "prompts-v1"),  # other version
     ])
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
     assert [r["turn_uuid"] for r in te.read_replies(str(db))] == ["a", "d"]
     assert [r["turn_uuid"] for r in te.read_replies(str(db), "prompts-v2")] == ["a"]

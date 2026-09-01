@@ -33,3 +33,52 @@ def test_build_consolidates_and_verify(tmp_path):
 
     # integrity check passes on freshly written clips
     assert build_register.main(["--verify", "--sessions-root", str(root)]) == 0
+
+
+# --- the master index is never lost (added 2026-08-31) ---------------------
+
+def test_existing_master_is_archived_before_rewrite(tmp_path):
+    """`_write_master` called `open(out, "w")` unconditionally: rebuilding silently replaced
+    a 300-row index with no copy taken, recoverable only because the session folders it
+    derives from happened to still exist. That is luck, not design."""
+    import build_register as br
+
+    out = tmp_path / "register.csv"
+    out.write_text("old,index\n1,2\n", encoding="utf-8")
+    br._write_master(out, {})
+    archives = list(tmp_path.glob("register_superseded-*.csv"))
+    assert len(archives) == 1
+    assert archives[0].read_text(encoding="utf-8") == "old,index\n1,2\n"   # byte-identical
+    assert out.exists()                                                   # canonical name kept
+
+
+def test_archiving_is_a_no_op_on_a_first_build(tmp_path):
+    import build_register as br
+
+    out = tmp_path / "register.csv"
+    assert br._archive_existing(out) is None
+    br._write_master(out, {})
+    assert not list(tmp_path.glob("*superseded*"))
+
+
+def test_two_rebuilds_leave_two_archives(tmp_path):
+    """Every superseded index is kept, not just the most recent one."""
+    import build_register as br
+
+    out = tmp_path / "register.csv"
+    out.write_text("v1\n", encoding="utf-8")
+    br._write_master(out, {})
+    out.write_text("v2\n", encoding="utf-8")
+    br._write_master(out, {})
+    assert len(list(tmp_path.glob("register_superseded-*.csv"))) == 2
+
+
+def test_index_keeps_its_canonical_name(tmp_path):
+    """An index is not a result. Results get timestamped names; an index must keep the path
+    downstream tools default to, or every consumer silently reads a stale file."""
+    import build_register as br
+
+    out = tmp_path / "register.csv"
+    out.write_text("old\n", encoding="utf-8")
+    br._write_master(out, {})
+    assert out.name == "register.csv"
