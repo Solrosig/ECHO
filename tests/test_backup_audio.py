@@ -81,3 +81,17 @@ def test_copy_to_resumes_instead_of_restarting(tmp_path):
     (dest / "s" / "audio" / "e" / "p" / "a.wav").write_bytes(b"corrupted")
     assert ba.copy_to(rows, root, dest) == (1, 1), "a corrupt clip is re-copied, not skipped"
     assert ba.verify(ba.write_manifest(rows, tmp_path / "m"), dest) == 0
+def test_manifest_distinguishes_files_from_unique_waveforms(tmp_path):
+    """830 files, 474 unique waveforms: the deterministic engines re-render identical bytes.
+
+    `neutral/` flattens every dial, so for a deterministic engine all four quadrants of a
+    stimulus are the same waveform — by design, and stated in SESSION.md. The manifest must
+    not let a file count be mistaken for a count of distinct audio.
+    """
+    root = tmp_path / "sessions"
+    _wav(root / "s1" / "audio" / "e" / "neutral" / "S01_Q1.wav")
+    _wav(root / "s1" / "audio" / "e" / "neutral" / "S01_Q2.wav")          # identical bytes
+    _wav(root / "s1" / "audio" / "e" / "p" / "S01_Q1.wav", b"\x08\x09" * 100)
+    rows = ba.scan(root)
+    assert len(rows) == 3
+    assert len({r["sha256"] for r in rows}) == 2

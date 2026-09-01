@@ -163,10 +163,13 @@ def main(argv: "list[str] | None" = None) -> int:
         rows = scan(root)
         out = write_manifest(rows, Path(args.out_dir))
         unregistered = sum(1 for r in rows if r["in_register"] == "no")
+        unique = len({r["sha256"] for r in rows})
         total_mb = sum(r["bytes"] for r in rows) / 1048576
-        print(f"Manifest: {out}  ({len(rows)} clips, {total_mb:.1f} MB)")
+        print(f"Manifest: {out}  ({len(rows)} files, {total_mb:.1f} MB)")
         print(f"  {len(rows) - unregistered} covered by a session register, "
-              f"{unregistered} NOT — the latter exist only here and in the backup.")
+              f"{unregistered} NOT — no hash for those exists anywhere else.")
+        print(f"  {unique} unique waveforms ({len(rows) - unique} byte-identical duplicates) "
+              f"— the file count is not the count of distinct audio.")
         return 0
     if args.verify:
         manifest = Path(args.manifest_file) if args.manifest_file else newest_manifest(Path(args.out_dir))

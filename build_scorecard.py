@@ -323,10 +323,20 @@ def main(argv: "list[str] | None" = None) -> int:
                 label = r["session"].split("_", 2)[-1]
                 print(f"    {ref:<24} UTMOS {num(r['utmos'])}  quad {pct(r['quadrant'])}%"
                       f"  aro {pct(r['arousal'])}%  n={r['n']}   [{label}]")
-            vals = [r["utmos"] for _, r in pairs if r["utmos"] == r["utmos"]]
-            if len(vals) > 1:
-                print(f"    reference-level effect on UTMOS: {max(vals) - min(vals):+.3f}"
-                      f"  (across {len(pairs)} conditions)")
+            # The spread is computed among conditions that actually CARRY references.
+            # `refs=(none)` is not a reference *level* — it is the absence of the mechanism,
+            # and it holds the highest UTMOS of the family (Chatterbox 4.336) because an
+            # unconditioned voice is the most natural one. Including it turns "what does
+            # changing the reference set buy?" into "how far is matched from having none at
+            # all?" and reports +0.967 where the answer to the asked question is +0.699.
+            # A number that answers a different question than its label is how a wrong
+            # figure reaches a results chapter.
+            withrefs = [r["utmos"] for ref, r in pairs
+                        if ref != "(none)" and r["utmos"] == r["utmos"]]
+            if len(withrefs) > 1:
+                print(f"    reference-level effect on UTMOS: {max(withrefs) - min(withrefs):+.3f}"
+                      f"  (across {len(withrefs)} reference sets; `(none)` excluded — it is"
+                      f" the absence of the mechanism, not a level of it)")
 
     # --- persist -----------------------------------------------------------
     out_dir = Path(args.out)

@@ -220,3 +220,23 @@ def test_reference_families_skip_rows_without_recorded_settings():
     fam = bs.reference_families(rows)
     assert list(fam) == ["chatterbox"]
     assert fam["chatterbox"][0][0] == "refs"
+def test_reference_families_keep_the_no_reference_baseline_visible():
+    """`refs=(none)` must appear as a row — it is the baseline the mechanism is measured against.
+
+    It must NOT be treated as a reference *level*: it holds the highest UTMOS of the
+    Chatterbox family precisely because an unconditioned voice is the most natural one, so
+    folding it into the spread answers a different question than the label claims.
+    """
+    rows = [
+        {"engine": "chatterbox", "session": "a_chatterbox_x2",
+         "settings": "refs=(none), device=cpu", "utmos": 4.336},
+        {"engine": "chatterbox", "session": "b_chatterbox_x2_refs",
+         "settings": "refs=refs, device=cpu", "utmos": 3.369},
+        {"engine": "chatterbox", "session": "c_chatterbox_x2_matched",
+         "settings": "refs=refs_ravdess_matched, device=cpu", "utmos": 4.068},
+    ]
+    fam = bs.reference_families(rows)
+    refs = [ref for ref, _ in fam["chatterbox"]]
+    assert "(none)" in refs and len(refs) == 3
+    withrefs = [r["utmos"] for ref, r in fam["chatterbox"] if ref != "(none)"]
+    assert round(max(withrefs) - min(withrefs), 3) == 0.699
