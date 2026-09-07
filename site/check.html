@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Headphone and volume check</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+
+<h1>Headphone and volume check</h1>
+<p class="muted">One minute. This is not a trial — nothing here is recorded as an answer.</p>
+
+<p>Put your headphones on now. The recordings you are about to hear differ partly in
+<strong>loudness</strong>, and that difference is one of the things being measured — so the volume has
+to be set once and left alone.</p>
+
+<div class="panel">
+  <h2 style="margin-top:0">1 · Play the sample</h2>
+  <div class="player">
+    <button id="play">Play sample</button>
+    <span class="muted small" id="state">not played yet</span>
+  </div>
+  <p class="small muted" style="margin-top:14px">This is one of the practice recordings. It speaks a
+  neutral sentence, like every recording in the study.</p>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">2 · Set your volume</h2>
+  <p>Adjust until it is <strong>clearly audible and comfortable</strong> — loud enough that a quiet
+  recording is still easy to follow, not so loud that a lively one is uncomfortable.</p>
+  <p><strong>Then do not change it again</strong> until the session ends.</p>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">3 · Confirm</h2>
+  <p>
+    <label><input type="checkbox" id="c1"> I am wearing headphones or earphones</label><br>
+    <label><input type="checkbox" id="c2"> I am in a quiet room</label><br>
+    <label><input type="checkbox" id="c3"> My volume is set and I will not change it</label>
+  </p>
+  <p><button class="primary" id="go" disabled>Start the practice trials</button></p>
+  <p class="small muted">Four practice trials come first. They are not counted — they exist so the
+  task is familiar before the real recordings begin.</p>
+</div>
+
+<audio id="a" preload="none"></audio>
+
+<script src="echo.js"></script>
+<script>
+(function () {
+  var code = new URLSearchParams(location.search).get("p") || "";
+  if (!code) { location.replace("index.html"); return; }
+
+  var audio = document.getElementById("a");
+  var boxes = [document.getElementById("c1"), document.getElementById("c2"), document.getElementById("c3")];
+  var go = document.getElementById("go");
+
+  fetch("manifest.json").then(function (r) { return r.json(); }).then(function (m) {
+    var first = (m.practice && m.practice[0]) || (m.test && m.test[0]);
+    if (first) { audio.src = "audio/" + first.token + ".wav"; }
+  });
+
+  document.getElementById("play").addEventListener("click", function () {
+    audio.currentTime = 0;
+    audio.play().then(function () {
+      document.getElementById("state").textContent = "playing";
+    }).catch(function () {
+      document.getElementById("state").textContent = "could not play — check your browser's sound";
+    });
+  });
+  audio.addEventListener("ended", function () {
+    document.getElementById("state").textContent = "played — adjust the volume and play again if needed";
+  });
+
+  boxes.forEach(function (b) {
+    b.addEventListener("change", function () {
+      go.disabled = !boxes.every(function (x) { return x.checked; });
+    });
+  });
+  go.addEventListener("click", function () {
+    location.href = "test.html?p=" + encodeURIComponent(code) + "&practice=1";
+  });
+})();
+</script>
+
+</main>
+</body>
+</html>
