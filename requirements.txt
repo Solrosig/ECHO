@@ -1,4 +1,6 @@
 pydantic>=2.6
+# HTTP client for OLLAMA's OpenAI-compatible endpoint (http://localhost:11434/v1).
+# No OpenAI service is used; api_key is the literal placeholder "ollama". See llm.py.
 openai>=1.30
 requests>=2.31
 soundfile>=0.12
