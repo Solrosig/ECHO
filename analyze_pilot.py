@@ -1,23 +1,24 @@
-"""The 2026-07-29 pilot listening test — the only human data the project already has.
+"""Score a completed listening pre-test — with provenance checked before any statistic is quoted.
 
-    python analyze_pilot.py
-    python analyze_pilot.py --session research/listening/2026-07-29_1946_pilot
+    python analyze_pilot.py --session research/listening/<stamp>_pilot
 
-Why this runs before T2a fixes the trial budget
------------------------------------------------
+Why this exists
+---------------
 The riskiest assumption in the whole listening study is **not** "are five listeners enough". It is
 **"can a listener identify the intended quadrant from these clips at all?"** If the answer is no, the
 finding is that the task was too hard — and at n = 5 that discovery arrives after the panel is spent,
-with no second run available.
+with no second run available. A pre-test answers it for the price of one evening.
 
-`research/listening/2026-07-29_1946_pilot/` has been sitting on disk since July with **24 completed
-human judgements** — a naturalness rating and an emotion guess per clip, against a key recording the
-engine, quadrant, stimulus and param-set of each. It cost nothing and it has never been analysed.
+**Why it also checks provenance.** This tool was first written against
+`research/listening/2026-07-29_1946_pilot/`, whose `answers.csv` looked like 24 completed human
+judgements. It contained none: **nobody took that test**, and the values were placeholder. A full set
+of findings was reported and then retracted on 2026-09-06.
 
-It cannot substitute for T3: different protocol, unrecorded listener, no seed, no blinding record, and
-the response format is a 4-way categorical guess rather than the affect grid. **It is a prior, not a
-result.** But a prior on feasibility, obtained for minutes of work before the instrument is built, is
-worth more than the same information obtained afterwards.
+Two tells were visible before a single statistic was computed — `answers.csv` shared an mtime with
+`key.csv`, and the "five-point" scale took two values — and **neither was looked at, because every
+check performed was a check of the analysis rather than of the data.** `provenance_warnings()` now
+runs first and prints above the results. See `LISTENING_PRETEST_GUIDE.md` for how to produce a session
+this tool can legitimately score.
 
 What it reports
 ---------------
@@ -86,6 +87,40 @@ def wilson(k: int, n: int, z: float = 1.96) -> "tuple[float, float]":
     return (max(0.0, centre - half), min(1.0, centre + half))
 
 
+def provenance_warnings(session: Path, rows: "list[dict]") -> "list[str]":
+    """Cheap checks for "these values were never typed by a person".
+
+    Added 2026-09-06 after the July `answers.csv` was analysed, reported, and then confirmed to
+    contain no human judgements at all. Two tells were visible before any statistic was computed
+    and neither was looked at:
+
+      * **`answers.csv` shares an mtime with `key.csv`.** `make_listening_test.py --build` writes
+        both in one call, so equal mtimes mean the answers file was never edited after creation.
+        A person filling in two dozen rows leaves it later than the key.
+      * **the 1-5 scale takes fewer than three distinct values.** The July file used only 1 and 4,
+        resolving to exactly 4.00 for one engine and exactly 1.00 for the others -- a function of
+        engine, not a rating.
+
+    Neither check is conclusive: a fast rater could conceivably use two values, and a filesystem
+    copy can flatten mtimes. Both are warnings, not errors, and both are printed ABOVE the
+    results, because that is where an over-reading would otherwise happen. **A check that fires
+    spuriously costs a sentence of explanation; a check that never fires costs a retraction.**
+    """
+    out = []
+    try:
+        a, k = session / "answers.csv", session / "key.csv"
+        if a.exists() and k.exists() and int(a.stat().st_mtime) == int(k.stat().st_mtime):
+            out.append("answers.csv and key.csv share an mtime — answers.csv looks unedited "
+                       "since the session was built, i.e. possibly never filled in by a person.")
+    except OSError:
+        pass
+    scale = {r["mos"] for r in rows if r["mos"] is not None}
+    if rows and len(scale) < 3:
+        out.append(f"the 1-5 naturalness scale takes only {len(scale)} distinct value(s) "
+                   f"{sorted(scale)} — a human rating rarely collapses this far.")
+    return out
+
+
 def load(session: Path) -> "list[dict]":
     key = {normalise_id(r["blind_id"]): r
            for r in csv.DictReader(open(session / "key.csv", encoding="utf-8"))}
@@ -126,16 +161,20 @@ def pct(k: int, n: int) -> str:
     return f"{100.0 * k / n:5.1f}%" if n else "    —"
 
 
-def report(rows: "list[dict]") -> None:
+def report(rows: "list[dict]", warnings: "list[str] | None" = None) -> None:
     print("=" * 78)
-    print("PILOT LISTENING TEST — 2026-07-29 · human judgements, previously unanalysed")
+    print("PILOT LISTENING TEST")
     print("=" * 78)
-    print("  ONE LISTENER, ONE SITTING. The protocol was sound — blinded, random order,")
-    print("  forced choice, ITU-T P.800 scale, key withheld — but n = 1 PERSON.")
-    print("  The intervals below treat 24 trials as independent draws. They are not:")
-    print("  they share one listener's hearing, attention and reading of the instructions.")
-    print("  For 'can LISTENERS do this?' the effective n is 1. A demonstration, not an estimate.")
-    print("  The listener is unrecorded; if it was the author, this is not naive-listener data.")
+    for w in (warnings or []):
+        print(f"  !! PROVENANCE WARNING: {w}")
+    if warnings:
+        print("  !! Establish who produced these values before quoting any figure below.")
+        print()
+    print("  SCOPE. `answers.csv` records no participant, so this tool cannot tell one")
+    print("  listener from several. If the session was ONE person, the intervals below treat")
+    print("  their trials as independent draws — they are not, and for 'can LISTENERS do")
+    print("  this?' the effective n is 1: a demonstration, not an estimate. Record the")
+    print("  listener, their naivety to the design, and the date in SESSION_NOTES.md.")
     print()
 
     overall = rates(rows)
@@ -227,7 +266,7 @@ def main(argv: "list[str] | None" = None) -> int:
         print("No rows joined — check that blind_id values correspond in the two files.")
         return 1
 
-    report(rows)
+    report(rows, provenance_warnings(session, rows))
     out = write_csv(rows, Path(args.out_dir))
     print()
     print(f"Joined rows written (never overwritten): {out}")

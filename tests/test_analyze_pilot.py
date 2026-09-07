@@ -82,3 +82,48 @@ def test_output_csv_is_timestamped_and_never_overwrites(tmp_path):
     second = ap.write_csv(rows, tmp_path)
     assert first.exists() and second.exists()
     assert len(list(tmp_path.glob("pilot_analysis_*.csv"))) >= 1
+
+
+def test_provenance_guard_flags_an_unedited_answers_file(tmp_path):
+    """The July file's tell: answers.csv shared an mtime with key.csv, so it was never edited
+    after the session was built. Neither check is conclusive; both would have caught it."""
+    import os
+    d = _session(tmp_path, [["1", "4", "Q1", ""]],
+                 [["001", "kokoro", "Q1", "S01", "rate_volume_pitch", "x.wav"]])
+    ts = 1_700_000_000
+    os.utime(d / "answers.csv", (ts, ts))
+    os.utime(d / "key.csv", (ts, ts))
+    rows = ap.load(d)
+    warns = ap.provenance_warnings(d, rows)
+    assert any("share an mtime" in w for w in warns)
+
+
+def test_provenance_guard_flags_a_collapsed_rating_scale(tmp_path):
+    """The July file used only 1 and 4 across 24 rows - a function of engine, not a rating."""
+    d = _session(
+        tmp_path,
+        [["1", "4", "Q1", ""], ["2", "1", "Q2", ""], ["3", "1", "Q3", ""], ["4", "4", "Q4", ""]],
+        [["001", "kokoro", "Q1", "S01", "rate_volume_pitch", "a.wav"],
+         ["002", "espeak", "Q2", "S01", "rate_volume_pitch", "b.wav"],
+         ["003", "espeak", "Q3", "S01", "rate_volume_pitch", "c.wav"],
+         ["004", "kokoro", "Q4", "S01", "rate_volume_pitch", "d.wav"]],
+    )
+    warns = ap.provenance_warnings(d, ap.load(d))
+    assert any("distinct value" in w for w in warns)
+
+
+def test_provenance_guard_stays_quiet_on_a_plausible_human_file(tmp_path):
+    """A check that fires on real data would be ignored within a week. Three or more distinct
+    ratings and an answers file edited after the key: no warning."""
+    import os
+    d = _session(
+        tmp_path,
+        [["1", "5", "Q1", ""], ["2", "3", "Q2", "flat"], ["3", "2", "Q3", ""], ["4", "4", "Q4", ""]],
+        [["001", "kokoro", "Q1", "S01", "rate_volume_pitch", "a.wav"],
+         ["002", "espeak", "Q2", "S01", "rate_volume_pitch", "b.wav"],
+         ["003", "espeak", "Q3", "S01", "rate_volume_pitch", "c.wav"],
+         ["004", "kokoro", "Q4", "S01", "rate_volume_pitch", "d.wav"]],
+    )
+    os.utime(d / "key.csv", (1_700_000_000, 1_700_000_000))
+    os.utime(d / "answers.csv", (1_700_003_600, 1_700_003_600))
+    assert ap.provenance_warnings(d, ap.load(d)) == []

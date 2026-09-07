@@ -22,7 +22,7 @@ phases add a class instead of rewriting the pipeline.
 ## MVP Scope
 **In:** one command, one turn end-to-end, four-quadrant sweep, coherence gate, provenance log.
 **Out:** UI, channel-specialised strategy, real text/speech classifiers,
-commercial adapters (OpenAI LLM + Azure TTS), the controlled corpus, the listener study.
+commercial adapters (a hosted LLM + a cloud TTS), the controlled corpus, the listener study.
 
 
 ## The four emotions (Russell circumplex quadrants)
@@ -59,6 +59,15 @@ Coherence gate  (matches target? retry ≤2)     │
                        (1 turn row + 1 row per attempt)
 ```
 
+**Everything above runs on one machine.** The LLM is `llama3.2:3b` served by a local Ollama
+(`http://localhost:11434/v1`); the TTS engines are local; `echo.db` is a local SQLite file.
+
+**Note on the `openai` dependency.** Ollama exposes an *OpenAI-compatible* HTTP API, so
+`OllamaAdapter` uses the `openai` package purely as a client for `localhost:11434`. **No OpenAI
+service is contacted and no text leaves the machine** — `api_key="ollama"` is a placeholder the
+server ignores. The package is imported inside `OllamaAdapter.__init__`, so the test suite runs
+without it.
+
 ## Layout
 
 ```
@@ -85,6 +94,6 @@ pytest        # fast unit + integration (mocks; no Ollama/audio needed)
 ## MVP Scope
 **In:** one command, one turn end-to-end, four-quadrant sweep, coherence gate, provenance log.
 **Out:** UI, channel-specialised strategy, real text/speech classifiers,
-commercial adapters (OpenAI LLM + Azure TTS), the controlled corpus, the listener study.
+commercial adapters (a hosted LLM + a cloud TTS), the controlled corpus, the listener study.
 ## Stage 1
 **UI

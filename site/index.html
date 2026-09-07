@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listening study — consent and setup</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+
+<h1>Listening study</h1>
+<p class="muted">Thank you for helping. This takes about 25–30 minutes and you do it once.</p>
+
+<h2>What you will do</h2>
+<p>You will hear short recordings of a synthetic voice. Every recording speaks the
+<strong>same neutral sentences</strong>, so the only thing that differs is the voice.</p>
+<ul>
+  <li>Rate how <strong>natural</strong> the voice sounds, on a five-point scale.</li>
+  <li>Mark what <strong>emotion the speaker was expressing</strong>, by clicking one point on a square.</li>
+</ul>
+<p>There are no right answers you are expected to know. Guessing when unsure is part of the
+design — the study measures how clearly the voice communicates, not how well you perform.</p>
+
+<h2>You need</h2>
+<ul>
+  <li><strong>Headphones or earphones</strong> — laptop speakers flatten exactly what is being measured.</li>
+  <li>A <strong>quiet room</strong> and about 30 uninterrupted minutes.</li>
+  <li>A <strong>computer</strong>, not a phone.</li>
+  <li>To <strong>set the volume once</strong> at the start and not change it. Loudness is one of the things
+      under test.</li>
+</ul>
+
+<h2>Your data</h2>
+<p>Only your answers are recorded — no name, no email, nothing that identifies you. Nothing is sent
+anywhere: at the end your answers stay in your browser and you copy or download them and send them
+back yourself. There is no server and no third party involved.</p>
+<p class="small muted">You can stop at any point by closing the tab. Partial answers are not used.</p>
+
+<h2>Begin</h2>
+<div class="panel">
+  <p><label for="code">The code you were given</label></p>
+  <p><input type="text" id="code" autocomplete="off" spellcheck="false" placeholder="e.g. L3"></p>
+  <p class="small muted">This is a label for the session, not an identifier for you. It also sets the
+  order the recordings are played in, so the session can be reconstructed later.</p>
+  <p>
+    <button class="primary" id="go">I have read this and agree to take part</button>
+  </p>
+  <p class="err" id="err" hidden>Enter the code you were given.</p>
+  <p class="ok" id="resume" hidden></p>
+</div>
+
+<script src="echo.js"></script>
+<script>
+(function () {
+  var input = document.getElementById("code");
+  var prior = ECHO.load();
+  if (prior && prior.code && prior.answers && prior.answers.length) {
+    var r = document.getElementById("resume");
+    r.hidden = false;
+    r.textContent = "An unfinished session for code " + prior.code + " was found ("
+      + prior.answers.length + " answered). Entering the same code continues it.";
+    input.value = prior.code;
+  }
+  function start() {
+    var code = input.value.trim();
+    if (!code) { document.getElementById("err").hidden = false; input.focus(); return; }
+    location.href = "check.html?p=" + encodeURIComponent(code);
+  }
+  document.getElementById("go").addEventListener("click", start);
+  input.addEventListener("keydown", function (e) { if (e.key === "Enter") start(); });
+  input.addEventListener("input", function () { document.getElementById("err").hidden = true; });
+})();
+</script>
+
+</main>
+</body>
+</html>

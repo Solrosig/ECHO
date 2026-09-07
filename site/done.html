@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finished — send your answers</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+
+<h1>Finished. Thank you.</h1>
+<p class="muted">Your answers are in this browser and nowhere else. Send them back using either
+button below — whichever is easier where you are.</p>
+
+<div class="panel">
+  <p><strong id="summary">—</strong></p>
+  <p>
+    <button class="primary" id="copy">Copy answers to clipboard</button>
+    <button id="download">Download as a file</button>
+  </p>
+  <p class="ok" id="ok" hidden></p>
+  <p class="small muted">Paste the copied text into the message you are already using, or attach the
+  downloaded file. Both contain exactly the same thing.</p>
+</div>
+
+<h2>What you sent</h2>
+<p class="small muted">Only your ratings, the session code and timings. No name, no email, nothing
+that identifies you.</p>
+<textarea id="json" readonly></textarea>
+
+<p class="small muted" style="margin-top:24px">You can close this tab once the answers have been
+sent. Keep it open until then — this is the only copy.</p>
+
+<script src="echo.js"></script>
+<script>
+(function () {
+  var code = new URLSearchParams(location.search).get("p") || "";
+  var state = ECHO.load();
+  var box = document.getElementById("json");
+
+  if (!state || !state.answers || !state.answers.length) {
+    document.getElementById("summary").textContent =
+      "No answers found in this browser. If you completed the study in a different tab or window, "
+      + "open it there.";
+    document.getElementById("copy").disabled = true;
+    document.getElementById("download").disabled = true;
+    box.value = "";
+    return;
+  }
+
+  var text = JSON.stringify(state, null, 1);
+  box.value = text;
+  document.getElementById("summary").textContent =
+    state.answers.length + " recordings rated, session code " + (state.code || code) + ".";
+
+  function flash(msg) {
+    var el = document.getElementById("ok");
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  document.getElementById("copy").addEventListener("click", function () {
+    // Clipboard first, selection as the fallback: navigator.clipboard needs a secure context and
+    // is refused in some embedded browsers. The download button is the third independent path.
+    function fallback() {
+      box.removeAttribute("readonly");
+      box.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      box.setAttribute("readonly", "readonly");
+      flash(ok ? "Copied. Paste it into your message."
+               : "Could not copy automatically — select the text below and copy it manually.");
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(function () { flash("Copied. Paste it into your message."); })
+        .catch(fallback);
+    } else { fallback(); }
+  });
+
+  document.getElementById("download").addEventListener("click", function () {
+    var stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    var blob = new Blob([text], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "responses_" + (state.code || code) + "_" + stamp + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    flash("Downloaded. Attach the file to your message.");
+  });
+})();
+</script>
+
+</main>
+</body>
+</html>
