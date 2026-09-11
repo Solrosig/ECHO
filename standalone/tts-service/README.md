@@ -12,4 +12,4 @@ pinned: false
 
 # ECHO speech service
 
-The Python voice component of ECHO. See ../docs/DEPLOYMENT_EN.md for local and independent hosting setup. The web application records ratings in SQLite. This service receives synthesis requests and retains generated WAVs temporarily. Keep the bundled reference and source attribution.
+The Python voice component of ECHO. See "Python voices" in ../README.md for local setup; the Hugging Face hosting code is in ../deployment/huggingface. The web application records ratings in SQLite. This service receives synthesis requests and retains generated WAVs temporarily. Keep the bundled reference and source attribution.

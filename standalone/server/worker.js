@@ -120,6 +120,8 @@ async function api(request,env,url) {
   }
   if(path==='/api/study/sessions' && method==='POST') {
     const input=sessionMetadata(await body(request)), hash=await tokenHash(request), timestamp=now();
+    // The 27-clip v4 design is retired (protocol amendment 2026-09-10): its stored sessions may finish, but no new one starts.
+    if(input.study_version!==manifest.study_version && !await readSession(db,input.participant_id)) fail(409,'This study version changed. Reload the page.');
     await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(participant_id) DO NOTHING`).bind(input.participant_id,hash,input.study_version,input.collection_version,input.record_type,input.group+1,input.seed,Number(input.eligibility.comfortable_english),Number(input.eligibility.headphones),Number(input.eligibility.previously_used_studio),input.consent_utc,timestamp,timestamp,input.nickname,input.rating_scale).run();
     const s=await owned(request,db,input.participant_id);
