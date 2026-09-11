@@ -1,0 +1,7 @@
+allowBuilds:
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false
+  esbuild: true
+  bufferutil: false
+  msw: false
