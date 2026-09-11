@@ -11,7 +11,7 @@ import {setPassword,createAuth} from '../server/auth.mjs';
 import {createEchoServer} from '../server/start.mjs';
 import {COLLECTION_VERSION} from '../server/worker.js';
 import {makeTrials} from '../study-session.js';
-import {QWEN_REVISION} from '../model-config.js';
+import {QWEN_REVISION} from '../server/llm-backup.mjs';
 import manifest from '../public/study/manifest.json' with {type:'json'};
 const password='correct-test-password-12345';
 async function fixture(t){
