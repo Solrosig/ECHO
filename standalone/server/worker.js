@@ -1,6 +1,7 @@
 import {validateNickname} from '../participant.js';
 import {audioDownload} from './audio.js';
 import {interactiveApi,explorationCSV} from './interactive.js';
+import {handleDialogueRequest} from './dialogue.mjs';
 import manifest from '../public/study/manifest.json' with { type: 'json' };
 import previousManifest from '../public/study/manifest-v4.json' with { type: 'json' };
 const manifests=new Map([manifest,previousManifest].map(m=>[m.study_version,m]));
@@ -111,6 +112,7 @@ async function api(request,env,url) {
     const origin=request.headers.get('origin');
     if (!origin || origin!==url.origin || request.headers.get('sec-fetch-site')==='cross-site') fail(403,'Only this website can submit responses.');
   }
+  if(path==='/api/dialogue/reply'&&method==='POST')return handleDialogueRequest(request,env,{readBody:body,json});
   if(path.startsWith('/api/interactive/'))return interactiveApi(request,url,{db,body,tokenHash,fail,json,now,audioBucket:env.AUDIO});
   if(path==='/api/study/status' && method==='GET') {
     await db.prepare('SELECT participant_id FROM study_sessions LIMIT 1').first();

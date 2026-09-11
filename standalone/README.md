@@ -16,7 +16,7 @@ node server/start.mjs
 
 Save the newly generated researcher password privately. Setup is required only once per installation. Open **http://127.0.0.1:8787/**. Keep the terminal open; stop with Ctrl+C. Later starts need only the final command. Windows, macOS and Linux launchers are also included. Opening an HTML file directly does not start the application.
 
-Listening and browser Kokoro use bundled files. Explore also loads the bundled Qwen browser model and requires working WebGPU and adequate GPU memory. The larger Python voices require the separate setup below. No GPT/OpenAI account, author's login or original computer is required.
+Listening and browser Kokoro use bundled files. Explore needs Ollama on the same computer with `llama3.2:3b` pulled (`ollama pull llama3.2:3b`); the server reaches it at `ECHO_OLLAMA_URL` (default `http://127.0.0.1:11434`). The coherence gate stays off unless `ECHO_COHERENCE_GATE=on` is set and `python gate_service.py` runs from the ECHO repository root. The prebuilt `dist/client` predates this change: rebuild it with `pnpm build`. The larger Python voices require the separate setup below. No GPT/OpenAI account, author's login or original computer is required.
 
 ## What each mode does
 
