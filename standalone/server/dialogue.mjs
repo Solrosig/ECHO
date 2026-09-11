@@ -1,5 +1,5 @@
 import {appendFileSync} from 'node:fs';
-import {dialogueMessages,DIALOGUE_PROMPT_VERSION} from './dialogue-prompt.mjs';
+import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply} from './dialogue-prompt.mjs';
 import {QWEN_BACKUP_ALLOWED,QWEN_BACKUP_MODEL} from './llm-backup.mjs';
 
 // ECHO's primary language model is llama3.2:3b served by local Ollama (decision 2026-09-11).
@@ -44,13 +44,14 @@ export async function dialogueReply(input,config,{fetchImpl=fetch}={}){
   catch(error){throw new DialogueError(400,error.message);}
   if(config.gate==='on'){
     const {response,data}=await postJson(fetchImpl,`${config.gateUrl}/v1/gated-reply`,{messages,emotion:input.emotion,model:config.model,...GENERATION},config.timeoutMs);
-    if(!response.ok||typeof data?.text!=='string'||!data.text.trim())throw new DialogueError(502,'The coherence gate could not produce a reply. Try again.');
-    return {text:data.text.trim(),gate:'on',prompt_version:DIALOGUE_PROMPT_VERSION,passed:data.passed===true,attempts:Array.isArray(data.attempts)?data.attempts.length:0};
+    const text=typeof data?.text==='string'?unwrapQuotedReply(data.text):'';
+    if(!response.ok||!text)throw new DialogueError(502,'The coherence gate could not produce a reply. Try again.');
+    return {text,gate:'on',prompt_version:DIALOGUE_PROMPT_VERSION,passed:data.passed===true,attempts:Array.isArray(data.attempts)?data.attempts.length:0};
   }
   const {response,data}=await postJson(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{model:config.model,messages,...GENERATION,stream:false},config.timeoutMs);
   if(response.status===404)throw new DialogueError(503,'The language model is not installed in Ollama.');
   if(!response.ok)throw new DialogueError(502,'The language model could not produce a reply. Try again.');
-  const choice=data?.choices?.[0],text=typeof choice?.message?.content==='string'?choice.message.content.trim():'';
+  const choice=data?.choices?.[0],text=typeof choice?.message?.content==='string'?unwrapQuotedReply(choice.message.content):'';
   if(!text||choice.finish_reason==='length')throw new DialogueError(502,'The reply was empty or incomplete. Try a shorter message.');
   return {text,gate:'off',prompt_version:DIALOGUE_PROMPT_VERSION};
 }
