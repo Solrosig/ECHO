@@ -1,0 +1,551 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "ec1297a2-76a6-498b-a028-3d3ce209875d",
+  "prevId": "798e30f5-d219-4876-a355-f7dab0a3fff5",
+  "tables": {
+    "interactive_sessions": {
+      "name": "interactive_sessions",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "engine": {
+          "name": "engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "record_type": {
+          "name": "record_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "consent_utc": {
+          "name": "consent_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "received_utc": {
+          "name": "received_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_utc": {
+          "name": "updated_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "withdrawn_utc": {
+          "name": "withdrawn_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_interactive_sessions_updated": {
+          "name": "idx_interactive_sessions_updated",
+          "columns": [
+            "updated_utc"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "interactive_mode": {
+          "name": "interactive_mode",
+          "value": "\"interactive_sessions\".\"mode\" IN ('line','explore')"
+        },
+        "interactive_engine": {
+          "name": "interactive_engine",
+          "value": "\"interactive_sessions\".\"engine\" IS NULL OR \"interactive_sessions\".\"engine\" IN ('espeak','kokoro','piper')"
+        },
+        "interactive_type": {
+          "name": "interactive_type",
+          "value": "\"interactive_sessions\".\"record_type\" IN ('interactive_exploration','technical_test')"
+        },
+        "interactive_engine_mode": {
+          "name": "interactive_engine_mode",
+          "value": "(\"interactive_sessions\".\"mode\"='explore' AND \"interactive_sessions\".\"engine\" IS NOT NULL) OR (\"interactive_sessions\".\"mode\"='line' AND \"interactive_sessions\".\"engine\" IS NULL)"
+        }
+      }
+    },
+    "interactive_turns": {
+      "name": "interactive_turns",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "turn_order": {
+          "name": "turn_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "engine": {
+          "name": "engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "emotion": {
+          "name": "emotion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_text": {
+          "name": "input_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "output_text": {
+          "name": "output_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "turn_json": {
+          "name": "turn_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_utc": {
+          "name": "created_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "received_utc": {
+          "name": "received_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "interactive_turns_session_id_interactive_sessions_session_id_fk": {
+          "name": "interactive_turns_session_id_interactive_sessions_session_id_fk",
+          "tableFrom": "interactive_turns",
+          "tableTo": "interactive_sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "session_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "interactive_turns_session_id_turn_order_pk": {
+          "columns": [
+            "session_id",
+            "turn_order"
+          ],
+          "name": "interactive_turns_session_id_turn_order_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "interactive_order": {
+          "name": "interactive_order",
+          "value": "\"interactive_turns\".\"turn_order\" BETWEEN 1 AND 100"
+        },
+        "interactive_turn_engine": {
+          "name": "interactive_turn_engine",
+          "value": "\"interactive_turns\".\"engine\" IN ('espeak','kokoro','piper')"
+        },
+        "interactive_emotion": {
+          "name": "interactive_emotion",
+          "value": "\"interactive_turns\".\"emotion\" IN ('happy','upset','sad','calm')"
+        }
+      }
+    },
+    "study_responses": {
+      "name": "study_responses",
+      "columns": {
+        "participant_id": {
+          "name": "participant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trial_order": {
+          "name": "trial_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "block_id": {
+          "name": "block_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "valence": {
+          "name": "valence",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "arousal": {
+          "name": "arousal",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "naturalness": {
+          "name": "naturalness",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_match": {
+          "name": "target_match",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "play_count": {
+          "name": "play_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_audio": {
+          "name": "completed_audio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "elapsed_s": {
+          "name": "elapsed_s",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_utc": {
+          "name": "created_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "received_utc": {
+          "name": "received_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_utc": {
+          "name": "completed_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_response_session_item": {
+          "name": "idx_response_session_item",
+          "columns": [
+            "participant_id",
+            "item_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "study_responses_participant_id_study_sessions_participant_id_fk": {
+          "name": "study_responses_participant_id_study_sessions_participant_id_fk",
+          "tableFrom": "study_responses",
+          "tableTo": "study_sessions",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "columnsTo": [
+            "participant_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "study_responses_participant_id_trial_order_pk": {
+          "columns": [
+            "participant_id",
+            "trial_order"
+          ],
+          "name": "study_responses_participant_id_trial_order_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "response_order": {
+          "name": "response_order",
+          "value": "\"study_responses\".\"trial_order\" BETWEEN 1 AND 30"
+        },
+        "response_valence": {
+          "name": "response_valence",
+          "value": "\"study_responses\".\"valence\" BETWEEN -1 AND 1"
+        },
+        "response_arousal": {
+          "name": "response_arousal",
+          "value": "\"study_responses\".\"arousal\" BETWEEN -1 AND 1"
+        },
+        "response_naturalness": {
+          "name": "response_naturalness",
+          "value": "\"study_responses\".\"naturalness\" BETWEEN 1 AND 5"
+        },
+        "response_target_match": {
+          "name": "response_target_match",
+          "value": "\"study_responses\".\"target_match\" IS NULL OR \"study_responses\".\"target_match\" BETWEEN 1 AND 5"
+        }
+      }
+    },
+    "study_sessions": {
+      "name": "study_sessions",
+      "columns": {
+        "participant_id": {
+          "name": "participant_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "rating_scale": {
+          "name": "rating_scale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'va-0.05_match-1_naturalness-1_v1'"
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "study_version": {
+          "name": "study_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "collection_version": {
+          "name": "collection_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "record_type": {
+          "name": "record_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "group_number": {
+          "name": "group_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seed": {
+          "name": "seed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "comfortable_english": {
+          "name": "comfortable_english",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "headphones": {
+          "name": "headphones",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "previously_used_studio": {
+          "name": "previously_used_studio",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "consent_utc": {
+          "name": "consent_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "received_utc": {
+          "name": "received_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_utc": {
+          "name": "updated_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_utc": {
+          "name": "completed_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "withdrawn_utc": {
+          "name": "withdrawn_utc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_sessions_type_group": {
+          "name": "idx_sessions_type_group",
+          "columns": [
+            "record_type",
+            "group_number"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "session_type": {
+          "name": "session_type",
+          "value": "\"study_sessions\".\"record_type\" IN ('human_response', 'technical_test')"
+        },
+        "session_group": {
+          "name": "session_group",
+          "value": "\"study_sessions\".\"group_number\" BETWEEN 1 AND 16"
+        },
+        "session_seed": {
+          "name": "session_seed",
+          "value": "\"study_sessions\".\"seed\" BETWEEN 0 AND 4294967295"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
