@@ -1,0 +1,2 @@
+SoundTouchJS core and Lanczos interpolation, version 2.1.1, MPL-2.0. Compiled modules and source maps retained for portable execution. The sole vendor edit changes the Lanczos import to a relative local path. Upstream: https://github.com/cutterbl/SoundTouchJS ; package versions are pinned in package.json and pnpm-lock.yaml.
+TypeScript source from upstream tag v2.1.1, commit d9e39a7ddcf74c7a145bbba45856f30068c82b79, is included in upstream-source/.

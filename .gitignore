@@ -88,3 +88,6 @@ standalone/research-bundle/current-phase/kokoro-ablation/raw/*.f32
 !standalone/research-bundle/full-acoustic/audio/development/*.wav
 # tts-service/refs holds committed metadata; the root "refs/" rule would hide the folder. Its WAVs stay ignored by *.wav.
 !standalone/tts-service/refs/
+
+# WebLLM model bundle: kept out of the repository (not part of the frontend)
+standalone/public/models/qwen/
