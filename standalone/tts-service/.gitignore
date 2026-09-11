@@ -1,0 +1,4 @@
+# standalone/.gitignore ignores every folder named data/ (meant for the runtime database at the app root).
+# That also hides Matcha-TTS's Python package folder matcha/data/, which CosyVoice imports. Re-include it here:
+# a lower-level .gitignore takes precedence, so no file from the 1.5.0 release has to be edited.
+!vendor/Matcha-TTS/matcha/data/

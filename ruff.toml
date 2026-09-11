@@ -1,0 +1,2 @@
+# standalone/ is imported byte-for-byte from ECHO standalone 1.5.0; it is not reformatted to pass ECHO's lint gate.
+extend-exclude = ["standalone"]

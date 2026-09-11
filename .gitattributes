@@ -1,0 +1,3 @@
+# Byte-exact checkout: standalone/release-manifest.json pins a SHA-256 for every file under standalone/.
+# core.autocrlf=true on Windows would rewrite line endings on checkout and break scripts/verify.mjs.
+standalone/** -text
