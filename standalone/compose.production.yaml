@@ -6,6 +6,11 @@ services:
     environment:
       PUBLIC_ORIGIN: https://${ECHO_DOMAIN:?Set ECHO_DOMAIN in .env.hosting}
       ECHO_TRUST_PROXY: '1'
+      # Ollama and the Python speech service run on the host, not in this container.
+      ECHO_OLLAMA_URL: ${ECHO_OLLAMA_URL:-http://host.docker.internal:11434}
+      ECHO_TTS_URL: ${ECHO_TTS_URL:-http://host.docker.internal:7860}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     expose:
       - '8787'
     volumes:

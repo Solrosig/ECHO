@@ -72,6 +72,18 @@ Deleting an active participant session does not automatically erase historical b
 
 Behind a reverse proxy (Caddy in `compose.production.yaml`, or the Hugging Face host), set `ECHO_TRUST_PROXY=1` so that login attempts and these limits count each visitor rather than the proxy. Per network address, the server accepts 120 voice-synthesis requests per 10 minutes (`ECHO_TTS_REQUESTS_PER_10_MIN`) and 300 new sessions or conversations per hour (`ECHO_SESSIONS_PER_HOUR`); resuming a session does not count. Archived conversation recordings are capped at 2048 MB in total (`ECHO_AUDIO_QUOTA_MB`). Raise the first two for a lab where many participants share one address. The Hugging Face host serves the voices directly, so its Gradio queue limits apply there instead.
 
+## Run with Docker
+
+`compose.yaml` builds the website inside the image and keeps the database in a Docker volume. Create the researcher password once, then start:
+
+```sh
+docker compose build
+docker compose run --rm echo node scripts/setup.mjs
+docker compose up -d
+```
+
+Open **http://127.0.0.1:8787/**. Ollama and the Python voices run outside the container, which reaches them at `host.docker.internal` on ports 11434 and 7860. Ollama must therefore listen beyond loopback (`OLLAMA_HOST=0.0.0.0`, with port 11434 firewalled), or set `ECHO_OLLAMA_URL` and `ECHO_TTS_URL` to other addresses. The image serves the files in `public` at build time, and the Kokoro model weights are not in the repository: restore `public/models` from the release archive before building. For HTTPS, `compose.production.yaml` adds Caddy; run the same commands with `--env-file .env.hosting -f compose.production.yaml`, where `.env.hosting` sets `ECHO_DOMAIN`.
+
 ## Source and research materials
 
 In the ECHO repository, `thesis`, `docs`, `research-bundle/full-acoustic` and `research-bundle/analyse_ratings.py` are not included yet; they are in the release archive.
