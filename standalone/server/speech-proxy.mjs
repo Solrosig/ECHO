@@ -20,5 +20,5 @@ export async function proxySpeech(req,res,url,origin,upstream){
   res.writeHead(response.status,output);
   if(!response.body||req.method==='HEAD'){res.end();return;}
   Readable.fromWeb(response.body).on('error',()=>res.destroy()).pipe(res);
- }catch(error){if(res.destroyed)return;if(!res.headersSent)res.writeHead(503,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'Start the Python speech service. See docs/TTS_SERVICE_EN.md.'}));}
+ }catch(error){if(res.destroyed)return;if(!res.headersSent)res.writeHead(503,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'The speech service is not reachable. Start tts-service/app.py, or set ECHO_TTS_URL to its address.'}));}
 }

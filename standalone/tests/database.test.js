@@ -1,6 +1,7 @@
 import previousManifest from '../public/study/manifest-v4.json' with {type:'json'};
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -90,8 +91,10 @@ test('resuming recovers the server-confirmed perception lock and final rows',asy
  assert.equal(wireRows(f.s,f.trials)[1].target_match,null);
 });
 
-test('previous 27-clip sessions resume and complete without changing their allocation or hashes',async t=>{
- const f=fixture(t,':memory:',previousManifest);assert.equal((await f.register()).status,200);
+test('previous 27-clip sessions resume and complete without changing their allocation or hashes; no new one starts',async t=>{
+ const f=fixture(t,':memory:',previousManifest);assert.equal((await f.register()).status,409);assert.equal((await f.DB.prepare('SELECT COUNT(*) AS n FROM study_sessions').first()).n,0);
+ await f.DB.prepare('INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(f.s.participant_id,createHash('sha256').update(f.s.remote.token).digest('hex'),f.s.study_version,f.s.collection_version,f.s.record_type,f.s.group+1,f.s.seed,0,0,0,f.s.consent_utc,f.s.consent_utc,f.s.consent_utc,f.s.nickname,f.s.rating_scale).run();
+ assert.equal((await f.register()).status,200);
  const rows=Array.from({length:27},(_,i)=>f.row(i));assert.equal((await f.save(rows.slice(0,12))).status,200);
  const pending=await (await f.call(`/api/study/sessions/${f.s.participant_id}`)).json();assert.equal(pending.saved_count,12);assert.equal(pending.complete,false);assert.equal(pending.trials_per_session,27);
  assert.equal((await f.register()).status,200);assert.equal((await f.save(rows)).status,200);

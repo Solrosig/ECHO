@@ -86,7 +86,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
     if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT.');
     const server=createEchoServer({host,publicOrigin,dataDir:resolve(process.env.ECHO_DATA_DIR||join(ROOT,'data')),allowLocalContainer:process.env.ECHO_ALLOW_LOCAL_CONTAINER==='1'});
     server.on('error',e=>{console.error(e.code==='EADDRINUSE'?'Port is busy. Set a different PORT and retry.':e.message);process.exitCode=1;});
-    server.listen(port,host,()=>console.log(`ECHO ready: ${publicOrigin||`http://${host}:${port}`}\nResearch dashboard: /research\nStop with Ctrl+C. Data remain on disk.`));
+    server.listen(port,host,()=>console.log(`ECHO ready: ${publicOrigin||`http://${host}:${port}`}\n${SHOW_RESEARCH_PAGE?'Research dashboard: /research':'Research dashboard: hidden in this build (SHOW_RESEARCH_PAGE in frontend-visibility.js)'}\nStop with Ctrl+C. Data remain on disk.`));
     for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{server.close(()=>process.exit(0));server.closeIdleConnections();setTimeout(()=>process.exit(1),10000).unref();});
   }catch(error){console.error(error.message);process.exitCode=1;}
 }
