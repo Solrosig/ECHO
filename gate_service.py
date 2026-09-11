@@ -152,14 +152,24 @@ def make_handler(service: Callable[[object], dict]) -> type[BaseHTTPRequestHandl
     return Handler
 
 
-def main() -> None:
-    from config import load_config
+def build_judge(cfg) -> EmotionJudge:
+    """The configured judge with the configured affect norms, built as demo.py builds it.
+
+    Without `norms_path` the lexicon silently falls back to its 30-word placeholder table, and most replies are
+    then decided by the blind-LLM fallback while the provenance still says cascade.
+    """
     from judge import make_judge
     from llm import OllamaAdapter
 
+    llm = OllamaAdapter(cfg.ollama_host, cfg.ollama_model, temperature=cfg.llm_temperature, timeout_s=cfg.llm_timeout_s)
+    return make_judge(cfg.judge, llm=llm, norms_path=cfg.affect_norms or None)
+
+
+def main() -> None:
+    from config import load_config
+
     cfg = load_config()
-    judge = make_judge(cfg.judge, llm=OllamaAdapter(cfg.ollama_host, cfg.ollama_model,
-                                                     temperature=cfg.llm_temperature, timeout_s=cfg.llm_timeout_s))
+    judge = build_judge(cfg)
     chat = ollama_chat(cfg.ollama_host, cfg.llm_timeout_s)
     lock = threading.Lock()  # one generation at a time: the cascade judge records its last decision on itself
 
@@ -169,7 +179,8 @@ def main() -> None:
 
     host, port = os.getenv("ECHO_GATE_HOST", "127.0.0.1"), int(os.getenv("ECHO_GATE_PORT", "8790"))
     server = ThreadingHTTPServer((host, port), make_handler(service))
-    print(f"ECHO coherence gate listening on http://{host}:{port} (judge: {cfg.judge}). Stop with Ctrl+C.")
+    print(f"ECHO coherence gate listening on http://{host}:{port} (judge: {cfg.judge}, affect norms: {cfg.affect_norms}). "
+          "Stop with Ctrl+C.")
     server.serve_forever()
 
 
