@@ -48,3 +48,43 @@ _reference/
 .DS_Store
 .vscode/
 text_model/ 
+
+# ---- ECHO standalone 1.5.0 ----
+# Binaries and generated files come from the release asset, never from git.
+standalone/dist/
+standalone/node_modules/
+standalone/thesis/
+standalone/README.html
+standalone/docs/archive/*.html
+standalone/research-bundle/README.html
+standalone/docs/listener-instructions-v2/*.docx
+standalone/public/models/**/*.wasm
+standalone/public/models/qwen/tokenizer.json
+standalone/public/models/qwen/vocab.json
+standalone/public/models/qwen/merges.txt
+standalone/public/models/kokoro/onnx/
+standalone/public/models/kokoro/voices/
+standalone/public/models/piper/
+standalone/public/vendor/espeak/
+standalone/public/vendor/piper/
+standalone/public/vendor/ort/
+standalone/public/vendor/**/*.wasm
+standalone/public/vendor/**/*.data
+standalone/public/upstream/
+standalone/public/calibration/audio/
+standalone/espeak-client.js
+standalone/piper.worker.js
+standalone/piper-phonemize.js
+standalone/vendor/soundtouch/**/*.map
+standalone/vendor/soundtouch/**/*.tsbuildinfo
+standalone/**/*.zip
+standalone/research-bundle/full-acoustic/audio/diagnostics/
+standalone/research-bundle/full-acoustic/audio/reference/
+standalone/research-bundle/current-phase/kokoro-ablation/raw/*.f32
+# Frozen research audio that IS versioned; the root *.wav rule would hide it. Hashes pinned in PROTOCOL_FREEZE_V2.json.
+!standalone/public/study/audio/*.wav
+!standalone/research-bundle/current-phase/kokoro-ablation/processed/*.wav
+!standalone/research-bundle/full-acoustic/audio/primary/*.wav
+!standalone/research-bundle/full-acoustic/audio/development/*.wav
+# tts-service/refs holds committed metadata; the root "refs/" rule would hide the folder. Its WAVs stay ignored by *.wav.
+!standalone/tts-service/refs/
