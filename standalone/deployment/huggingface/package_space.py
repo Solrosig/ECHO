@@ -12,6 +12,10 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[1]
 REF_WAVS = ['refs/Q1.wav', 'refs/Q2.wav', 'refs/Q3.wav', 'refs/Q4.wav', 'refs/neutral.wav']
+# Kokoro runs in the listener's browser, so its weights ship inside webapp.zip. They are release assets, not in git.
+KOKORO_FILES = ['public/models/kokoro/onnx/model_quantized.onnx', 'public/models/kokoro/voices/af_heart.bin']
+# Never shipped to the page: the locked Qwen backup and the Piper voice, which is on hold.
+EXCLUDED_MODELS = ('public/models/qwen/', 'public/models/piper/')
 
 
 def build_backend(target, refs_from):
@@ -42,6 +46,9 @@ def main():
         raise SystemExit('The reference WAVs are needed: pass --refs-from path/to/an/earlier/backend.zip')
     if not (root / 'dist/client/index.html').is_file():
         raise SystemExit('Run pnpm build first.')
+    missing = [name for name in KOKORO_FILES if not (root / name).is_file()]
+    if missing:
+        raise SystemExit('The browser Kokoro voice is missing: copy ' + ', '.join(missing) + ' from the release archive.')
     out.mkdir(parents=True)
     for name in ['app.py', 'web_host.py', 'persistent_store.py', 'requirements.txt', 'packages.txt', 'README.md']:
         shutil.copy2(here / name, out / name)
@@ -50,7 +57,8 @@ def main():
     files = [p for p in root.iterdir() if p.is_file() and p.suffix in ['.js', '.mjs', '.html', '.css', '.json', '.yaml', '.ts']]
     files = [p for p in files if p.name not in ['release-manifest.json']]
     for name in include:
-        files.extend(p for p in (root / name).rglob('*') if p.is_file() and '__pycache__' not in p.parts)
+        files.extend(p for p in (root / name).rglob('*') if p.is_file() and '__pycache__' not in p.parts
+                     and not p.relative_to(root).as_posix().startswith(EXCLUDED_MODELS))
     with zipfile.ZipFile(out / 'webapp.zip', 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for path in sorted(set(files)):
             if path.name == 'downloads.json':
