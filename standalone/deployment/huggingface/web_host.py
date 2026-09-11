@@ -1,5 +1,5 @@
 """Serve the standalone ECHO application beside its existing Gradio TTS service."""
-import asyncio,hashlib,json,os,secrets,shutil,subprocess,tarfile,time,urllib.request,zipfile
+import asyncio,hashlib,json,os,secrets,shutil,subprocess,tarfile,threading,time,urllib.request,zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import httpx
@@ -13,6 +13,12 @@ LOCAL=Path(os.environ.get('ECHO_LOCAL_DATA','/tmp/echo-web-data'))
 DURABLE=Path(os.environ.get('ECHO_PERSISTENT_DIR','/data/echo'))
 NODE_VERSION='v24.21.0'
 NODE_SHA='fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6'
+OLLAMA_VERSION='v0.30.11'
+OLLAMA_SHA='11dc89b6c68f136f85ef10e00957530ffab61c35f227696dbf8a11169b47f165'
+OLLAMA_MODEL='llama3.2:3b'
+# The llama3.2:3b build (Q4_K_M) the 2026-09-11 prompt screen used; any other build is refused.
+OLLAMA_MODEL_DIGEST='a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72'
+OLLAMA_PROCESS=None
 
 def unpack(archive,dest):
     dest=Path(dest);dest.mkdir(parents=True,exist_ok=True)
@@ -29,7 +35,50 @@ def researcher_credentials(directory,password):
     digest=hashlib.scrypt(password.encode(),salt=salt.hex().encode(),n=16384,r=8,p=1,dklen=64)
     write_closed(Path(directory)/'researcher.json',json.dumps({'version':1,'salt':salt.hex(),'hash':digest.hex()}).encode())
 
+def llm_mode():
+    """ECHO_LLM_MODE: off (no conversation replies), embedded (Ollama inside this Space, on paid GPU hardware)
+    or remote (a private Ollama Space at ECHO_OLLAMA_URL, called with the secret ECHO_OLLAMA_TOKEN)."""
+    mode=os.environ.get('ECHO_LLM_MODE','off').strip().lower()
+    if mode not in ('off','embedded','remote'):raise RuntimeError('ECHO_LLM_MODE must be off, embedded or remote.')
+    return mode
+
+def model_digest(tags,name=OLLAMA_MODEL):
+    return next((m.get('digest') for m in tags.get('models',[]) if m.get('name')==name),None)
+
+def start_embedded_ollama(cache):
+    """Run the pinned Ollama and model inside this Space. They download to local disk again after every wake-up."""
+    global OLLAMA_PROCESS
+    cache=Path(cache);runtime=cache/'runtime';binary=runtime/'bin/ollama';base='http://127.0.0.1:11434'
+    print(f"Starting Ollama on {os.environ.get('ACCELERATOR','unknown hardware')}; without a GPU it runs on the CPU.",flush=True)
+    if not binary.exists():
+        runtime.mkdir(parents=True,exist_ok=True);archive=cache/'ollama-linux-amd64.tar.zst'
+        urllib.request.urlretrieve(f'https://github.com/ollama/ollama/releases/download/{OLLAMA_VERSION}/ollama-linux-amd64.tar.zst',archive)
+        if sha(archive)!=OLLAMA_SHA:archive.unlink();raise RuntimeError('Ollama runtime checksum mismatch')
+        subprocess.run(['tar','--zstd','-xf',str(archive),'-C',str(runtime)],check=True);archive.unlink()
+    (cache/'home').mkdir(parents=True,exist_ok=True)
+    env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home')}
+    OLLAMA_PROCESS=subprocess.Popen([str(binary),'serve'],env=env)
+    for _ in range(240):
+        if OLLAMA_PROCESS.poll() is not None:raise RuntimeError('Ollama stopped during startup')
+        try:
+            if httpx.get(base+'/api/version',timeout=2).status_code==200:break
+        except httpx.HTTPError:pass
+        time.sleep(.5)
+    else:raise RuntimeError('Ollama did not start')
+    if model_digest(httpx.get(base+'/api/tags',timeout=10).json())!=OLLAMA_MODEL_DIGEST:
+        httpx.post(base+'/api/pull',json={'model':OLLAMA_MODEL,'stream':False},timeout=httpx.Timeout(3600,connect=10)).raise_for_status()
+    digest=model_digest(httpx.get(base+'/api/tags',timeout=10).json())
+    if digest!=OLLAMA_MODEL_DIGEST:
+        OLLAMA_PROCESS.terminate();raise RuntimeError(f'{OLLAMA_MODEL} is build {digest}, not the tested {OLLAMA_MODEL_DIGEST[:12]}')
+    httpx.post(base+'/api/generate',json={'model':OLLAMA_MODEL,'keep_alive':-1},timeout=httpx.Timeout(600,connect=10)).raise_for_status()
+    print(f'Conversation model ready: {OLLAMA_MODEL} build {OLLAMA_MODEL_DIGEST[:12]}.',flush=True)
+
+def run_embedded_ollama():
+    try:start_embedded_ollama(os.environ.get('ECHO_OLLAMA_CACHE','/tmp/echo-ollama'))
+    except Exception as exc:print(f'Conversation replies unavailable: {exc}',flush=True)
+
 def prepare():
+    mode=llm_mode()
     if not WEB.exists():unpack(ROOT/'webapp.zip',WEB)
     # Preserve Window as the receiver of native fetch in Chromium. The bundled
     # standalone sync classes previously called fetch as their own method.
@@ -97,6 +146,11 @@ def prepare():
     with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(download,rows))
     origin=os.environ.get('ECHO_PUBLIC_ORIGIN','https://'+os.environ.get('SPACE_HOST','your-space.hf.space'))
     env={**os.environ,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(LOCAL),'ECHO_TRUST_PROXY':'1'}
+    if mode=='remote':
+        if not (os.environ.get('ECHO_OLLAMA_URL') and os.environ.get('ECHO_OLLAMA_TOKEN')):print('ECHO_LLM_MODE=remote needs the variable ECHO_OLLAMA_URL and the secret ECHO_OLLAMA_TOKEN; conversation replies stay unavailable.',flush=True)
+    else:
+        env['ECHO_OLLAMA_URL']='http://127.0.0.1:11434';env.pop('ECHO_OLLAMA_TOKEN',None)
+        if mode=='off':print('Conversation replies are off (ECHO_LLM_MODE=off); Listening and Test work normally.',flush=True)
     child=subprocess.Popen([node,str(WEB/'server/start.mjs')],env=env)
     for _ in range(120):
         if child.poll() is not None:raise RuntimeError('Web process stopped during startup')
@@ -107,6 +161,8 @@ def prepare():
         time.sleep(.25)
     else:raise RuntimeError('Web process did not become ready')
     if store.last is None:store.checkpoint()
+    # The website serves Listening at once; the conversation model starts beside it and Explore waits for it.
+    if mode=='embedded':threading.Thread(target=run_embedded_ollama,daemon=True,name='echo-ollama').start()
     return store,child,origin
 
 def add_web_routes(app,store,origin):
