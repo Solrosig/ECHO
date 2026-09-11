@@ -21,6 +21,14 @@ def unpack(archive,dest):
             if not (dest/name).resolve().is_relative_to(dest.resolve()):raise RuntimeError('Invalid archive path')
         z.extractall(dest)
 
+def researcher_credentials(directory,password):
+    """Store only a salted scrypt hash of the researcher password, in the format server/auth.mjs verifies."""
+    if not isinstance(password,str) or not 16<=len(password)<=256:
+        raise RuntimeError('Before the first launch, set the Space secret ECHO_ADMIN_PASSWORD (16-256 characters). ECHO stores only its salted hash.')
+    salt=secrets.token_bytes(32)
+    digest=hashlib.scrypt(password.encode(),salt=salt.hex().encode(),n=16384,r=8,p=1,dklen=64)
+    write_closed(Path(directory)/'researcher.json',json.dumps({'version':1,'salt':salt.hex(),'hash':digest.hex()}).encode())
+
 def prepare():
     if not WEB.exists():unpack(ROOT/'webapp.zip',WEB)
     # Preserve Window as the receiver of native fetch in Chromium. The bundled
@@ -56,13 +64,8 @@ def prepare():
         if not any(' /data ' in line for line in Path('/proc/mounts').read_text().splitlines()):raise RuntimeError('Mount the private research bucket at /data before launching ECHO')
     LOCAL.mkdir(parents=True,exist_ok=True);DURABLE.mkdir(parents=True,exist_ok=True)
     credentials=DURABLE/'researcher.json'
-    if not credentials.exists():
-        password=secrets.token_urlsafe(24);salt=secrets.token_bytes(32)
-        digest=hashlib.scrypt(password.encode(),salt=salt.hex().encode(),n=16384,r=8,p=1,dklen=64)
-        # This file is stored only inside the private bucket, never in public
-        # source, app responses, browser JavaScript or container logs.
-        write_closed(DURABLE/'RESEARCHER_ACCESS.txt',('ECHO researcher access\nPassword: '+password+'\nKeep this file private.\n').encode())
-        write_closed(credentials,json.dumps({'version':1,'salt':salt.hex(),'hash':digest.hex()}).encode())
+    if not credentials.exists():researcher_credentials(DURABLE,os.environ.get('ECHO_ADMIN_PASSWORD',''))
+    if (DURABLE/'RESEARCHER_ACCESS.txt').exists():print('RESEARCHER_ACCESS.txt in the research bucket holds a plaintext researcher password from an earlier version. Delete it from the bucket; researcher.json keeps only the salted hash.',flush=True)
     shutil.copyfile(credentials,LOCAL/'researcher.json')
     store=Store(LOCAL,DURABLE)
     if not (LOCAL/'study.sqlite').exists():store.restore()
@@ -93,7 +96,7 @@ def prepare():
     print('Loading pinned browser models for ECHO...',flush=True)
     with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(download,rows))
     origin=os.environ.get('ECHO_PUBLIC_ORIGIN','https://'+os.environ.get('SPACE_HOST','your-space.hf.space'))
-    env={**os.environ,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(LOCAL)}
+    env={**os.environ,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(LOCAL),'ECHO_TRUST_PROXY':'1'}
     child=subprocess.Popen([node,str(WEB/'server/start.mjs')],env=env)
     for _ in range(120):
         if child.poll() is not None:raise RuntimeError('Web process stopped during startup')

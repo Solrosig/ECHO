@@ -19,13 +19,7 @@ import nltk
 nltk.download('punkt_tab',quiet=True)
 
 torch.set_num_threads(2)
-# These pinned research checkpoints contain metadata beyond tensors. No user-supplied
-# weights or paths are accepted. Required for the original upstream loaders on torch>=2.6.
-_load=torch.load
-def trusted_checkpoint_load(*args,**kwargs):
-    kwargs.setdefault('weights_only',False)
-    return _load(*args,**kwargs)
-torch.load=trusted_checkpoint_load
+# Pinned checkpoints are unpickled freely only while models.load_engine runs (models.trusted_checkpoint_loads).
 
 enabled=os.environ.get('ECHO_ENGINES',','.join(models.ENGINES)).split(',')
 failures={}
