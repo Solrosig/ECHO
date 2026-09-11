@@ -49,7 +49,8 @@ test('standalone exposes only public assets, safe ranges and explicit same-origi
  const asset=await f.call('/sample.wav',{headers:{Range:'bytes=2-5'}});assert.equal(asset.status,206);assert.equal(await asset.text(),'2345');assert.equal(asset.headers.get('content-type'),'audio/wav');
  assert.equal((await f.call('/sample.wav',{headers:{Range:'bytes=50-'}})).status,416);
  for(const p of ['/data/researcher.json','/.env','/research-bundle/private/analysis-key.json','/server/auth.mjs'])assert.equal((await f.call(p)).status,404);
- symlinkSync(join(f.dataDir,'researcher.json'),join(f.publicDir,'leak.json'));assert.equal((await f.call('/leak.json')).status,404);
+ try{symlinkSync(join(f.dataDir,'researcher.json'),join(f.publicDir,'leak.json'));assert.equal((await f.call('/leak.json')).status,404);}
+ catch(error){if(error.code!=='EPERM')throw error;t.diagnostic('Symlink check skipped: Windows creates symlinks only with Developer Mode or administrator rights.');}
  assert.equal((await f.call('/api/auth/login',{method:'POST',data:{password},headers:{Origin:'https://foreign.example'}})).status,403);
  const forgedHost=await new Promise((resolve,reject)=>{const req=httpRequest(f.origin+'/',{headers:{Host:'foreign.example'}},res=>{res.resume();resolve(res.statusCode);});req.on('error',reject);req.end();});assert.equal(forgedHost,421);
  assert.equal((await f.call('/api/auth/login',{method:'POST',data:{password:'x'.repeat(3000)}})).status,413);
