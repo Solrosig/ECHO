@@ -1,0 +1,53 @@
+{
+  "dataset": "RAVDESS",
+  "authors": "Livingstone and Russo (2018)",
+  "doi": "10.1371/journal.pone.0196391",
+  "license": "CC BY-NC-SA 4.0",
+  "files": [
+    {
+      "reference": "neutral",
+      "source": "03-01-01-01-01-01-03.wav",
+      "source_sha256": "d61bd344a100e9ba43b2e589912e0ce4b8c4f8be14e7e9a5b618a51728faf34f",
+      "output_sha256": "3f2727dcff54418d0966fe05642d0899f0298c9c1f3d57f3967241cb6f113bfb",
+      "transform": "mono; whole-clip peak normalised to 0.8; no pitch or time change",
+      "actor": 3,
+      "recorded_emotion": "01"
+    },
+    {
+      "reference": "Q1",
+      "source": "03-01-03-01-01-01-03.wav",
+      "source_sha256": "bf7281f0cfb95f98be2ce95a9c7ab6e66997965b9084f41e839776b1c401d12a",
+      "output_sha256": "e4e6286a45e761c2c52b77a3c5e73a69edefa8bcd5c4f7862bb203804fd623df",
+      "transform": "mono; whole-clip peak normalised to 0.8; no pitch or time change",
+      "actor": 3,
+      "recorded_emotion": "03"
+    },
+    {
+      "reference": "Q2",
+      "source": "03-01-05-01-01-01-03.wav",
+      "source_sha256": "1016e7e730d0ce722881b0a306c3c88141155404ad6b0b308d9df22b161463e9",
+      "output_sha256": "1c35130cc179e7130615c2a0f801becd585f31d4f85853bf3a4061fdbb9bbed2",
+      "transform": "mono; whole-clip peak normalised to 0.8; no pitch or time change",
+      "actor": 3,
+      "recorded_emotion": "05"
+    },
+    {
+      "reference": "Q3",
+      "source": "03-01-04-01-01-01-03.wav",
+      "source_sha256": "36c9db23dc891df8a4eae9ecb9d9553a284e6e9b1c05db26ec4c56ad5a2096c8",
+      "output_sha256": "e6ddb0b1b8e8f005cadf77aab680df467136bd1cc09f606d40fd7e924bb75887",
+      "transform": "mono; whole-clip peak normalised to 0.8; no pitch or time change",
+      "actor": 3,
+      "recorded_emotion": "04"
+    },
+    {
+      "reference": "Q4",
+      "source": "03-01-02-01-01-01-03.wav",
+      "source_sha256": "7de7f8c071c5a7d7537d6d1445770c56c3dd02a9e84cc5612930570e28b98ee4",
+      "output_sha256": "8fb3f8475ab8c5ed6b66c949a839c573e1a7e54338383799358209aa83f88bc9",
+      "transform": "mono; whole-clip peak normalised to 0.8; no pitch or time change",
+      "actor": 3,
+      "recorded_emotion": "02"
+    }
+  ]
+}
