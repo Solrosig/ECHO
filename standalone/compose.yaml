@@ -5,6 +5,11 @@ services:
     restart: unless-stopped
     environment:
       ECHO_ALLOW_LOCAL_CONTAINER: '1'
+      # Ollama and the Python speech service run on the host, not in this container.
+      ECHO_OLLAMA_URL: ${ECHO_OLLAMA_URL:-http://host.docker.internal:11434}
+      ECHO_TTS_URL: ${ECHO_TTS_URL:-http://host.docker.internal:7860}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - '127.0.0.1:8787:8787'
     volumes:

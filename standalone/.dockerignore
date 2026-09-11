@@ -5,3 +5,9 @@ backups
 .env*
 research-bundle
 work
+dist
+docs
+thesis
+tests
+tts-service
+deployment
