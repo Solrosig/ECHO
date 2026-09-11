@@ -18,6 +18,7 @@ export async function interactiveApi(request,url,h){
   if(input.mode==='explore'?!EXPLORE_ENGINES.includes(input.engine):input.engine!==null)fail(400,'Choose one engine for an Explore conversation.');
   if(input.consent!==true||typeof input.consent_utc!=='string'||!Number.isFinite(Date.parse(input.consent_utc)))fail(400,'Agree to storage before continuing.');
   const timestamp=now(),hash=await tokenHash(request);
+  if(!await db.prepare('SELECT 1 AS n FROM interactive_sessions WHERE session_id=?').bind(input.session_id).first()&&h.allowNewSession?.()===false)fail(429,'Too many new conversations from this network. Wait an hour and try again.');
   await db.prepare('INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO NOTHING').bind(input.session_id,hash,nickname,input.mode,input.engine,input.record_type,input.version,input.consent_utc,timestamp,timestamp).run();
   const s=await owned(input.session_id);if(s.withdrawn_utc)fail(410,'This conversation was deleted.');
   if(s.nickname!==nickname||s.mode!==input.mode||s.engine!==input.engine||s.version!==input.version||s.record_type!==input.record_type)fail(409,'Nickname and TTS engine are fixed for this conversation. Start a new one to change them.');

@@ -68,6 +68,10 @@ Keep the resulting SQLite file, .manifest.json and any .audio companion together
 
 Deleting an active participant session does not automatically erase historical backups. Define retention and backup erasure before recruitment.
 
+## Hosting limits
+
+Behind a reverse proxy (Caddy in `compose.production.yaml`, or the Hugging Face host), set `ECHO_TRUST_PROXY=1` so that login attempts and these limits count each visitor rather than the proxy. Per network address, the server accepts 120 voice-synthesis requests per 10 minutes (`ECHO_TTS_REQUESTS_PER_10_MIN`) and 300 new sessions or conversations per hour (`ECHO_SESSIONS_PER_HOUR`); resuming a session does not count. Archived conversation recordings are capped at 2048 MB in total (`ECHO_AUDIO_QUOTA_MB`). Raise the first two for a lab where many participants share one address. The Hugging Face host serves the voices directly, so its Gradio queue limits apply there instead.
+
 ## Source and research materials
 
 In the ECHO repository, `thesis`, `docs`, `research-bundle/full-acoustic` and `research-bundle/analyse_ratings.py` are not included yet; they are in the release archive.

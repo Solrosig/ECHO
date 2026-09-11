@@ -113,15 +113,16 @@ async function api(request,env,url) {
     if (!origin || origin!==url.origin || request.headers.get('sec-fetch-site')==='cross-site') fail(403,'Only this website can submit responses.');
   }
   if(path==='/api/dialogue/reply'&&method==='POST')return handleDialogueRequest(request,env,{readBody:body,json});
-  if(path.startsWith('/api/interactive/'))return interactiveApi(request,url,{db,body,tokenHash,fail,json,now,audioBucket:env.AUDIO});
+  if(path.startsWith('/api/interactive/'))return interactiveApi(request,url,{db,body,tokenHash,fail,json,now,audioBucket:env.AUDIO,audioQuotaBytes:env.AUDIO_QUOTA_BYTES,allowNewSession:env.NEW_SESSION_ALLOWED});
   if(path==='/api/study/status' && method==='GET') {
     await db.prepare('SELECT participant_id FROM study_sessions LIMIT 1').first();
     return json({available:true,study_version:manifest.study_version,collection_version:COLLECTION_VERSION});
   }
   if(path==='/api/study/sessions' && method==='POST') {
-    const input=sessionMetadata(await body(request)), hash=await tokenHash(request), timestamp=now();
+    const input=sessionMetadata(await body(request)), hash=await tokenHash(request), timestamp=now(), existing=await readSession(db,input.participant_id);
     // The 27-clip v4 design is retired (protocol amendment 2026-09-10): its stored sessions may finish, but no new one starts.
-    if(input.study_version!==manifest.study_version && !await readSession(db,input.participant_id)) fail(409,'This study version changed. Reload the page.');
+    if(!existing && input.study_version!==manifest.study_version) fail(409,'This study version changed. Reload the page.');
+    if(!existing && env.NEW_SESSION_ALLOWED?.()===false) fail(429,'Too many new sessions from this network. Wait an hour and try again.');
     await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(participant_id) DO NOTHING`).bind(input.participant_id,hash,input.study_version,input.collection_version,input.record_type,input.group+1,input.seed,Number(input.eligibility.comfortable_english),Number(input.eligibility.headphones),Number(input.eligibility.previously_used_studio),input.consent_utc,timestamp,timestamp,input.nickname,input.rating_scale).run();
     const s=await owned(request,db,input.participant_id);

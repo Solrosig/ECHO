@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       PUBLIC_ORIGIN: https://${ECHO_DOMAIN:?Set ECHO_DOMAIN in .env.hosting}
+      ECHO_TRUST_PROXY: '1'
     expose:
       - '8787'
     volumes:

@@ -1,6 +1,7 @@
 """Pinned ECHO adapters. Native model outputs; final calibrated DSP runs in the site."""
 from pathlib import Path
 import os, json, random, tempfile
+from contextlib import contextmanager
 import numpy as np
 import soundfile as sf
 import torch
@@ -22,8 +23,26 @@ def snapshot(engine,patterns=None):
     local=os.environ.get('ECHO_MODEL_'+engine.upper())
     return local or snapshot_download(info['repo'],revision=info['revision'],allow_patterns=patterns)
 
+@contextmanager
+def trusted_checkpoint_loads():
+    """Let the upstream loaders read the pinned checkpoints, which carry metadata beyond tensors.
+
+    torch>=2.6 defaults to weights_only=True. The override lasts only while an engine loads from its pinned
+    revision, no user-supplied weights or paths are accepted, and torch.load is restored afterwards.
+    """
+    original=torch.load
+    def load(*args,**kwargs):
+        kwargs.setdefault('weights_only',False)
+        return original(*args,**kwargs)
+    torch.load=load
+    try:yield
+    finally:torch.load=original
+
 def load_engine(engine):
     if engine in MODELS:return MODELS[engine]
+    with trusted_checkpoint_loads():return _load_engine(engine)
+
+def _load_engine(engine):
     if engine=='chatterbox':
         from chatterbox.tts import ChatterboxTTS
         directory=snapshot(engine,['ve.safetensors','t3_cfg.safetensors','s3gen.safetensors','tokenizer.json','conds.pt'])

@@ -1,5 +1,7 @@
 // Exact generated WAVs are private research assets. The caller has already authenticated.
 const MAX_BYTES=12*1024*1024;
+// Total archived WAV bytes across all sessions; the Node server sets it from ECHO_AUDIO_QUOTA_MB.
+const DEFAULT_QUOTA_BYTES=2048*1024*1024;
 export const audioKey=(session,order,sha)=>`interactive/${session}/${order}-${sha}.wav`;
 export function wavInfo(buffer){
  const v=new DataView(buffer),word=(p,n)=>Array.from({length:n},(_,i)=>String.fromCharCode(v.getUint8(p+i))).join('');
@@ -32,6 +34,8 @@ export async function audioUpload(request,h,s,order){
  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),x=>x.toString(16).padStart(2,'0')).join('');
  if(hash!==meta.audio_sha256)fail(409,'This audio does not match the saved message.');
  if(Math.abs(info.duration_s-meta.duration_s)>Math.max(.01,2/info.sample_rate))fail(409,'The recording duration does not match the message.');
+ const archived=await db.prepare('SELECT sha256 FROM interactive_audio WHERE session_id=? AND turn_order=?').bind(s.session_id,order).first();
+ if(!archived){const used=await db.prepare('SELECT COALESCE(SUM(byte_length),0) AS n FROM interactive_audio').first();if(used.n+info.byte_length>(h.audioQuotaBytes??DEFAULT_QUOTA_BYTES))fail(507,'The recording archive is full. The message stays saved without its recording; tell the researcher.');}
  const key=audioKey(s.session_id,order,hash),stamp=now();await bucket.put(key,buffer,{httpMetadata:{contentType:'audio/wav'},customMetadata:{sha256:hash}});
  const active=await db.prepare('SELECT withdrawn_utc FROM interactive_sessions WHERE session_id=?').bind(s.session_id).first();
  if(!active||active.withdrawn_utc){await bucket.delete(key);fail(410,'This contribution was deleted.');}
