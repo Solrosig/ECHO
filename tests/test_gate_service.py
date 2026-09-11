@@ -3,11 +3,12 @@ import threading
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from types import SimpleNamespace
 
 import pytest
 
 from contracts import Quadrant
-from gate_service import RequestError, gated_reply, make_handler
+from gate_service import RequestError, build_judge, gated_reply, make_handler
 from judge import EmotionJudge
 from llm import LLMResult
 
@@ -75,6 +76,15 @@ def test_settings_pass_through_and_a_missing_model_uses_the_configured_default()
     request.pop("model")
     run(request, [Quadrant.Q1], calls)
     assert calls == [{"model": "llama3.2:3b", "seed": 10, "temperature": 0.2, "max_tokens": 90}]
+
+
+def test_the_service_judge_uses_the_configured_affect_norms(tmp_path):
+    norms = tmp_path / "norms.csv"
+    norms.write_text("word,valence,arousal\nzorbling,8.0,8.0\n", encoding="utf-8")
+    cfg = SimpleNamespace(judge="lexicon", affect_norms=str(norms), ollama_host="http://127.0.0.1:9/v1",
+                          ollama_model="llama3.2:3b", llm_temperature=0.7, llm_timeout_s=1.0)
+    # Only the configured file rates this word; the placeholder table would abstain.
+    assert build_judge(cfg).judge("zorbling") == Quadrant.Q1
 
 
 @pytest.mark.parametrize("bad", [
