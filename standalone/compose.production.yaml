@@ -1,0 +1,30 @@
+services:
+  echo:
+    build: .
+    init: true
+    restart: unless-stopped
+    environment:
+      PUBLIC_ORIGIN: https://${ECHO_DOMAIN:?Set ECHO_DOMAIN in .env.hosting}
+    expose:
+      - '8787'
+    volumes:
+      - echo_data:/data
+  caddy:
+    image: caddy:2.11.2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      ECHO_DOMAIN: ${ECHO_DOMAIN:?Set ECHO_DOMAIN in .env.hosting}
+    volumes:
+      - ./deployment/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - echo
+volumes:
+  echo_data:
+  caddy_data:
+  caddy_config:

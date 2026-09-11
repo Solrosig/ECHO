@@ -1,0 +1,4 @@
+{$ECHO_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy echo:8787
+}
