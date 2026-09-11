@@ -23,8 +23,8 @@ function fixture(t,filename=':memory:',assigned=manifest) {
  return {DB,env,s,call,register,trials,row,save};
 }
 test('database writes survive closing and reopening the local SQLite file',async t=>{
- const dir=mkdtempSync(join(tmpdir(),'echo-db-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
- const f=fixture(t,join(dir,'study.sqlite'));assert.equal((await f.register()).status,200);assert.equal((await f.save([f.row(0)])).status,200);
+ const dir=mkdtempSync(join(tmpdir(),'echo-db-'));const f=fixture(t,join(dir,'study.sqlite'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ assert.equal((await f.register()).status,200);assert.equal((await f.save([f.row(0)])).status,200);
  const other=localDatabase(join(dir,'study.sqlite'));try{assert.equal((await other.prepare('SELECT COUNT(*) AS n FROM study_responses').first()).n,1);}finally{other.close();}
 });
 test('full 45-response session is idempotent and exports only in its correct cohort',async t=>{
