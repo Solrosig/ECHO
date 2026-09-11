@@ -8,7 +8,7 @@ const input={text:'The meeting was moved to a different room.',emotion:'calm',hi
 const ollamaReply=(content,finish='stop')=>({ok:true,status:200,json:async()=>({choices:[{message:{content},finish_reason:finish}]})});
 function recorder(response){const calls=[];return {calls,fetchImpl:async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return response;}};}
 const offline=async()=>{throw new TypeError('fetch failed');};
-const namesAModel=message=>/llama|qwen|ollama pull/i.test(message);
+const namesAModel=message=>/llama3|qwen/i.test(message);
 
 test('defaults: llama3.2:3b through local Ollama with the coherence gate off',()=>{
   assert.equal(PRIMARY_MODEL,'llama3.2:3b');
