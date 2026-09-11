@@ -1,0 +1,67 @@
+{
+  "date": "2026-09-07",
+  "artifacts": [
+    {
+      "component": "espeak-ng-1.49.1",
+      "revision": "999ac6743337e484bf0a1631b0885d3a8bb9114d",
+      "source_archive": "/upstream/espeak-ng-1.49.1-source.tar.gz",
+      "sha256": "371002b032a2e4940f87fe20a0350ebced466e2e20b07b60a37fee3fdcd6a950"
+    },
+    {
+      "component": "espeakng-browser",
+      "revision": "46a04afb1425209f6d6f7e50ac389ae24f41b821",
+      "source_archive": "/upstream/espeakng-browser-artifact-source.tar.gz",
+      "sha256": "948f6cae134c27debb80f0d341c4f2189ac25674dfa1c686e5e82b32a2a2b96e"
+    },
+    {
+      "component": "piper-phonemize-source",
+      "revision": "cfff8e52ebaea37c7e953ae2d06b174acb827ac4",
+      "source_archive": "/upstream/piper-phonemize-source.tar.gz",
+      "sha256": "53e4b6b96a73d0439016da8b7509e60bf78d43327a32938537006ce23c52339e"
+    },
+    {
+      "component": "piper-wasm-source",
+      "revision": "022edba0455ef024574747e1134ef893f1d71b76",
+      "source_archive": "/upstream/piper-wasm-build-recipe.tar.gz",
+      "sha256": "09fcb9003a019da5ccd11080f8952ce119c33889719ca8060e63e166a9199aff"
+    },
+    {
+      "artifact": "vendor/espeak/COPYING",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    {
+      "artifact": "vendor/espeak/espeakng.worker.data",
+      "sha256": "a1a5de916d3f3d28babe3a0948d6eab84e793ae69e333974a918a69ddec32a67"
+    },
+    {
+      "artifact": "vendor/espeak/espeakng.worker.js",
+      "sha256": "27dbae622e8dbd2b4f5def07208db1c557554148b83a99bacba37419031e2e2e"
+    },
+    {
+      "artifact": "vendor/espeak/manifest.json",
+      "sha256": "b12a40ddde08164074710e23cfe44133eef55dc73c5865b8e5d1d94e47c1e689"
+    },
+    {
+      "artifact": "vendor/ort/ort-wasm-simd-threaded.mjs",
+      "sha256": "43c25054b6b9ac000f786c65545ff83a45f871e0e310e8c2f4d48a363bb66db4"
+    },
+    {
+      "artifact": "vendor/ort/ort-wasm-simd-threaded.wasm",
+      "sha256": "f061472c6e77d6d50d079aacdc0ff9b63fee287ddd2cbf46cf62438d3891de2b"
+    },
+    {
+      "artifact": "vendor/piper/piper_phonemize.data",
+      "sha256": "29f1025eb23a5b5c192cd14a6efbce4509402ff265405072ee6f7d1a09b78f8c"
+    },
+    {
+      "artifact": "vendor/piper/piper_phonemize.wasm",
+      "sha256": "b777cd107a91d2bcc6a1ea46f2c26a662a7407394fe84589198aeaa83dd7a9d6"
+    }
+  ],
+  "notes": [
+    "eSpeak worker vendor distribution states 1.49.1. Full upstream source includes the matching Emscripten API/sample layout; bit-for-bit rebuild not claimed.",
+    "Piper phonemizer binary assets are @diffusionstudio/piper-wasm 1.0.0; JS glue is from diffusionstudio/vits-web 1.0.3. Piper uses GPL eSpeak components.",
+    "Piper browser model revision is 1162a9173d0ce503555aed757976b7a9912eae4c, en_US-ljspeech-medium. The model card identifies the dataset as public domain.",
+    "ONNX Runtime local assets match onnxruntime-web 1.22.0-dev.20250409-89f8206ba4."
+  ]
+}
