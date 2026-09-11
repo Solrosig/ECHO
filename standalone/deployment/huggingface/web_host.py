@@ -1,0 +1,147 @@
+"""Serve the standalone ECHO application beside its existing Gradio TTS service."""
+import asyncio,hashlib,json,os,secrets,shutil,subprocess,tarfile,time,urllib.request,zipfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+import httpx
+from fastapi import FastAPI,Request
+from starlette.responses import Response,StreamingResponse
+from persistent_store import Store,sha,write_closed
+
+ROOT=Path(__file__).resolve().parent
+WEB=ROOT/'webapp'
+LOCAL=Path(os.environ.get('ECHO_LOCAL_DATA','/tmp/echo-web-data'))
+DURABLE=Path(os.environ.get('ECHO_PERSISTENT_DIR','/data/echo'))
+NODE_VERSION='v24.21.0'
+NODE_SHA='fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6'
+
+def unpack(archive,dest):
+    dest=Path(dest);dest.mkdir(parents=True,exist_ok=True)
+    with zipfile.ZipFile(archive) as z:
+        for name in z.namelist():
+            if not (dest/name).resolve().is_relative_to(dest.resolve()):raise RuntimeError('Invalid archive path')
+        z.extractall(dest)
+
+def prepare():
+    if not WEB.exists():unpack(ROOT/'webapp.zip',WEB)
+    # Preserve Window as the receiver of native fetch in Chromium. The bundled
+    # standalone sync classes previously called fetch as their own method.
+    # Patch both editable sources and prebuilt assets; no experiment settings change.
+    targets=list((WEB/'dist/client').rglob('*.js'))+[WEB/'study-sync.js',WEB/'interactive-sync.js']
+    for target in targets:
+        if target.is_file():
+            content=target.read_text()
+            patched=content.replace('this.fetcher(', 'this.fetcher.call(globalThis,')
+            if patched!=content:target.write_text(patched)
+    for target in (WEB/'dist/client').rglob('*.html'):
+        content=target.read_text()
+        patched=content.replace('all 30 final ratings','all 45 final ratings')
+        patched=patched.replace('Speech and conversation generation run on your device.', 'Kokoro and conversation text generation run on your device; other neural voices use the ECHO speech service.')
+        # The historical auxiliary calibration gallery is not part of this release.
+        import re
+        patched=re.sub(r'<a[^>]+href="/calibration/"[^>]*>.*?</a>', '', patched)
+        if patched!=content:target.write_text(patched)
+    # Version the complete asset graph so browsers cannot reuse immutable
+    # pre-fix JavaScript from an earlier visit to this same domain.
+    assets=WEB/'dist/client/assets'
+    rename={p.name:p.stem+'-hf2.js' for p in assets.glob('*.js') if not p.stem.endswith('-hf2')}
+    if rename:
+        for target in list((WEB/'dist/client').rglob('*.js'))+list((WEB/'dist/client').rglob('*.html')):
+            content=target.read_text()
+            for old,new in rename.items():content=content.replace(old,new)
+            target.write_text(content)
+        for old,new in rename.items():(assets/old).rename(assets/new)
+    # /data must be an explicitly mounted bucket in the Space. A bare ephemeral
+    # directory must never be presented as persistent research storage.
+    if os.environ.get('SPACE_ID') and not os.path.ismount('/data'):
+        if not any(' /data ' in line for line in Path('/proc/mounts').read_text().splitlines()):raise RuntimeError('Mount the private research bucket at /data before launching ECHO')
+    LOCAL.mkdir(parents=True,exist_ok=True);DURABLE.mkdir(parents=True,exist_ok=True)
+    credentials=DURABLE/'researcher.json'
+    if not credentials.exists():
+        password=secrets.token_urlsafe(24);salt=secrets.token_bytes(32)
+        digest=hashlib.scrypt(password.encode(),salt=salt.hex().encode(),n=16384,r=8,p=1,dklen=64)
+        # This file is stored only inside the private bucket, never in public
+        # source, app responses, browser JavaScript or container logs.
+        write_closed(DURABLE/'RESEARCHER_ACCESS.txt',('ECHO researcher access\nPassword: '+password+'\nKeep this file private.\n').encode())
+        write_closed(credentials,json.dumps({'version':1,'salt':salt.hex(),'hash':digest.hex()}).encode())
+    shutil.copyfile(credentials,LOCAL/'researcher.json')
+    store=Store(LOCAL,DURABLE)
+    if not (LOCAL/'study.sqlite').exists():store.restore()
+    node=os.environ.get('ECHO_NODE') or shutil.which('node')
+    if not node or not subprocess.check_output([node,'--version'],text=True).startswith('v24.'):
+        cache=Path('/tmp/echo-node');cache.mkdir(exist_ok=True)
+        node=str(cache/f'node-{NODE_VERSION}-linux-x64/bin/node')
+        if not Path(node).exists():
+            archive=cache/'node.tar.xz';urllib.request.urlretrieve(f'https://nodejs.org/dist/{NODE_VERSION}/node-{NODE_VERSION}-linux-x64.tar.xz',archive)
+            if sha(archive)!=NODE_SHA:raise RuntimeError('Node runtime checksum mismatch')
+            with tarfile.open(archive) as t:
+                for item in t.getmembers():
+                    if not (cache/item.name).resolve().is_relative_to(cache.resolve()):raise RuntimeError('Invalid Node archive')
+                t.extractall(cache)
+    def download(row):
+        target=WEB/row['path'];target.parent.mkdir(parents=True,exist_ok=True)
+        if target.exists() and sha(target)==row['sha256']:return
+        for attempt in range(3):
+            try:
+                tmp=target.with_suffix(target.suffix+'.download')
+                with urllib.request.urlopen(row['url'],timeout=120) as r,open(tmp,'wb') as out:shutil.copyfileobj(r,out)
+                if sha(tmp)!=row['sha256']:raise RuntimeError('Model checksum mismatch: '+target.name)
+                tmp.replace(target);return
+            except Exception:
+                if attempt==2:raise
+                time.sleep(1+attempt)
+    rows=json.loads((WEB/'downloads.json').read_text())
+    print('Loading pinned browser models for ECHO...',flush=True)
+    with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(download,rows))
+    origin=os.environ.get('ECHO_PUBLIC_ORIGIN','https://'+os.environ.get('SPACE_HOST','your-space.hf.space'))
+    env={**os.environ,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(LOCAL)}
+    child=subprocess.Popen([node,str(WEB/'server/start.mjs')],env=env)
+    for _ in range(120):
+        if child.poll() is not None:raise RuntimeError('Web process stopped during startup')
+        try:
+            r=httpx.get('http://127.0.0.1:8787/api/study/status',headers={'host':origin.split('//',1)[1]},timeout=2)
+            if r.status_code==200:break
+        except httpx.HTTPError:pass
+        time.sleep(.25)
+    else:raise RuntimeError('Web process did not become ready')
+    if store.last is None:store.checkpoint()
+    return store,child,origin
+
+def add_web_routes(app,store,origin):
+    lock=asyncio.Lock()
+    async def proxy(request:Request):
+        path=request.url.path
+        if path=='/health':return Response(json.dumps({'app':'ECHO','storage':'private-bucket-snapshots','ready':True}),media_type='application/json')
+        # Only the Node server's explicit public directories and API are exposed.
+        # No static mount of ROOT, /tmp or /data is created here.
+        headers={k:v for k,v in request.headers.items() if k.lower() not in ['host','connection','transfer-encoding','content-length','accept-encoding']}
+        headers['host']=origin.split('//',1)[1]
+        headers['accept-encoding']='identity'
+        body=bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body)>16*1024*1024:return Response('Request too large',status_code=413)
+        url='http://127.0.0.1:8787'+path+('?' + request.url.query if request.url.query else '')
+        async def forward():
+            client=httpx.AsyncClient(timeout=httpx.Timeout(120,connect=10))
+            try:
+                response=await client.send(client.build_request(request.method,url,headers=headers,content=bytes(body)),stream=True)
+                h={k:v for k,v in response.headers.items() if k not in ['connection','transfer-encoding','content-length','x-frame-options']}
+                if 'content-security-policy' in h:h['content-security-policy']=h['content-security-policy'].replace("frame-ancestors 'none'","frame-ancestors 'self' https://huggingface.co")
+                if path.startswith('/api/'):
+                    data=await response.aread();await response.aclose();await client.aclose()
+                    if request.method in ['POST','PUT','PATCH','DELETE'] and not path.startswith('/api/auth/') and response.status_code<400:
+                        await asyncio.to_thread(store.checkpoint)
+                    return Response(data,status_code=response.status_code,headers=h)
+                async def stream():
+                    try:
+                        async for chunk in response.aiter_raw():yield chunk
+                    finally:await response.aclose();await client.aclose()
+                return StreamingResponse(stream(),status_code=response.status_code,headers=h)
+            except Exception:
+                await client.aclose()
+                return Response(json.dumps({'error':'The response could not be saved or served. Please retry.'}),status_code=503,media_type='application/json')
+        if path.startswith('/api/'):
+            async with lock:return await forward()
+        return await forward()
+    app.add_api_route('/{path:path}',proxy,methods=['GET','HEAD','POST','PUT','PATCH','DELETE'],include_in_schema=False)
+    return app
