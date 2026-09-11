@@ -70,7 +70,9 @@ Deleting an active participant session does not automatically erase historical b
 
 ## Hosting limits
 
-Behind a reverse proxy (Caddy in `compose.production.yaml`, or the Hugging Face host), set `ECHO_TRUST_PROXY=1` so that login attempts and these limits count each visitor rather than the proxy. Per network address, the server accepts 120 voice-synthesis requests per 10 minutes (`ECHO_TTS_REQUESTS_PER_10_MIN`) and 300 new sessions or conversations per hour (`ECHO_SESSIONS_PER_HOUR`); resuming a session does not count. Archived conversation recordings are capped at 2048 MB in total (`ECHO_AUDIO_QUOTA_MB`). Raise the first two for a lab where many participants share one address. The Hugging Face host serves the voices directly, so its Gradio queue limits apply there instead.
+Behind a reverse proxy (Caddy in `compose.production.yaml`, or the Hugging Face host), set `ECHO_TRUST_PROXY=1` so that login attempts and these limits count each visitor rather than the proxy. Per network address, the server accepts 120 voice-synthesis requests and 120 conversation replies per 10 minutes (`ECHO_TTS_REQUESTS_PER_10_MIN`, `ECHO_DIALOGUE_REPLIES_PER_10_MIN`) and 300 new sessions or conversations per hour (`ECHO_SESSIONS_PER_HOUR`); resuming a session does not count. Archived conversation recordings are capped at 2048 MB in total (`ECHO_AUDIO_QUOTA_MB`). Raise these for a lab where many participants share one address. The Hugging Face host serves the voices directly, so its Gradio queue limits apply there instead.
+
+A remote Ollama, such as a private Hugging Face Space that sleeps when unused, is set with `ECHO_OLLAMA_URL` and `ECHO_OLLAMA_TOKEN` (sent as a Bearer header). While it wakes up, Explore says the conversation model is starting and keeps trying for up to four minutes. `deployment/huggingface/README.md` describes the two hosted variants.
 
 ## Run with Docker
 

@@ -2,38 +2,55 @@ import {appendFileSync} from 'node:fs';
 import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply} from './dialogue-prompt.mjs';
 import {QWEN_BACKUP_ALLOWED,QWEN_BACKUP_MODEL} from './llm-backup.mjs';
 
-// ECHO's primary language model is llama3.2:3b served by local Ollama (decision 2026-09-11).
+// ECHO's primary language model is llama3.2:3b served by Ollama (decision 2026-09-11).
 export const PRIMARY_MODEL='llama3.2:3b';
 // The generation settings the 1.5.0 conversation used, kept so replies stay comparable.
 export const GENERATION={temperature:.7,seed:666,max_tokens:150};
+// A hosted model that sleeps between study sessions answers again after a wake-up; the page retries at this interval.
+export const WAKE_RETRY_S=15;
+const STATUS_CACHE_MS=30000;
 
-export class DialogueError extends Error{constructor(status,message){super(message);this.status=status;}}
+export class DialogueError extends Error{constructor(status,message,details={}){super(message);this.status=status;this.details=details;}}
+
+const LOOPBACK=/^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/|$)/i;
 
 // ECHO_COHERENCE_GATE: 'off' = option B, the reply comes straight from Ollama (in use since 2026-09-11).
 //                      'on'  = option A, the same request goes through ECHO's coherence gate (gate_service.py).
+// ECHO_OLLAMA_URL and ECHO_OLLAMA_TOKEN point at a remote Ollama, such as a private Hugging Face Space that sleeps
+// when unused. The token is sent as a Bearer header and never reaches the page.
 export function dialogueConfig(env=process.env){
   const gate=String(env.ECHO_COHERENCE_GATE||'off').trim().toLowerCase();
   if(!['off','on'].includes(gate))throw new Error('ECHO_COHERENCE_GATE must be off or on.');
   const model=env.ECHO_LLM_BACKUP==='1'?QWEN_BACKUP_MODEL:(env.ECHO_OLLAMA_MODEL||PRIMARY_MODEL);
   if(/qwen/i.test(model)&&!QWEN_BACKUP_ALLOWED)throw new Error('The backup language model is locked in this version; unset ECHO_LLM_BACKUP and ECHO_OLLAMA_MODEL.');
-  const timeoutMs=Number(env.ECHO_LLM_TIMEOUT_MS||120000);
+  const ollamaUrl=String(env.ECHO_OLLAMA_URL||'http://127.0.0.1:11434').replace(/\/+$/,''),apiKey=String(env.ECHO_OLLAMA_TOKEN||'').trim()||null;
+  const remote=Boolean(apiKey)||!LOOPBACK.test(ollamaUrl);
+  // A remote model gets a shorter wait, so a sleeping Space becomes a quick "starting" answer instead of a hung page.
+  const timeoutMs=Number(env.ECHO_LLM_TIMEOUT_MS||(remote?45000:120000));
   if(!Number.isFinite(timeoutMs)||timeoutMs<1000)throw new Error('ECHO_LLM_TIMEOUT_MS must be at least 1000.');
-  return {
-    gate,model,timeoutMs,
-    ollamaUrl:String(env.ECHO_OLLAMA_URL||'http://127.0.0.1:11434').replace(/\/+$/,''),
-    gateUrl:String(env.ECHO_GATE_URL||'http://127.0.0.1:8790').replace(/\/+$/,''),
-  };
+  return {gate,model,timeoutMs,ollamaUrl,gateUrl:String(env.ECHO_GATE_URL||'http://127.0.0.1:8790').replace(/\/+$/,''),apiKey,remote};
 }
 
-async function postJson(fetchImpl,url,payload,timeoutMs){
+const waking=()=>new DialogueError(503,'The conversation model is starting after a quiet period. ECHO keeps trying; this can take about two minutes.',{waking:true,retry_after_s:WAKE_RETRY_S});
+
+async function send(fetchImpl,url,{method='POST',payload,apiKey=null,remote=false,timeoutMs}){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const headers={...(payload===undefined?{}:{'Content-Type':'application/json'}),...(apiKey?{Authorization:`Bearer ${apiKey}`}:{})};
   try{
-    const response=await fetchImpl(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});
+    const response=await fetchImpl(url,{method,headers,body:payload===undefined?undefined:JSON.stringify(payload),signal:controller.signal});
     let data=null;try{data=await response.json();}catch{}
     return {response,data};
   }catch{
+    if(remote)throw waking();
     throw new DialogueError(503,'The local language model is not reachable. Start Ollama and try again.');
   }finally{clearTimeout(timer);}
+}
+
+// A remote model that is still starting is answered by the hosting proxy: 502/503/504, or a page instead of JSON.
+function checkRemote(config,response,data){
+  if(!config.remote)return;
+  if([502,503,504].includes(response.status)||response.ok&&data===null)throw waking();
+  if([401,403].includes(response.status)||response.status===404&&data===null)throw new DialogueError(503,'The conversation model refused this server\'s access settings. Tell the researcher.');
 }
 
 // Error messages never name a model: they reach the page.
@@ -43,17 +60,28 @@ export async function dialogueReply(input,config,{fetchImpl=fetch}={}){
   try{messages=dialogueMessages(input?.text,input?.emotion,Array.isArray(input?.history)?input.history:[]);}
   catch(error){throw new DialogueError(400,error.message);}
   if(config.gate==='on'){
-    const {response,data}=await postJson(fetchImpl,`${config.gateUrl}/v1/gated-reply`,{messages,emotion:input.emotion,model:config.model,...GENERATION},config.timeoutMs);
+    const {response,data}=await send(fetchImpl,`${config.gateUrl}/v1/gated-reply`,{payload:{messages,emotion:input.emotion,model:config.model,...GENERATION},timeoutMs:config.timeoutMs});
     const text=typeof data?.text==='string'?unwrapQuotedReply(data.text):'';
     if(!response.ok||!text)throw new DialogueError(502,'The coherence gate could not produce a reply. Try again.');
     return {text,gate:'on',prompt_version:DIALOGUE_PROMPT_VERSION,passed:data.passed===true,attempts:Array.isArray(data.attempts)?data.attempts.length:0};
   }
-  const {response,data}=await postJson(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{model:config.model,messages,...GENERATION,stream:false},config.timeoutMs);
+  const {response,data}=await send(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{payload:{model:config.model,messages,...GENERATION,stream:false},apiKey:config.apiKey,remote:config.remote,timeoutMs:config.timeoutMs});
+  checkRemote(config,response,data);
   if(response.status===404)throw new DialogueError(503,'The language model is not installed in Ollama.');
   if(!response.ok)throw new DialogueError(502,'The language model could not produce a reply. Try again.');
   const choice=data?.choices?.[0],text=typeof choice?.message?.content==='string'?unwrapQuotedReply(choice.message.content):'';
   if(!text||choice.finish_reason==='length')throw new DialogueError(502,'The reply was empty or incomplete. Try a shorter message.');
   return {text,gate:'off',prompt_version:DIALOGUE_PROMPT_VERSION};
+}
+
+// Whether the model answers. Asking a sleeping hosted model also starts it, so the page asks when Explore opens.
+export async function dialogueStatus(config,{fetchImpl=fetch}={}){
+  if(!config)return {ready:false,waking:false};
+  try{
+    const {response,data}=await send(fetchImpl,`${config.ollamaUrl}/api/version`,{method:'GET',apiKey:config.apiKey,remote:config.remote,timeoutMs:Math.min(config.timeoutMs,8000)});
+    checkRemote(config,response,data);
+    return {ready:response.ok&&typeof data?.version==='string',waking:false};
+  }catch(error){return {ready:false,waking:error.details?.waking===true};}
 }
 
 // One JSON line per reply in the private data folder, so option B's latency and failures can be reviewed.
@@ -71,8 +99,17 @@ export async function handleDialogueRequest(request,env,{readBody,json}){
     return json(out);
   }catch(error){
     const status=error instanceof DialogueError?error.status:error.status;
-    record({ok:false,status:status||500,error:error.message});
+    record({ok:false,status:status||500,error:error.message,...(error.details?.waking?{waking:true}:{})});
     if(!status)throw error;
-    return json({error:error.message},status);
+    return json({error:error.message,...(error.details||{})},status);
   }
+}
+
+// The answer is cached briefly, so pages opening Explore cannot keep a paid hosted model awake by themselves.
+export async function handleDialogueStatus(request,env,{json}){
+  const dialogue=env.DIALOGUE,cache=dialogue?.status;
+  if(cache?.value&&Date.now()-cache.at<STATUS_CACHE_MS)return json(cache.value);
+  const value=await dialogueStatus(dialogue?.config,{fetchImpl:dialogue?.fetch||fetch});
+  if(cache){cache.at=Date.now();cache.value=value;}
+  return json(value);
 }

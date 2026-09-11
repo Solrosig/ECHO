@@ -23,13 +23,15 @@ export function clientAddress(req,trustProxy=false){
   return forwarded||req.socket?.remoteAddress||'unknown';
 }
 export function createEchoServer({dataDir=resolve(ROOT,'data'),clientDir=resolve(ROOT,'dist/client'),publicDir=resolve(ROOT,'public'),publicOrigin=null,host='127.0.0.1',allowLocalContainer=false,speechService=process.env.ECHO_TTS_URL||'http://127.0.0.1:7860',dialogue=dialogueConfig(),
-  trustProxy=process.env.ECHO_TRUST_PROXY==='1',speechLimit=positive(process.env.ECHO_TTS_REQUESTS_PER_10_MIN??120,'ECHO_TTS_REQUESTS_PER_10_MIN'),sessionLimit=positive(process.env.ECHO_SESSIONS_PER_HOUR??300,'ECHO_SESSIONS_PER_HOUR'),audioQuotaMb=positive(process.env.ECHO_AUDIO_QUOTA_MB??2048,'ECHO_AUDIO_QUOTA_MB')}={}) {
+  trustProxy=process.env.ECHO_TRUST_PROXY==='1',speechLimit=positive(process.env.ECHO_TTS_REQUESTS_PER_10_MIN??120,'ECHO_TTS_REQUESTS_PER_10_MIN'),sessionLimit=positive(process.env.ECHO_SESSIONS_PER_HOUR??300,'ECHO_SESSIONS_PER_HOUR'),audioQuotaMb=positive(process.env.ECHO_AUDIO_QUOTA_MB??2048,'ECHO_AUDIO_QUOTA_MB'),
+  dialogueLimit=positive(process.env.ECHO_DIALOGUE_REPLIES_PER_10_MIN??120,'ECHO_DIALOGUE_REPLIES_PER_10_MIN')}={}) {
   if(publicOrigin){const u=new URL(publicOrigin);if(u.origin!==publicOrigin||u.protocol!=='https:')throw new Error('PUBLIC_ORIGIN must be an HTTPS origin without a trailing slash.');}
   if(host!=='127.0.0.1'&&host!=='::1'&&!publicOrigin&&!allowLocalContainer)throw new Error('A non-loopback server requires PUBLIC_ORIGIN=https://your-domain.');
   if(!existsSync(join(clientDir,'index.html')))throw new Error('Built website missing: restore dist/client from the archive or run pnpm build.');
   clientDir=realpathSync(clientDir);const assetDirs=[clientDir,realpathSync(publicDir)];mkdirSync(dataDir,{recursive:true,mode:0o700});
   const auth=createAuth(dataDir,{secure:Boolean(publicOrigin)}),DB=localDatabase(join(dataDir,'study.sqlite')),dialogueLog=createMetricsLog(join(dataDir,'dialogue-metrics.jsonl'));
   const speechAllowed=createLimiter({limit:speechLimit,windowMs:10*60*1000}),sessionAllowed=createLimiter({limit:sessionLimit,windowMs:60*60*1000});
+  const dialogueAllowed=createLimiter({limit:dialogueLimit,windowMs:10*60*1000}),dialogueState={config:dialogue,log:dialogueLog,status:{at:0,value:null}};
   function staticFile(req,res,url){
     if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);return res.end();}
     let path;try{path=decodeURIComponent(url.pathname);}catch{res.writeHead(400);return res.end();}
@@ -74,6 +76,11 @@ export function createEchoServer({dataDir=resolve(ROOT,'data'),clientDir=resolve
         return await proxySpeech(req,res,url,origin,speechService);
       }
       if(!url.pathname.startsWith('/api/'))return staticFile(req,res,url);
+      // Each conversation reply runs the language model, which may be paid hardware that would otherwise sleep.
+      if(req.method==='POST'&&url.pathname==='/api/dialogue/reply'&&!dialogueAllowed(clientAddress(req,trustProxy))){
+        req.resume();res.writeHead(429,{'Content-Type':'application/json','Cache-Control':'no-store','Retry-After':'600'});
+        return res.end(JSON.stringify({error:'Too many conversation replies from this network. Wait a few minutes and try again.'}));
+      }
       const request=new Request(url,{method:req.method,headers:req.headers,body:['GET','HEAD'].includes(req.method)?undefined:Readable.toWeb(req),duplex:'half'});
       let response;
       if(url.pathname.startsWith('/api/auth/')){
@@ -90,7 +97,7 @@ export function createEchoServer({dataDir=resolve(ROOT,'data'),clientDir=resolve
             }
           }
         }else response=json({error:'Not found.'},404);
-      }else response=await worker.fetch(request,{DB,AUDIO:localAudio(join(dataDir,'audio')),RESEARCHER_AUTHORIZED:auth.authorised(request),DIALOGUE:{config:dialogue,log:dialogueLog},
+      }else response=await worker.fetch(request,{DB,AUDIO:localAudio(join(dataDir,'audio')),RESEARCHER_AUTHORIZED:auth.authorised(request),DIALOGUE:dialogueState,
         AUDIO_QUOTA_BYTES:audioQuotaMb*1024*1024,NEW_SESSION_ALLOWED:()=>sessionAllowed(clientAddress(req,trustProxy))},{});
       res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));
     }catch(error){console.error('Request failed:',error.message);if(!res.headersSent)res.writeHead(500,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({error:'The server could not complete this request.'}));}

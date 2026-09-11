@@ -3,7 +3,7 @@ import {messageRatingForm,refreshMessageRatings} from './message-rating-ui.js';
 import {interactivePending} from './message-rating.js';
 import {RemoteSpeechClient} from './remote-speech.js';
 import {EMOTIONS,ENGINES,controlsFor,validateText} from './voice-controls.js';
-import {requestReply} from './dialogue-client.js';
+import {requestReplyWhenReady,checkDialogue} from './dialogue-client.js';
 import {NeuralClient} from './neural-client.js';
 import {hashAudio} from './audio-utils.js';
 import {readNickname,rememberNickname,MAX_EXCHANGES} from './participant.js';
@@ -44,6 +44,8 @@ function setMode(next,{url=true}={}){
  for(const [id,active] of [['mode-listening',mode==='listening'],['mode-test',mode==='line'],['mode-explore',mode==='explore']]){$(id).classList.toggle('active',active);$(id).setAttribute('aria-pressed',String(active));}
  $('workspace-title').textContent=mode==='listening'?'Listening test':mode==='line'?'Test mode':'Explore Mode';$('listening-panel').hidden=mode!=='listening';$('interactive-panel').hidden=mode==='listening';$('line-panel').hidden=mode!=='line';$('explore-panel').hidden=mode!=='explore';
  if(mode==='listening')void ensureListening();
+ // Opening Explore starts a hosted conversation model that sleeps between study sessions.
+ if(mode==='explore')void checkDialogue();
  document.querySelectorAll('audio').forEach(a=>a.pause());
  if(mode!=='listening'){try{localStorage.setItem('echo-studio-exposed','1');}catch{}}
  if(mode==='explore'&&chat)$('nickname').value=chat.nickname;
@@ -95,7 +97,7 @@ async function runChat(){
  try{
   const previous=chat.turns.flatMap(t=>[{role:'user',content:t.input_text},{role:'assistant',content:t.output_text}]);
   status('Writing a reply with your chosen emotion…');replyRequest=new AbortController();
-  const generated=await requestReply({text:input,emotion:s.emotion,history:previous},{signal:replyRequest.signal});replyRequest=null;if(id!==job)return;
+  const generated=await requestReplyWhenReady({text:input,emotion:s.emotion,history:previous},{signal:replyRequest.signal,onWaiting:()=>status('The conversation model is starting after a quiet period. This can take about two minutes…')});replyRequest=null;if(id!==job)return;
   status(`Voicing the reply with ${ENGINES[s.engine].name}…`);const record=await speech(validateText(generated.text),s,id,chat);if(!record)return;record.dialogue={prompt_version:generated.prompt_version??null,gate:generated.gate??null};
   pending.replaceChildren();const label=document.createElement('span');label.className='voice-label';label.textContent=`Voice message · ${record.duration_s.toFixed(1)}s`;
   const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label','ECHO voice reply');const url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));chat.audioUrls.push(url);audio.src=url;
