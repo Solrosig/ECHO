@@ -2,7 +2,8 @@ import {TEST_ENGINES,EXPLORE_ENGINES} from './engine-catalog.js';
 import {messageRatingForm,refreshMessageRatings} from './message-rating-ui.js';
 import {interactivePending} from './message-rating.js';
 import {RemoteSpeechClient} from './remote-speech.js';
-import {EMOTIONS,ENGINES,controlsFor,dialogueMessages,validateText} from './voice-controls.js';
+import {EMOTIONS,ENGINES,controlsFor,validateText} from './voice-controls.js';
+import {requestReply} from './dialogue-client.js';
 import {NeuralClient} from './neural-client.js';
 import {hashAudio} from './audio-utils.js';
 import {readNickname,rememberNickname,MAX_EXCHANGES} from './participant.js';
@@ -10,7 +11,7 @@ import {createInteractiveSession,InteractiveSync,loadOutbox} from './interactive
 const $=id=>document.getElementById(id),neural=new NeuralClient();
 const remote=new RemoteSpeechClient();
 let listeningLoaded=false,listeningLoading=false;
-let mode='listening',busy=false,job=0,ticker,started,phase='',records=[],lastLine=null,lastComparedEngine=null,chat=null,lineSession=null;
+let mode='listening',busy=false,job=0,ticker,started,phase='',records=[],lastLine=null,lastComparedEngine=null,chat=null,lineSession=null,replyRequest=null;
 const syncs=new Map();
 function selection(){return {emotion:document.querySelector('input[name=emotion]:checked').value,intensity:1,engine:mode==='explore'?(chat?.engine||$('chat-engine').value):$('engine').value,condition:mode==='explore'?'preset':$('condition').value,custom:{rate:Number($('custom-rate').value)/100,gain:Number($('custom-gain').value)/100,pitch:Number($('custom-pitch').value)}};}
 for(const [id,engines] of [['engine',TEST_ENGINES],['chat-engine',EXPLORE_ENGINES]])$(id).replaceChildren(...engines.map(e=>new Option(ENGINES[e].name,e)));
@@ -93,7 +94,8 @@ async function runChat(){
  ticker=setInterval(()=>{$('chat-status').textContent=`${phase} · ${Math.floor((Date.now()-started)/1000)}s`;},1000);
  try{
   const previous=chat.turns.flatMap(t=>[{role:'user',content:t.input_text},{role:'assistant',content:t.output_text}]);
-  const generated=await neural.run({task:'dialogue',messages:dialogueMessages(input,s.emotion,previous)},eventFor(id));if(id!==job)return;
+  status('Writing a reply with your chosen emotion…');replyRequest=new AbortController();
+  const generated=await requestReply({text:input,emotion:s.emotion,history:previous},{signal:replyRequest.signal});replyRequest=null;if(id!==job)return;
   status(`Voicing the reply with ${ENGINES[s.engine].name}…`);const record=await speech(validateText(generated.text),s,id,chat);if(!record)return;
   pending.replaceChildren();const label=document.createElement('span');label.className='voice-label';label.textContent=`Voice message · ${record.duration_s.toFixed(1)}s`;
   const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label','ECHO voice reply');const url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));chat.audioUrls.push(url);audio.src=url;
@@ -106,7 +108,7 @@ async function runChat(){
  }catch(e){if(id!==job)return;userBubble.remove();pending.remove();$('chat-error').textContent=e.message||String(e);$('chat-error').hidden=false;status('No exchange was counted. Your message is kept so you can retry.');}
  finally{if(id!==job){userBubble.remove();pending.remove();}else lock(false);}
 }
-function cancel(){job++;remote.reset();neural.reset();lock(false);status('Cancelled. Your message is kept; you can retry.');}
+function cancel(){job++;replyRequest?.abort();replyRequest=null;remote.reset();neural.reset();lock(false);status('Cancelled. Your message is kept; you can retry.');}
 $('voice-form').addEventListener('submit',e=>{e.preventDefault();void runLine();});$('chat-form').addEventListener('submit',e=>{e.preventDefault();void runChat();});$('identity-form').addEventListener('submit',e=>e.preventDefault());
 $('cancel').addEventListener('click',cancel);$('chat-cancel').addEventListener('click',cancel);
 $('mode-listening').addEventListener('click',()=>setMode('listening'));$('mode-test').addEventListener('click',()=>setMode('line'));$('mode-explore').addEventListener('click',()=>setMode('explore'));
