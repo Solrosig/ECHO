@@ -2,7 +2,8 @@ import {Readable} from 'node:stream';
 
 // Fixed administrator-configured upstream: callers cannot choose a server or forward credentials. The administrator token
 // (ECHO_TTS_TOKEN) is added here and only here: on Hugging Face it makes ZeroGPU bill the Space owner, not the visitor.
-export async function proxySpeech(req,res,url,origin,upstream,token=null){
+// The relay key (ECHO_TTS_RELAY_KEY) tells the Space that the request comes from this server.
+export async function proxySpeech(req,res,url,origin,upstream,token=null,relayKey=null){
  if(!['GET','POST','HEAD'].includes(req.method)){res.writeHead(405);res.end();return;}
  if(req.headers.origin&&req.headers.origin!==origin||req.headers['sec-fetch-site']==='cross-site'){res.writeHead(403);res.end('Use the ECHO website.');return;}
  const suffix=url.pathname.slice('/api/tts'.length)||'/';
@@ -10,6 +11,7 @@ export async function proxySpeech(req,res,url,origin,upstream,token=null){
  const target=new URL(upstream);target.pathname=target.pathname.replace(/\/$/,'')+suffix;target.search=url.search;
  const headers={'accept':req.headers.accept||'*/*','host':new URL(origin).host,'x-forwarded-host':new URL(origin).host,'x-forwarded-proto':new URL(origin).protocol.slice(0,-1)};
  if(token)headers.authorization=`Bearer ${token}`;
+ if(relayKey)headers['x-echo-voice-relay']=relayKey;
  if(req.headers['content-type'])headers['content-type']=req.headers['content-type'];
  if(req.headers.range)headers.range=req.headers.range;
  const abort=new AbortController();res.on('close',()=>abort.abort());

@@ -10,15 +10,15 @@ test('speech proxy streams responses and strips researcher credentials',async t=
  assert.equal((await fetch(base+'/api/tts/gradio_api/queue/join',{method:'POST',headers:{Origin:'https://unrelated.example'},body:'{}'})).status,403);
  assert.equal((await fetch(base+'/api/tts/gradio_api/upload',{method:'POST',headers:{Origin:base},body:'{}'})).status,404);
 });
-test('the owner token reaches the speech service in place of any visitor credentials, on the configured path',async t=>{
+test('the owner token and relay key reach the speech service in place of any visitor credentials, on the configured path',async t=>{
  const seen=[];
- const upstream=createServer((req,res)=>{seen.push([req.url,req.headers.authorization]);res.setHeader('Content-Type','application/json');res.end('{}');});upstream.listen(0,'127.0.0.1');await once(upstream,'listening');
+ const upstream=createServer((req,res)=>{seen.push([req.url,req.headers.authorization,req.headers['x-echo-voice-relay']]);res.setHeader('Content-Type','application/json');res.end('{}');});upstream.listen(0,'127.0.0.1');await once(upstream,'listening');
  const servers=[upstream];t.after(()=>{for(const s of servers){s.closeAllConnections();s.close();}});
- for(const [token,expected] of [['hf_owner_fixture','Bearer hf_owner_fixture'],[null,undefined]]){
-  const proxy=createServer((req,res)=>{const origin=`http://127.0.0.1:${proxy.address().port}`;return proxySpeech(req,res,new URL(req.url,origin),origin,`http://127.0.0.1:${upstream.address().port}/api/tts-gpu`,token);});
+ for(const [token,key,expected] of [['hf_owner_fixture','relay-key-fixture',['Bearer hf_owner_fixture','relay-key-fixture']],[null,null,[undefined,undefined]]]){
+  const proxy=createServer((req,res)=>{const origin=`http://127.0.0.1:${proxy.address().port}`;return proxySpeech(req,res,new URL(req.url,origin),origin,`http://127.0.0.1:${upstream.address().port}/api/tts-gpu`,token,key);});
   proxy.listen(0,'127.0.0.1');await once(proxy,'listening');servers.push(proxy);
   const base=`http://127.0.0.1:${proxy.address().port}`;
-  assert.equal((await fetch(base+'/api/tts/config',{headers:{Authorization:'Bearer visitor',Origin:base}})).status,200);
-  assert.deepEqual(seen.pop(),['/api/tts-gpu/config',expected]);
+  assert.equal((await fetch(base+'/api/tts/config',{headers:{Authorization:'Bearer visitor','X-Echo-Voice-Relay':'guess',Origin:base}})).status,200);
+  assert.deepEqual(seen.pop(),['/api/tts-gpu/config',...expected]);
  }
 });

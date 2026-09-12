@@ -21,11 +21,23 @@ Explore replies come from Ollama with `llama3.2:3b`, build `a80c4f17acd5`, the b
 - `embedded` (variant a, one Space): this Space downloads the pinned Ollama and model at startup and runs them beside the voices.
   - **On ZeroGPU (the default):** the model runs on the Space's CPU and costs nothing. Ollama cannot use a ZeroGPU GPU, which exists only inside `@spaces.GPU` calls.
   - **On paid GPU hardware** such as `t4-small`: the model uses the GPU. Set a sleep time.
-  - **Threads:** the model uses one CPU thread per CPU the container may use, because llama.cpp otherwise starts one per core of the whole host and stalls. The count is set through `llama3.2:3b-t<threads>`, a copy of the verified build that adds only the `num_thread` parameter. `ECHO_OLLAMA_THREADS` sets the count.
+  - **Threads:** the model uses one CPU thread per CPU the container may use, because llama.cpp otherwise starts one per core of the whole host (96 on the ZeroGPU host). The count is set through `llama3.2:3b-t<threads>`, a copy of the verified build that adds only the `num_thread` parameter. `ECHO_OLLAMA_THREADS` sets the count. Extra weight buffers are off (`LLAMA_ARG_REPACK=0`), because on the ZeroGPU host the model's first computation never finished with its weights in AMX buffers.
   - **Sleep and wake:** the whole site sleeps and restarts together, and each wake-up downloads Ollama and the model again. Until the model answers, Explore tells participants it is starting and keeps trying.
   - **GPU memory:** Ollama leaves 2 GiB of GPU memory to the voices (`ECHO_OLLAMA_GPU_OVERHEAD`, in bytes) and runs some layers on the CPU when the GPU is too small.
 - `remote` (variant b, split): this Space stays on ZeroGPU, and `../huggingface-llm` runs as a private Docker Space on paid hardware with a short sleep time. Set the variable `ECHO_OLLAMA_URL` to its address and the secret `ECHO_OLLAMA_TOKEN` to a token that can only read it. The website wakes it when someone opens Explore.
 - `off` (default): no conversation replies; Listening and Test work normally.
+
+## Server voices and ZeroGPU quota
+
+ZeroGPU counts GPU time against whoever calls the Space, and a visitor without a Hugging Face account gets about 3 voices a day.
+
+Add the Space secret `ECHO_ZEROGPU_TOKEN`: a fine-grained token of the Space owner with no permissions. With it:
+
+- The website's server relays every voice request to `/api/tts-gpu` through the Space's public address, carrying that token, so ZeroGPU counts the voice against the owner's quota (PRO: 40 minutes a day, then credits).
+- A random key chosen at each start lets only those relayed requests reach Gradio, which stays at `/api/tts`.
+- The token never reaches the browser.
+- Voice requests are limited per network (`ECHO_TTS_REQUESTS_PER_10_MIN`, default 120) and, with the token, per day for everyone (`ECHO_TTS_REQUESTS_PER_DAY`, default 600).
+- Each voice reserves 25–60 s of GPU time, depending on its text length.
 
 Built with Llama. Llama 3.2 is licensed under the Llama 3.2 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved. Licence: https://www.llama.com/llama3_2/license/. The Explore page shows "Built with Llama" with a link to the licence.
 
