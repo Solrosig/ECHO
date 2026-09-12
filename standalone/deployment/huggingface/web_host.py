@@ -45,11 +45,47 @@ def llm_mode():
 def model_digest(tags,name=OLLAMA_MODEL):
     return next((m.get('digest') for m in tags.get('models',[]) if m.get('name')==name),None)
 
+def cpu_limit(root='/sys/fs/cgroup'):
+    """Whole CPUs the container's cgroup quota allows (cgroup v2, then v1), or None when there is no quota."""
+    root=Path(root)
+    try:
+        quota,period=(root/'cpu.max').read_text().split()[:2]
+        return None if quota=='max' else max(1,int(quota)//int(period))
+    except (OSError,ValueError):pass
+    try:
+        quota,period=int((root/'cpu/cpu.cfs_quota_us').read_text()),int((root/'cpu/cpu.cfs_period_us').read_text())
+        return max(1,quota//period) if quota>0 and period>0 else None
+    except (OSError,ValueError):return None
+
+def ollama_threads(env=os.environ,root='/sys/fs/cgroup',cores=None):
+    """Threads for the conversation model. Unless told, llama-server starts one per physical core of the host (96 on the
+    ZeroGPU host of 2026-09-12), and under the container's CPU quota that many threads can stall it. ECHO_OLLAMA_THREADS
+    sets the count; otherwise it follows the quota, and None leaves llama.cpp's own count where there is no quota."""
+    chosen=str(env.get('ECHO_OLLAMA_THREADS','')).strip()
+    if chosen:
+        if not chosen.isdigit() or int(chosen)<1:raise RuntimeError('ECHO_OLLAMA_THREADS must be a whole number of at least 1.')
+        return int(chosen)
+    limit=cpu_limit(root)
+    if cores is None:cores=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else os.cpu_count() or 1
+    return min(limit,cores) if limit else None
+
+def ollama_environment(cache,threads):
+    cache=Path(cache)
+    # The voices are loaded first. Ollama sizes itself to the GPU memory left, so it is told to keep a margin (default
+    # 2 GiB) for the voices' working memory during synthesis; on a small GPU it moves some model layers to the CPU instead.
+    env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home'),
+         'OLLAMA_GPU_OVERHEAD':os.environ.get('ECHO_OLLAMA_GPU_OVERHEAD',str(2*1024**3))}
+    # Ollama passes -t only for a model's num_thread option, which would reload the model whenever a request differs, so the
+    # count travels in the environment llama-server inherits from Ollama (LLAMA_ARG_THREADS is its --threads).
+    if threads:env['LLAMA_ARG_THREADS']=str(threads)
+    return env
+
 def start_embedded_ollama(cache):
     """Run the pinned Ollama and model inside this Space. They download to local disk again after every wake-up."""
     global OLLAMA_PROCESS
-    cache=Path(cache);runtime=cache/'runtime';binary=runtime/'bin/ollama';base='http://127.0.0.1:11434'
-    print(f"Starting Ollama on {os.environ.get('ACCELERATOR','unknown hardware')}; without a GPU it runs on the CPU.",flush=True)
+    cache=Path(cache);runtime=cache/'runtime';binary=runtime/'bin/ollama';base='http://127.0.0.1:11434';threads=ollama_threads()
+    print(f"Starting Ollama on {os.environ.get('ACCELERATOR','unknown hardware')}; without a GPU it runs on the CPU. "
+          f"Container CPU limit: {cpu_limit() or 'none'}; model threads: {threads or 'llama.cpp default'}.",flush=True)
     if not binary.exists():
         runtime.mkdir(parents=True,exist_ok=True);archive=cache/'ollama-linux-amd64.tar.zst'
         urllib.request.urlretrieve(f'https://github.com/ollama/ollama/releases/download/{OLLAMA_VERSION}/ollama-linux-amd64.tar.zst',archive)
