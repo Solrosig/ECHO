@@ -3,6 +3,7 @@ import {messageRatingForm,refreshMessageRatings} from './message-rating-ui.js';
 import {interactivePending} from './message-rating.js';
 import {RemoteSpeechClient} from './remote-speech.js';
 import {EMOTIONS,ENGINES,controlsFor,validateText} from './voice-controls.js';
+import {QUADRANTS} from './circumplex.js';
 import {requestReplyWhenReady,checkDialogue} from './dialogue-client.js';
 import {NeuralClient} from './neural-client.js';
 import {hashAudio} from './audio-utils.js';
@@ -26,8 +27,8 @@ function update(){
  if(!engine.pitch&&s.condition==='pitch'){$('condition').value='preset';s.condition='preset';}
  const nativePitch=false;if($('custom-pitch').dataset.engine!==s.engine){Object.assign($('custom-pitch'),{min:nativePitch?'20':'-4',max:nativePitch?'80':'4',step:nativePitch?'1':'.25',value:nativePitch?'50':'0'});$('custom-pitch').dataset.engine=s.engine;s.custom.pitch=Number($('custom-pitch').value);}
  const p=controlsFor(s);
- document.querySelectorAll('.emotion').forEach(el=>el.classList.toggle('chosen',el.dataset.emotion===s.emotion));
- $('target-name').textContent=e.name;$('target-coordinates').textContent=`Valence ${e.v>0?'+':''}${e.v.toFixed(2)} · Arousal ${e.a>0?'+':''}${e.a.toFixed(2)}`;
+ document.querySelectorAll('.quadrant').forEach(el=>el.classList.toggle('chosen',el.dataset.emotion===s.emotion));
+ $('target-name').textContent=QUADRANTS[s.emotion].name;$('target-coordinates').textContent=`Valence ${e.v>0?'+':''}${e.v.toFixed(2)} · Arousal ${e.a>0?'+':''}${e.a.toFixed(2)}`;
  $('rate-readout').textContent=p.words_per_minute?`${p.words_per_minute} words/min`:`${p.rate.toFixed(2)}× speed`;
  $('gain-readout').textContent=`${p.gain.toFixed(2)}× calibrated level`;$('pitch-readout').textContent=p.pitch===null?`${p.pitch_semitones>0?'+':''}${p.pitch_semitones.toFixed(2)} semitones · DSP`:`${p.pitch} / 100 · native`;
  $('voice-readout').textContent=p.voice;$('mechanism-name').textContent=engine.mechanism;$('engine-detail').textContent=engine.detail;
@@ -71,9 +72,9 @@ function addRecord(record,session,order){
  lastComparedEngine=record.engine;$('baseline').textContent=`Neutral controls · ${ENGINES[record.engine].name}`;
  document.querySelectorAll('[data-compare-engine]').forEach(b=>{b.dataset.unsupported=String(lastLine?.selection.condition==='pitch'&&!ENGINES[b.dataset.compareEngine].pitch);});
  if(!records.length)$('results').replaceChildren();records.push(record);const el=document.createElement('article');el.className='turn';
- const top=document.createElement('div');top.className='turn-top';const title=document.createElement('h3');title.textContent=ENGINES[record.engine].name;const badge=document.createElement('span');badge.className='turn-badge';badge.textContent=`TARGET ${EMOTIONS[record.emotion].name.toUpperCase()} · ${record.condition.toUpperCase()}`;top.append(title,badge);
+ const top=document.createElement('div');top.className='turn-top';const title=document.createElement('h3');title.textContent=ENGINES[record.engine].name;const badge=document.createElement('span');badge.className='turn-badge';badge.textContent=`TARGET ${QUADRANTS[record.emotion].name.toUpperCase()} · ${record.condition.toUpperCase()}`;top.append(title,badge);
  const text=document.createElement('blockquote');text.textContent=record.text;
- const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label',`${title.textContent}, ${record.condition}, ${EMOTIONS[record.emotion].name}`);record.url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));audio.src=record.url;
+ const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label',`${title.textContent}, ${record.condition}, ${QUADRANTS[record.emotion].name}`);record.url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));audio.src=record.url;
  const meta=document.createElement('div');meta.className='turn-meta';meta.textContent=`${record.duration_s.toFixed(2)}s audio · ${record.elapsed_s.toFixed(1)}s generation · speed ${record.rate.toFixed(2)}× · gain ${record.gain.toFixed(2)}${record.pitch!==null?` · native pitch ${record.pitch}`:` · pitch ${record.pitch_semitones>0?'+':''}${record.pitch_semitones.toFixed(2)} st (DSP)`}`;
  const link=document.createElement('a');link.href=audio.src;link.download=`echo-${record.engine}-${record.emotion}-${record.condition}-${records.length}.wav`;link.textContent='Download WAV';trackPlayback(audio,()=>({item_order:order}),event=>syncFor(session).playback(event));el.append(top,text,audio,meta,link,messageRatingForm(audio,session,order,syncFor(session)));$('results').append(el);
  if(records.length>12){const old=records.shift();URL.revokeObjectURL(old.url);$('results').firstElementChild.remove();}
@@ -106,7 +107,7 @@ async function runChat(){
   const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label','ECHO voice reply');const url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));chat.audioUrls.push(url);audio.src=url;
   const button=document.createElement('button');button.type='button';button.className='transcript-button';button.textContent='Show transcript';button.setAttribute('aria-expanded','false');
   const transcript=document.createElement('p');transcript.className='transcript';transcript.textContent=record.text;transcript.hidden=true;transcript.id='transcript-'+crypto.randomUUID();button.setAttribute('aria-controls',transcript.id);button.addEventListener('click',()=>{transcript.hidden=!transcript.hidden;button.textContent=transcript.hidden?'Show transcript':'Hide transcript';button.setAttribute('aria-expanded',String(!transcript.hidden));});
-  const meta=document.createElement('small');meta.textContent=`${ENGINES[record.engine].name} · ${EMOTIONS[record.emotion].name}`;pending.append(label,audio,button,transcript,meta);
+  const meta=document.createElement('small');meta.textContent=`${ENGINES[record.engine].name} · ${QUADRANTS[record.emotion].name}`;pending.append(label,audio,button,transcript,meta);
   const turn=turnMetadata(chat,record,input);void syncFor(chat).add(turn,record.buffer);pending.append(messageRatingForm(audio,chat,turn.order,syncFor(chat)));$('chat-message').value='';status('Voice reply ready. Play it or open the transcript.');$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
   // Browsers may require another click after model loading; the play control always remains available.
   const conversation=chat,saveEvent=event=>syncFor(conversation).playback(event);trackPlayback(audio,()=>({item_order:turn.order}),saveEvent);trackTranscript(button,transcript,audio,()=>({item_order:turn.order}),saveEvent);
