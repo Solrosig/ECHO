@@ -12,8 +12,10 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[1]
 REF_WAVS = ['refs/Q1.wav', 'refs/Q2.wav', 'refs/Q3.wav', 'refs/Q4.wav', 'refs/neutral.wav']
-# Kokoro runs in the listener's browser, so its weights ship inside webapp.zip. They are release assets, not in git.
-KOKORO_FILES = ['public/models/kokoro/onnx/model_quantized.onnx', 'public/models/kokoro/voices/af_heart.bin']
+# Kokoro runs in the listener's browser, so its weights and its ONNX Runtime WebAssembly ship inside webapp.zip. They
+# are release assets, not in git; without the runtime the browser voice fails with "no available backend found".
+KOKORO_FILES = ['public/models/kokoro/onnx/model_quantized.onnx', 'public/models/kokoro/voices/af_heart.bin',
+                'public/vendor/kokoro-ort/ort-wasm-simd-threaded.jsep.wasm', 'public/vendor/kokoro-ort/ort-wasm-simd-threaded.wasm']
 # Never shipped to the page: the locked Qwen backup and the Piper voice, which is on hold.
 EXCLUDED_MODELS = ('public/models/qwen/', 'public/models/piper/')
 
