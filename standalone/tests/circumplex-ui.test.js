@@ -24,7 +24,7 @@ test('the studio shows exactly four quadrants in circumplex order, with the axis
     assert.equal(cls, quadrant.toLowerCase());
     assert.deepEqual({quadrant, name, description}, QUADRANTS[id]);
   }
-  assert.match(html, /<dt>Valence<\/dt><dd>Positivity vs\. Negativity<\/dd>/);
+  assert.match(html, /<dt>Valence<\/dt><dd>Positive vs\. Negative<\/dd>/);
   assert.match(html, /<dt>Arousal<\/dt><dd>Intense vs\. Calm<\/dd>/);
   assert.doesNotMatch(html, /emotion-grid|class="emotion[ "]/);
 });
