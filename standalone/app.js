@@ -45,8 +45,8 @@ function setMode(next,{url=true}={}){
  $('studio').classList.toggle('blind',mode==='listening');$('studio').classList.toggle('exploring',mode==='explore');
  for(const [id,active] of [['mode-listening',mode==='listening'],['mode-test',mode==='line'],['mode-explore',mode==='explore']]){$(id).classList.toggle('active',active);$(id).setAttribute('aria-pressed',String(active));}
  $('workspace-title').textContent=mode==='listening'?'Listening test':mode==='line'?'Test Mode':'Explore Mode';$('listening-panel').hidden=mode!=='listening';$('interactive-panel').hidden=mode==='listening';$('line-panel').hidden=mode!=='line';$('explore-panel').hidden=mode!=='explore';
- // Test mode and Explore stay on their own activity: their pages offer no way to switch to another activity.
- const inActivity=mode!=='listening',listeningLink=document.querySelector('.topbar nav a[href="/?mode=listening"]');document.querySelector('.main-modes').hidden=inActivity;if(listeningLink)listeningLink.hidden=inActivity;
+ // Every activity stays on its own page: the studio offers no link or switch to another activity.
+ const listeningLink=document.querySelector('.topbar nav a[href="/?mode=listening"]');document.querySelector('.main-modes').hidden=true;if(listeningLink)listeningLink.hidden=true;
  if(mode==='listening')void ensureListening();
  // Opening Explore starts a hosted conversation model that sleeps between study sessions.
  if(mode==='explore')void checkDialogue();
