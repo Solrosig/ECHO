@@ -63,7 +63,10 @@ import uvicorn
 from web_host import prepare,add_web_routes,relay_gate,DURABLE,LOCAL
 store,web_process,public_origin=prepare()
 demo.queue(max_size=12)
-app=gr.mount_gradio_app(FastAPI(docs_url=None,redoc_url=None,openapi_url=None),demo,path='/api/tts',blocked_paths=[str(DURABLE),str(LOCAL)],show_error=True,ssr_mode=False,server_port=7860)
+# Gradio links queued results' files from app.root_path alone (only /config also uses the mount path), and it drops the
+# request path when X-Forwarded-Host is present, as on relayed voices; so root_path names the public path. A full URL
+# there broke Gradio's routing (v0.8.25).
+app=gr.mount_gradio_app(FastAPI(docs_url=None,redoc_url=None,openapi_url=None),demo,path='/api/tts',root_path='/api/tts',blocked_paths=[str(DURABLE),str(LOCAL)],show_error=True,ssr_mode=False,server_port=7860)
 # With the owner's token, visitors' voice requests go through the website's server, which relays them with the token so
 # ZeroGPU bills the owner; relay_gate lets only those relayed requests reach Gradio.
 app=relay_gate(add_web_routes(app,store,public_origin))
