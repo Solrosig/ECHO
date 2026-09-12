@@ -1,10 +1,14 @@
 import {makeTrials,validateRating,rowsCSV} from './study-session.js';
 import {StudySync,newSessionToken,COLLECTION_VERSION} from './study-sync.js';
 import {readNickname,rememberNickname} from './participant.js';
+import {listenerId} from './listener.js';
+import {trackPlayback} from './playback-log.js';
 import {RATING_SCALE} from './study-session.js';
 const $=id=>document.getElementById(id),query=new URLSearchParams(location.search),test=query.get('test')==='1';
 const storageKey=`echo-voice-study-v4${test?'-technical':''}`;let manifest,currentManifest,session,trials,heard=false,playCount=0,started=0,previousElapsed=0,touched=new Set(),locked=null,storageAvailable=true;
 let syncClient=null,lastSyncState='saving';
+// A playback event belongs to the clip the audio element was loading when it fired, not to the trial shown on screen.
+let pendingTrial=null,activeTrial=null;
 $('test-banner').hidden=!test;$('technical-fill').hidden=!test;
 function error(message){$('study-error').textContent=message;$('study-error').hidden=!message;}
 function persist(){try{localStorage.setItem(storageKey,JSON.stringify(session));}catch{storageAvailable=false;$('study-status').textContent='Browser backup is unavailable. Keep this tab open until the server confirms your responses.';}}
@@ -27,7 +31,7 @@ function showTrial(){
  $('target-match-value').textContent='Not rated';$('target-match').value='3';
  $('valence-value').textContent='Not rated';$('arousal-value').textContent='Not rated';$('clip-title').textContent=`Clip ${i+1} of ${trials.length}`;$('participant-code').textContent=`${session.nickname} · ${session.participant_id}`;$('study-progress').max=trials.length;$('study-progress').value=i;
  $('break-reminder').hidden=!(i>0&&i%15===0);
- $('play-instruction').textContent='Listen to the whole clip before rating it. You may replay it.';$('study-audio').src=item.audio;$('study-audio').playbackRate=1;
+ $('play-instruction').textContent='Listen to the whole clip before rating it. You may replay it.';pendingTrial={item_order:i+1,item_id:t.item_id};$('study-audio').src=item.audio;$('study-audio').playbackRate=1;
  const pending=session.current;
  if(pending?.index===i){
   locked={...pending.locked};heard=pending.heard;playCount=pending.playCount;previousElapsed=pending.elapsed_s;
@@ -54,6 +58,8 @@ function record(){
 $('study-audio').addEventListener('play',()=>playCount++);
 $('study-audio').addEventListener('ended',()=>{if($('study-audio').playbackRate!==1){error('Use normal playback speed (1×) and listen again.');return;}heard=true;if(!locked)$('perceived').disabled=false;$('play-instruction').textContent='Clip heard. Rate the voice below; you can replay it.';});
 $('study-audio').addEventListener('error',()=>error('This audio could not load. Check your connection and reload to resume the same clip.'));
+$('study-audio').addEventListener('loadstart',()=>{activeTrial=pendingTrial;});
+trackPlayback($('study-audio'),()=>activeTrial,event=>{if(!syncClient)return;syncClient.playback(event);persist();});
 for(const key of ['valence','arousal']){
  const update=()=>{touched.add(key);$(key+'-value').textContent=String(Number($(key).value));};$(key).addEventListener('input',update);$('neutral-'+key).addEventListener('click',()=>{$(key).value='0';update();});
 }
@@ -63,14 +69,14 @@ $('start-form').addEventListener('submit',e=>{
  e.preventDefault();const random=crypto.getRandomValues(new Uint32Array(2)),requested=query.get('g'),group=requested?Number(requested)-1:random[0]%manifest.groups.length;
  try{
   if(test){/* Technical sessions remain marked even when exercising the ordinary form. */}
-  session={nickname:rememberNickname($('study-nickname').value),collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,study_version:manifest.study_version,participant_id:(test?'TEST-':'P-')+crypto.randomUUID().replaceAll('-','').toUpperCase(),seed:random[1],group,rows:[],eligibility:{comfortable_english:$('english').checked,headphones:$('headphones').checked,previously_used_studio:$('previous-studio').checked||wasExposed()},consent_utc:new Date().toISOString(),record_type:test?'technical_test':'human_response',remote:{token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0}};
+  session={nickname:rememberNickname($('study-nickname').value),listener_id:listenerId(),collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,study_version:manifest.study_version,participant_id:(test?'TEST-':'P-')+crypto.randomUUID().replaceAll('-','').toUpperCase(),seed:random[1],group,rows:[],eligibility:{comfortable_english:$('english').checked,headphones:$('headphones').checked,previously_used_studio:$('previous-studio').checked||wasExposed()},consent_utc:new Date().toISOString(),record_type:test?'technical_test':'human_response',remote:{token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0}};
   trials=makeTrials(manifest,group,session.seed);connectSync();save();showTrial();
  }catch(e){error(e.message);}
 });
 $('resume-button').addEventListener('click',async()=>{
  try{
   error('');if(!session.remote){if(!$('transfer-consent').checked)throw new Error('Agree to server storage before transferring your existing responses.');session.remote={token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0};if(session.current&&!session.current.created_utc)session.current.created_utc=new Date().toISOString();}
-  trials=makeTrials(manifest,session.group,session.seed);connectSync();persist();$('resume-button').disabled=true;
+  session.listener_id||=listenerId();trials=makeTrials(manifest,session.group,session.seed);connectSync();persist();$('resume-button').disabled=true;
   try{await syncClient.restore();}catch(e){if([400,401,403,409,410].includes(e.status))throw e;}
   save();showTrial();
  }catch(e){error(e.message);}finally{$('resume-button').disabled=false;}

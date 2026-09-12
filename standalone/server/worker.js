@@ -2,6 +2,8 @@ import {validateNickname} from '../participant.js';
 import {audioDownload} from './audio.js';
 import {interactiveApi,explorationCSV} from './interactive.js';
 import {handleDialogueRequest,handleDialogueStatus} from './dialogue.mjs';
+import {validatePlayback,savePlayback,deletePlayback} from './playback.js';
+import {LISTENER_PATTERN} from '../listener.js';
 import manifest from '../public/study/manifest.json' with { type: 'json' };
 import previousManifest from '../public/study/manifest-v4.json' with { type: 'json' };
 const manifests=new Map([manifest,previousManifest].map(m=>[m.study_version,m]));
@@ -55,6 +57,7 @@ function sessionMetadata(input) {
   if (input.record_type==='human_response' && (!e.comfortable_english || !e.headphones)) fail(400,'Confirm English comprehension and headphone use.');
   try{input.nickname=validateNickname(input.nickname);}catch(e){fail(400,e.message);}
   if(input.rating_scale!==RATING_SCALE)fail(409,'Reload the current rating scale.');
+  if(input.listener_id!=null&&!LISTENER_PATTERN.test(input.listener_id))fail(400,'Invalid listener code.');
   return input;
 }
 function sameSession(s,input) {
@@ -124,23 +127,30 @@ async function api(request,env,url) {
     // The 27-clip v4 design is retired (protocol amendment 2026-09-10): its stored sessions may finish, but no new one starts.
     if(!existing && input.study_version!==manifest.study_version) fail(409,'This study version changed. Reload the page.');
     if(!existing && env.NEW_SESSION_ALLOWED?.()===false) fail(429,'Too many new sessions from this network. Wait an hour and try again.');
-    await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(participant_id) DO NOTHING`).bind(input.participant_id,hash,input.study_version,input.collection_version,input.record_type,input.group+1,input.seed,Number(input.eligibility.comfortable_english),Number(input.eligibility.headphones),Number(input.eligibility.previously_used_studio),input.consent_utc,timestamp,timestamp,input.nickname,input.rating_scale).run();
+    await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale,listener_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(participant_id) DO NOTHING`).bind(input.participant_id,hash,input.study_version,input.collection_version,input.record_type,input.group+1,input.seed,Number(input.eligibility.comfortable_english),Number(input.eligibility.headphones),Number(input.eligibility.previously_used_studio),input.consent_utc,timestamp,timestamp,input.nickname,input.rating_scale,input.listener_id??null).run();
     const s=await owned(request,db,input.participant_id);
     if(s.withdrawn_utc)fail(410,'This contribution was deleted.');
     if(!sameSession(s,input)) fail(409,'Session metadata cannot be changed.');
+    // A session started before listener codes existed is linked the first time its browser sends one; a code is never replaced.
+    if(input.listener_id&&!s.listener_id)await db.prepare('UPDATE study_sessions SET listener_id=? WHERE participant_id=? AND listener_id IS NULL').bind(input.listener_id,s.participant_id).run();
     return json(await snapshot(db,s));
   }
-  const match=path.match(/^\/api\/study\/sessions\/([^/]+)(\/responses)?$/);
+  const match=path.match(/^\/api\/study\/sessions\/([^/]+)(\/responses|\/playback)?$/);
   if(match) {
     let s=await owned(request,db,match[1]);
     if(method==='DELETE' && !match[2]) {
-      await db.batch([db.prepare('UPDATE study_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?), nickname=?, updated_utc=? WHERE participant_id=?').bind(now(),'',now(),s.participant_id), db.prepare('DELETE FROM study_responses WHERE participant_id=?').bind(s.participant_id)]);
+      await db.batch([db.prepare('UPDATE study_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?), nickname=?, updated_utc=? WHERE participant_id=?').bind(now(),'',now(),s.participant_id), db.prepare('DELETE FROM study_responses WHERE participant_id=?').bind(s.participant_id), deletePlayback(db,'study',s.participant_id)]);
       return json({withdrawn:true});
     }
     if(s.withdrawn_utc) fail(410,'This contribution was deleted.');
     if(method==='GET' && !match[2]) return json(await snapshot(db,s));
-    if(method==='POST' && match[2]) {
+    if(method==='POST' && match[2]==='/playback') {
+      const assigned=manifests.get(s.study_version);if(!assigned)fail(409,'This session belongs to an earlier frozen study.');
+      const trials=makeTrials(assigned,s.group_number-1,s.seed),events=validatePlayback(await body(request),{fail,maxOrder:assigned.trials_per_session,itemFor:order=>trials[order-1]?.item_id});
+      return json(await savePlayback(db,'study',s.participant_id,events,now()));
+    }
+    if(method==='POST' && match[2]==='/responses') {
       const rows=validateRows(await body(request),s,await readResponses(db,s.participant_id)), timestamp=now();
       await db.batch([...rows.map(r=>db.prepare(insertResponse).bind(s.participant_id,r.order,r.item_id,r.block_id,r.valence,r.arousal,r.naturalness,r.target_match,r.play_count,Number(r.completed_audio),r.elapsed_s,r.created_utc,timestamp,r.target_match===null?null:timestamp,s.participant_id)),
         db.prepare(`UPDATE study_sessions SET updated_utc=?, completed_utc=CASE WHEN (SELECT COUNT(*) FROM study_responses WHERE participant_id=? AND target_match IS NOT NULL)=${trialCount(s.study_version)} THEN COALESCE(completed_utc,?) ELSE completed_utc END WHERE participant_id=? AND withdrawn_utc IS NULL`).bind(timestamp,s.participant_id,timestamp,s.participant_id)]);

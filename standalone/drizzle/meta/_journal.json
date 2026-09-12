@@ -57,6 +57,13 @@
       "when": 1789031938449,
       "tag": "0007_full_corpus_listening",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789214400000,
+      "tag": "0008_listener_playback",
+      "breakpoints": true
     }
   ]
 }

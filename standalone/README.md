@@ -68,6 +68,35 @@ Keep the resulting SQLite file, .manifest.json and any .audio companion together
 
 Deleting an active participant session does not automatically erase historical backups. Define retention and backup erasure before recruitment.
 
+## Listener export
+
+`scripts/export-listeners.mjs` turns a database copy into one folder per listener, for analysis outside the app:
+
+- `<listener code>/listener.json`: the listener's nicknames and sessions in time order.
+- `<listener code>/listening-test/`, `test-mode/` and `explore-mode/`: one folder per session, named by its first save time and session ID, for example `2026-09-12T10-27-10Z_X-…`.
+- Each session folder holds `metadata.json`:
+  - times, listener code and nickname;
+  - the clips or messages in order, with their ratings;
+  - every play, pause, finish and seek of each voice, in the order it happened;
+  - a summary of listening order and replays.
+- Test and Explore session folders also hold their archived recordings as `01_<engine>_<emotion>.wav`, checked against their stored checksums.
+
+The listener code is a random `L-…` code the browser keeps beside the nickname. It links one browser's Listening, Test and Explore sessions. Sessions saved before listener codes existed, or from a browser without storage, go to `unknown-listener/`. Technical test records are left out unless `--include-technical` is given.
+
+From a local installation, export a copy made with `node scripts/backup.mjs`:
+
+```
+node scripts/export-listeners.mjs --database backups/<backup>.sqlite --audio backups/<backup>.sqlite.audio --out <new folder>
+```
+
+From the Hugging Face research bucket, after downloading it with `hf buckets sync`:
+
+```
+node scripts/export-listeners.mjs --bucket <download>/echo --out <new folder>
+```
+
+The export contains personal data: nicknames, typed messages, voices and listening behaviour. Keep it private and out of this repository.
+
 ## Hosting limits
 
 Behind a reverse proxy (Caddy in `compose.production.yaml`, or the Hugging Face host), set `ECHO_TRUST_PROXY=1` so that login attempts and these limits count each visitor rather than the proxy. Per network address, the server accepts 120 voice-synthesis requests and 120 conversation replies per 10 minutes (`ECHO_TTS_REQUESTS_PER_10_MIN`, `ECHO_DIALOGUE_REPLIES_PER_10_MIN`) and 300 new sessions or conversations per hour (`ECHO_SESSIONS_PER_HOUR`); resuming a session does not count. Archived conversation recordings are capped at 2048 MB in total (`ECHO_AUDIO_QUOTA_MB`). Raise these for a lab where many participants share one address. The Hugging Face host serves the voices directly, so its Gradio queue limits apply there instead.
