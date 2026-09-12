@@ -121,6 +121,7 @@ def prepare():
     shutil.copyfile(credentials,LOCAL/'researcher.json')
     store=Store(LOCAL,DURABLE)
     if not (LOCAL/'study.sqlite').exists():store.restore()
+    store.restore_metrics()
     node=os.environ.get('ECHO_NODE') or shutil.which('node')
     if not node or not subprocess.check_output([node,'--version'],text=True).startswith('v24.'):
         cache=Path('/tmp/echo-node');cache.mkdir(exist_ok=True)
@@ -194,6 +195,10 @@ def add_web_routes(app,store,origin):
                     data=await response.aread();await response.aclose();await client.aclose()
                     if request.method in ['POST','PUT','PATCH','DELETE'] and not path.startswith('/api/auth/') and response.status_code<400:
                         await asyncio.to_thread(store.checkpoint)
+                    elif path=='/api/dialogue/reply':
+                        # A failed reply saves no study data, but its latency and error belong in the reply metrics.
+                        try:await asyncio.to_thread(store.checkpoint_metrics)
+                        except Exception as error:print('Could not keep conversation-reply metrics:',error,flush=True)
                     return Response(data,status_code=response.status_code,headers=h)
                 async def stream():
                     try:
