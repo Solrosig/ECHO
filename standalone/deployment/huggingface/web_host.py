@@ -19,8 +19,13 @@ OLLAMA_MODEL='llama3.2:3b'
 # The llama3.2:3b build (Q4_K_M) the 2026-09-11 prompt screen used; any other build is refused.
 OLLAMA_MODEL_DIGEST='a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72'
 OLLAMA_PROCESS=None
-# With the owner's token on Hugging Face, Gradio listens here and the website's server relays /api/tts to it.
+# With the owner's token on Hugging Face, the website's server calls the voices at this public path, and relay_gate hands
+# those requests, and only those, to Gradio at /api/tts.
 GPU_SPEECH_PATH='/api/tts-gpu'
+# Visitors' /api/tts requests are routed under this prefix to the website's server.
+RELAY_PREFIX='/_echo_voice_relay'
+# A random key chosen at each start (prepare) and known only to the website's server.
+RELAY_KEY=None
 
 def unpack(archive,dest):
     dest=Path(dest);dest.mkdir(parents=True,exist_ok=True)
@@ -78,6 +83,9 @@ def ollama_environment(cache):
     env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home'),
          'OLLAMA_GPU_OVERHEAD':os.environ.get('ECHO_OLLAMA_GPU_OVERHEAD',str(2*1024**3))}
     env.pop('ECHO_ZEROGPU_TOKEN',None)
+    # On the ZeroGPU host (Xeon 8559C) llama.cpp put the weights in AMX buffers and its first computation never finished,
+    # with 96 threads and with 16 (2026-09-12). Without weight repacking (llama.cpp's extra buffer types) the weights stay in plain CPU buffers.
+    env.setdefault('LLAMA_ARG_REPACK','0')
     return env
 
 def ollama_model(threads):
@@ -134,18 +142,52 @@ def owner_token(env=os.environ):
     token=str(env.get('ECHO_ZEROGPU_TOKEN','')).strip()
     return token if token and env.get('SPACE_ID') else None
 
-def node_environment(origin,mode,threads,local,env=os.environ):
+def node_environment(origin,mode,threads,local,env=os.environ,relay_key=None):
     child={**env,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(local),'ECHO_TRUST_PROXY':'1','ECHO_OLLAMA_AUTOSTART':'0'}
     token=owner_token(env);child.pop('ECHO_ZEROGPU_TOKEN',None)
     if mode!='remote':
         child['ECHO_OLLAMA_URL']='http://127.0.0.1:11434';child.pop('ECHO_OLLAMA_TOKEN',None)
         if mode=='embedded' and threads:child['ECHO_OLLAMA_MODEL']=ollama_model(threads)
     # Hugging Face turns the token into the ZeroGPU identity only on requests that reach the Space through its public
-    # address, so the server relays each voice there; Gradio then listens on GPU_SPEECH_PATH and advertises /api/tts.
-    if token:child.update({'ECHO_TTS_URL':origin+GPU_SPEECH_PATH,'ECHO_TTS_TOKEN':token})
+    # address, so the server relays each voice there, with the start's key that lets relay_gate hand it to Gradio.
+    if token and relay_key:child.update({'ECHO_TTS_URL':origin+GPU_SPEECH_PATH,'ECHO_TTS_TOKEN':token,'ECHO_TTS_RELAY_KEY':relay_key})
     return child
 
+def is_voice_path(path):
+    return path=='/api/tts' or path.startswith('/api/tts/')
+
+def relay_gate(app,key=None):
+    """With the owner's token, Gradio stays at /api/tts, but visitors must not reach it directly or ZeroGPU bills them.
+    Their /api/tts requests go to the website's server (under RELAY_PREFIX), which relays them to GPU_SPEECH_PATH through
+    the public address with the owner's token and this start's key. Only requests carrying the key reach Gradio, under
+    their /api/tts path, so Gradio's own links keep pointing at /api/tts. (A full-URL root_path broke Gradio's routing.)"""
+    key=RELAY_KEY if key is None else key
+    if not key:return app
+    expected=key.encode()
+    async def gate(scope,receive,send):
+        if scope.get('type')=='http':
+            path=scope.get('path','');raw=scope.get('raw_path') or path.encode()
+            if path==GPU_SPEECH_PATH or path.startswith(GPU_SPEECH_PATH+'/'):
+                given=dict(scope.get('headers') or []).get(b'x-echo-voice-relay',b'')
+                if not secrets.compare_digest(given,expected):
+                    await send({'type':'http.response.start','status':404,'headers':[(b'content-type',b'application/json')]})
+                    await send({'type':'http.response.body','body':b'{"detail":"Not Found"}'})
+                    return
+                scope=dict(scope,path='/api/tts'+path[len(GPU_SPEECH_PATH):],raw_path=b'/api/tts'+raw[len(GPU_SPEECH_PATH):])
+            elif is_voice_path(path):
+                scope=dict(scope,path=RELAY_PREFIX+path,raw_path=RELAY_PREFIX.encode()+raw)
+        await app(scope,receive,send)
+    return gate
+
+def website_path(path):
+    """The path the website's server receives, and whether it is a voice request; None refuses the request."""
+    if path.startswith(RELAY_PREFIX+'/'):
+        inner=path[len(RELAY_PREFIX):]
+        return (inner,True) if is_voice_path(inner) else None
+    return path,is_voice_path(path)
+
 def prepare():
+    global RELAY_KEY
     mode=llm_mode()
     if not WEB.exists():unpack(ROOT/'webapp.zip',WEB)
     # Preserve Window as the receiver of native fetch in Chromium. The bundled
@@ -224,7 +266,8 @@ def prepare():
     elif mode=='off':print('Conversation replies are off (ECHO_LLM_MODE=off); Listening and Test work normally.',flush=True)
     if owner_token():print("Server voices are called with the Space secret ECHO_ZEROGPU_TOKEN, so ZeroGPU counts them against the owner's quota.",flush=True)
     elif os.environ.get('SPACE_ID'):print("Server voices use each visitor's own ZeroGPU allowance, which is very small without a Hugging Face account. Add the Space secret ECHO_ZEROGPU_TOKEN to use the owner's quota.",flush=True)
-    child=subprocess.Popen([node,str(WEB/'server/start.mjs')],env=node_environment(origin,mode,threads,LOCAL))
+    RELAY_KEY=secrets.token_urlsafe(32) if owner_token() else None
+    child=subprocess.Popen([node,str(WEB/'server/start.mjs')],env=node_environment(origin,mode,threads,LOCAL,relay_key=RELAY_KEY))
     for _ in range(120):
         if child.poll() is not None:raise RuntimeError('Web process stopped during startup')
         try:
@@ -241,9 +284,10 @@ def prepare():
 def add_web_routes(app,store,origin):
     lock=asyncio.Lock()
     async def proxy(request:Request):
-        path=request.url.path
-        # With the owner's token the voices pass through the website's server; their event streams must neither wait for nor hold the lock.
-        speech=path=='/api/tts' or path.startswith('/api/tts/')
+        routed=website_path(request.url.path)
+        if routed is None:return Response(json.dumps({'detail':'Not Found'}),status_code=404,media_type='application/json')
+        # Relayed voice requests pass through the website's server; their event streams must neither wait for nor hold the lock.
+        path,speech=routed
         if path=='/health':return Response(json.dumps({'app':'ECHO','storage':'private-bucket-snapshots','ready':True}),media_type='application/json')
         # Only the Node server's explicit public directories and API are exposed.
         # No static mount of ROOT, /tmp or /data is created here.
