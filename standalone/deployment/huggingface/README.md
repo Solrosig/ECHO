@@ -41,4 +41,12 @@ Add the Space secret `ECHO_ZEROGPU_TOKEN`: a fine-grained token of the Space own
 
 Built with Llama. Llama 3.2 is licensed under the Llama 3.2 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved. Licence: https://www.llama.com/llama3_2/license/. The Explore page shows "Built with Llama" with a link to the licence.
 
+## Deploying
+
 Build the upload folder with `python package_space.py --refs-from <an earlier backend.zip>` after `pnpm build`.
+
+The Space builds and serves only `main`. Its other branches and tags are never run.
+
+- `staging`: upload the package here first and check its files. The site does not change.
+- `main`: then upload the same package here, titled `Deploy ECHO dev <commit> (<GitHub tag>)`. The Space rebuilds and restarts with it.
+- Tags: each deployment on `main` carries the name of the GitHub tag it was built from. To return to that version, upload the files at its tag to `main` again.
