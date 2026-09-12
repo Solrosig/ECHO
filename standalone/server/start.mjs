@@ -25,13 +25,16 @@ export function clientAddress(req,trustProxy=false){
 }
 export function createEchoServer({dataDir=resolve(ROOT,'data'),clientDir=resolve(ROOT,'dist/client'),publicDir=resolve(ROOT,'public'),publicOrigin=null,host='127.0.0.1',allowLocalContainer=false,speechService=process.env.ECHO_TTS_URL||'http://127.0.0.1:7860',dialogue=dialogueConfig(),
   trustProxy=process.env.ECHO_TRUST_PROXY==='1',speechLimit=positive(process.env.ECHO_TTS_REQUESTS_PER_10_MIN??120,'ECHO_TTS_REQUESTS_PER_10_MIN'),sessionLimit=positive(process.env.ECHO_SESSIONS_PER_HOUR??300,'ECHO_SESSIONS_PER_HOUR'),audioQuotaMb=positive(process.env.ECHO_AUDIO_QUOTA_MB??2048,'ECHO_AUDIO_QUOTA_MB'),
-  dialogueLimit=positive(process.env.ECHO_DIALOGUE_REPLIES_PER_10_MIN??120,'ECHO_DIALOGUE_REPLIES_PER_10_MIN'),ollamaLauncher=null}={}) {
+  dialogueLimit=positive(process.env.ECHO_DIALOGUE_REPLIES_PER_10_MIN??120,'ECHO_DIALOGUE_REPLIES_PER_10_MIN'),ollamaLauncher=null,
+  speechToken=process.env.ECHO_TTS_TOKEN||null,speechDailyLimit=positive(process.env.ECHO_TTS_REQUESTS_PER_DAY??600,'ECHO_TTS_REQUESTS_PER_DAY')}={}) {
   if(publicOrigin){const u=new URL(publicOrigin);if(u.origin!==publicOrigin||u.protocol!=='https:')throw new Error('PUBLIC_ORIGIN must be an HTTPS origin without a trailing slash.');}
   if(host!=='127.0.0.1'&&host!=='::1'&&!publicOrigin&&!allowLocalContainer)throw new Error('A non-loopback server requires PUBLIC_ORIGIN=https://your-domain.');
   if(!existsSync(join(clientDir,'index.html')))throw new Error('Built website missing: restore dist/client from the archive or run pnpm build.');
   clientDir=realpathSync(clientDir);const assetDirs=[clientDir,realpathSync(publicDir)];mkdirSync(dataDir,{recursive:true,mode:0o700});
   const auth=createAuth(dataDir,{secure:Boolean(publicOrigin)}),DB=localDatabase(join(dataDir,'study.sqlite')),dialogueLog=createMetricsLog(join(dataDir,'dialogue-metrics.jsonl'));
   const speechAllowed=createLimiter({limit:speechLimit,windowMs:10*60*1000}),sessionAllowed=createLimiter({limit:sessionLimit,windowMs:60*60*1000});
+  // With the owner's token every voice draws on the owner's ZeroGPU quota, so the day's total is capped across all clients.
+  const speechBudget=createLimiter({limit:speechDailyLimit,windowMs:24*60*60*1000});
   // Only the command-line start passes a launcher, so servers built by tests never start Ollama.
   const dialogueAllowed=createLimiter({limit:dialogueLimit,windowMs:10*60*1000}),dialogueState={config:dialogue,log:dialogueLog,status:{at:0,value:null},launcher:ollamaLauncher};
   function staticFile(req,res,url){
@@ -71,11 +74,12 @@ export function createEchoServer({dataDir=resolve(ROOT,'data'),clientDir=resolve
       if(url.origin!==origin){res.writeHead(400);return res.end();}
       if(url.pathname==='/api/tts'||url.pathname.startsWith('/api/tts/')){
         // Each queue join starts one synthesis on the speech service.
-        if(req.method==='POST'&&/^\/api\/tts\/gradio_api\/queue\/join\/?$/.test(url.pathname)&&!speechAllowed(clientAddress(req,trustProxy))){
-          req.resume();res.writeHead(429,{'Content-Type':'application/json','Cache-Control':'no-store','Retry-After':'600'});
-          return res.end(JSON.stringify({error:'Too many voice requests from this network. Wait a few minutes and try again.'}));
+        if(req.method==='POST'&&/^\/api\/tts\/gradio_api\/queue\/join\/?$/.test(url.pathname)){
+          const refusal=!speechAllowed(clientAddress(req,trustProxy))?['600','Too many voice requests from this network. Wait a few minutes and try again.']
+            :speechToken&&!speechBudget('owner')?['3600','The speech service has reached its limit for today. Please try again later.']:null;
+          if(refusal){req.resume();res.writeHead(429,{'Content-Type':'application/json','Cache-Control':'no-store','Retry-After':refusal[0]});return res.end(JSON.stringify({error:refusal[1]}));}
         }
-        return await proxySpeech(req,res,url,origin,speechService);
+        return await proxySpeech(req,res,url,origin,speechService,speechToken);
       }
       if(!url.pathname.startsWith('/api/'))return staticFile(req,res,url);
       // Each conversation reply runs the language model, which may be paid hardware that would otherwise sleep.

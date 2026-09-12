@@ -16,6 +16,7 @@ import gradio as gr
 import spaces
 import models
 import nltk
+from web_host import voice_gpu_seconds
 nltk.download('punkt_tab',quiet=True)
 
 torch.set_num_threads(2)
@@ -31,7 +32,8 @@ for engine in enabled:
     except Exception as exc:
         failures[engine]=str(exc);print(f'Could not initialise {engine}: {exc}',flush=True)
 
-@spaces.GPU(duration=60)
+# ZeroGPU refuses a call whose reservation exceeds the caller's time left, so each voice reserves time by text length.
+@spaces.GPU(duration=voice_gpu_seconds)
 def gpu_synthesize(text,engine,emotion,condition):
     return models.render(text,engine,emotion,condition)
 
@@ -58,10 +60,14 @@ with gr.Blocks(delete_cache=(300,300)) as demo:
 # Full ECHO website and durable private data beside the existing TTS API.
 from fastapi import FastAPI
 import uvicorn
-from web_host import prepare,add_web_routes,DURABLE,LOCAL
+from web_host import prepare,add_web_routes,owner_token,DURABLE,LOCAL,GPU_SPEECH_PATH
 store,web_process,public_origin=prepare()
 demo.queue(max_size=12)
-app=gr.mount_gradio_app(FastAPI(docs_url=None,redoc_url=None,openapi_url=None),demo,path='/api/tts',blocked_paths=[str(DURABLE),str(LOCAL)],show_error=True,ssr_mode=False,server_port=7860)
+# With the owner's token the website's server relays /api/tts to Gradio on an internal path, through the Space's public
+# address, so ZeroGPU bills the owner. Gradio still advertises /api/tts, so the page and its file links keep using the relay.
+billed=owner_token() is not None
+app=gr.mount_gradio_app(FastAPI(docs_url=None,redoc_url=None,openapi_url=None),demo,path=GPU_SPEECH_PATH if billed else '/api/tts',
+                        root_path=public_origin+'/api/tts' if billed else None,blocked_paths=[str(DURABLE),str(LOCAL)],show_error=True,ssr_mode=False,server_port=7860)
 app=add_web_routes(app,store,public_origin)
 server=uvicorn.Server(uvicorn.Config(app,host='0.0.0.0',port=int(os.environ.get('ECHO_HTTP_PORT','7860'))))
 demo.server=server

@@ -59,6 +59,17 @@ test('voice synthesis requests and new sessions are limited per client; resuming
  assert.equal((await call('/api/study/sessions',{method:'POST',data:study,headers:{Authorization:`Bearer ${token}`}})).status,429);
 });
 
+test('with the owner token, voice requests are also capped per day across all clients',async t=>{
+ const call=await site(t,{speechLimit:10,speechToken:'hf_owner_fixture',speechDailyLimit:2});
+ const join=()=>call('/api/tts/gradio_api/queue/join',{method:'POST',data:{}});
+ assert.deepEqual([(await join()).status,(await join()).status],[200,200]);
+ const refused=await join();assert.equal(refused.status,429);assert.match((await refused.json()).error,/limit for today/);
+ assert.equal((await call('/api/tts/gradio_api/queue/data?session_hash=fixture')).status,200);
+ const open=await site(t,{speechLimit:10,speechDailyLimit:1});
+ const openJoin=()=>open('/api/tts/gradio_api/queue/join',{method:'POST',data:{}});
+ assert.deepEqual([(await openJoin()).status,(await openJoin()).status],[200,200]);
+});
+
 test('conversation replies are limited per client, so a script cannot keep a paid model awake',async t=>{
  const call=await site(t,{dialogueLimit:1,dialogue:dialogueConfig({ECHO_OLLAMA_URL:'http://127.0.0.1:9'})});
  const reply=()=>call('/api/dialogue/reply',{method:'POST',data:{text:'Hello.',emotion:'calm',history:[]}});
