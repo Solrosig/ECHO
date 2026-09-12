@@ -22,4 +22,6 @@ Explore replies come from Ollama with `llama3.2:3b`, build `a80c4f17acd5`, the b
 - `remote` (variant b, split): this Space stays on ZeroGPU, and `../huggingface-llm` runs as a private Docker Space on paid hardware with a short sleep time. Set the variable `ECHO_OLLAMA_URL` to its address and the secret `ECHO_OLLAMA_TOKEN` to a token that can only read it. The website wakes it when someone opens Explore.
 - `off` (default): no conversation replies; Listening and Test work normally.
 
+Built with Llama. Llama 3.2 is licensed under the Llama 3.2 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved. Licence: https://www.llama.com/llama3_2/license/. The Explore page shows "Built with Llama" with a link to the licence.
+
 Build the upload folder with `python package_space.py --refs-from <an earlier backend.zip>` after `pnpm build`.
