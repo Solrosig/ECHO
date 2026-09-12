@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {EMOTIONS} from '../voice-controls.js';
-import {QUADRANTS} from '../circumplex.js';
+import {QUADRANTS,targetName} from '../circumplex.js';
 
 const read = path => readFileSync(new URL('../'+path, import.meta.url), 'utf8');
 
@@ -31,4 +31,27 @@ test('the studio shows exactly four quadrants in circumplex order, with the axis
 
 test('the page names targets through QUADRANTS, not the frozen preset names', () => {
   assert.doesNotMatch(read('app.js'), /EMOTIONS\[[^\]]+\]\.name/);
+});
+
+test('Listening reveals every frozen manifest target under its page name', () => {
+  const manifest = JSON.parse(read('public/study/manifest.json'));
+  const pageName = {Happy:'Happy', Upset:'Angry', Sad:'Sad', Calm:'Relaxed'};
+  assert.ok(manifest.blocks.length > 0);
+  for (const {block_id, target} of manifest.blocks) assert.equal(targetName(target), pageName[target.name], block_id);
+  const listen = read('listen.js');
+  assert.doesNotMatch(listen, /\$\{t\.target\.name\}/);
+  assert.equal(listen.match(/\$\{targetName\(t\.target\)\}/g).length, 2);
+});
+
+test('every page uses the quadrant names, and Q numbers appear only inside the circle', () => {
+  const calibration = read('public/calibration/index.html');
+  assert.equal(calibration.match(/<h3>Angry<\/h3>/g).length, 3);
+  assert.equal(calibration.match(/<h3>Relaxed<\/h3>/g).length, 3);
+  assert.doesNotMatch(calibration.replace(/src="[^"]*"/g, ''), /\b(upset|calm)\b/i);
+  for (const name of ['public/listener-instructions.html', 'public/ECHO_Application_Coverage_EN.csv']) assert.doesNotMatch(read(name), /\b(Upset|Calm)\b/, name);
+  const studio = read('studio.html').replace(/<b><small>Q[1-4]<\/small> [A-Za-z]+<\/b>/g, '');
+  const pages = ['app.js', 'listen.js', 'public/listener-instructions.html', 'public/calibration/index.html', 'public/ECHO_Application_Coverage_EN.csv'];
+  for (const [name, text] of [['studio.html', studio], ...pages.map(page => [page, read(page)])]) {
+    assert.doesNotMatch(text, /Q[1-4]\W{0,12}(Happy|Angry|Sad|Relaxed)/, name);
+  }
 });
