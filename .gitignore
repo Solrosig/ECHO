@@ -78,6 +78,7 @@ standalone/piper-phonemize.js
 standalone/vendor/soundtouch/**/*.map
 standalone/vendor/soundtouch/**/*.tsbuildinfo
 standalone/**/*.zip
+standalone/space-upload/
 standalone/research-bundle/full-acoustic/audio/diagnostics/
 standalone/research-bundle/full-acoustic/audio/reference/
 standalone/research-bundle/current-phase/kokoro-ablation/raw/*.f32

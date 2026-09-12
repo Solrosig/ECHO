@@ -9,6 +9,7 @@ import manifest from '../public/study/manifest.json' with {type:'json'};
 import {setPassword} from '../server/auth.mjs';
 import {createEchoServer,clientAddress} from '../server/start.mjs';
 import {createLimiter} from '../server/limits.mjs';
+import {dialogueConfig} from '../server/dialogue.mjs';
 import worker,{COLLECTION_VERSION} from '../server/worker.js';import {localDatabase} from '../server/local-db.js';import {localAudio} from '../server/local-audio.js';
 import {audioResult,hashAudio} from '../audio-utils.js';import {controlsFor} from '../voice-controls.js';import {createInteractiveSession} from '../interactive-sync.js';
 
@@ -56,6 +57,13 @@ test('voice synthesis requests and new sessions are limited per client; resuming
  const token=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-','');
  const study={nickname:'technical_demo',rating_scale:'va-0.01_match-0.5_naturalness-1_v2',participant_id:'TEST-'+crypto.randomUUID().replaceAll('-','').toUpperCase(),study_version:manifest.study_version,collection_version:COLLECTION_VERSION,record_type:'technical_test',group:3,seed:123,eligibility:{comfortable_english:true,headphones:true,previously_used_studio:false},consent:true,consent_utc:new Date().toISOString()};
  assert.equal((await call('/api/study/sessions',{method:'POST',data:study,headers:{Authorization:`Bearer ${token}`}})).status,429);
+});
+
+test('conversation replies are limited per client, so a script cannot keep a paid model awake',async t=>{
+ const call=await site(t,{dialogueLimit:1,dialogue:dialogueConfig({ECHO_OLLAMA_URL:'http://127.0.0.1:9'})});
+ const reply=()=>call('/api/dialogue/reply',{method:'POST',data:{text:'Hello.',emotion:'calm',history:[]}});
+ assert.equal((await reply()).status,503);assert.equal((await reply()).status,429);
+ const status=await call('/api/dialogue/status');assert.equal(status.status,200);assert.deepEqual(await status.json(),{ready:false,waking:false});
 });
 
 test('the recording archive refuses new WAVs beyond its storage quota and still accepts a retry',async t=>{

@@ -2,19 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {dialogueConfig,dialogueReply,handleDialogueRequest,DialogueError,GENERATION,PRIMARY_MODEL} from '../server/dialogue.mjs';
+import {dialogueConfig,dialogueReply,dialogueStatus,handleDialogueRequest,handleDialogueStatus,DialogueError,GENERATION,PRIMARY_MODEL,WAKE_RETRY_S} from '../server/dialogue.mjs';
 import {QWEN_BACKUP_ALLOWED} from '../server/llm-backup.mjs';
 import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply} from '../server/dialogue-prompt.mjs';
 
 const input={text:'The meeting was moved to a different room.',emotion:'calm',history:[]};
 const ollamaReply=(content,finish='stop')=>({ok:true,status:200,json:async()=>({choices:[{message:{content},finish_reason:finish}]})});
+const htmlPage=status=>({ok:status<400,status,json:async()=>{throw new SyntaxError('Unexpected token <');}});
 function recorder(response){const calls=[];return {calls,fetchImpl:async(url,init)=>{calls.push({url,body:JSON.parse(init.body)});return response;}};}
 const offline=async()=>{throw new TypeError('fetch failed');};
 const namesAModel=message=>/llama3|qwen/i.test(message);
+const remoteEnv={ECHO_OLLAMA_URL:'https://owner-echo-llm.hf.space/',ECHO_OLLAMA_TOKEN:' hf_test_token '};
 
 test('defaults: llama3.2:3b through local Ollama with the coherence gate off',()=>{
   assert.equal(PRIMARY_MODEL,'llama3.2:3b');
-  assert.deepEqual(dialogueConfig({}),{gate:'off',model:'llama3.2:3b',timeoutMs:120000,ollamaUrl:'http://127.0.0.1:11434',gateUrl:'http://127.0.0.1:8790'});
+  assert.deepEqual(dialogueConfig({}),{gate:'off',model:'llama3.2:3b',timeoutMs:120000,ollamaUrl:'http://127.0.0.1:11434',gateUrl:'http://127.0.0.1:8790',apiKey:null,remote:false});
 });
 
 test('the gate switch accepts only off or on',()=>{
@@ -88,13 +90,45 @@ test('failures map to clear statuses and never name a model',async()=>{
   await expect(dialogueReply(input,dialogueConfig({ECHO_COHERENCE_GATE:'on'}),{fetchImpl:async()=>({ok:false,status:502,json:async()=>({error:'x'})})}),502);
 });
 
-test('the request handler records one metrics line per reply, including failures',async()=>{
+test('a remote model gets the token and a shorter timeout, and one that is asleep reads as starting',async()=>{
+  const config=dialogueConfig(remoteEnv);
+  assert.deepEqual([config.ollamaUrl,config.apiKey,config.remote,config.timeoutMs],['https://owner-echo-llm.hf.space','hf_test_token',true,45000]);
+  const seen=[];
+  assert.equal((await dialogueReply(input,config,{fetchImpl:async(url,init)=>{seen.push([url,init.headers.Authorization]);return ollamaReply('Ready.');}})).text,'Ready.');
+  assert.deepEqual(seen,[['https://owner-echo-llm.hf.space/v1/chat/completions','Bearer hf_test_token']]);
+  const starting=e=>e instanceof DialogueError&&e.status===503&&e.details.waking===true&&e.details.retry_after_s===WAKE_RETRY_S&&!e.message.includes('hf_test_token')&&!namesAModel(e.message);
+  for(const fetchImpl of [offline,async()=>htmlPage(503),async()=>htmlPage(504),async()=>htmlPage(200)])await assert.rejects(dialogueReply(input,config,{fetchImpl}),starting);
+  await assert.rejects(dialogueReply(input,config,{fetchImpl:async()=>({ok:false,status:401,json:async()=>({error:'Invalid credentials'})})}),e=>e.status===503&&!e.details.waking&&/access settings/.test(e.message));
+  await assert.rejects(dialogueReply(input,config,{fetchImpl:async()=>htmlPage(404)}),e=>e.status===503&&/access settings/.test(e.message));
+  await assert.rejects(dialogueReply(input,dialogueConfig({}),{fetchImpl:offline}),e=>e.status===503&&e.details.waking===undefined&&/Start Ollama/.test(e.message));
+});
+
+test('the status check wakes a sleeping remote model, is cached briefly and sends the token only to the model',async()=>{
+  let calls=0,ready=false;
+  const env={DIALOGUE:{config:dialogueConfig(remoteEnv),status:{at:0,value:null},fetch:async(url,init)=>{
+    calls++;assert.equal(url,'https://owner-echo-llm.hf.space/api/version');assert.equal(init.headers.Authorization,'Bearer hf_test_token');
+    return ready?{ok:true,status:200,json:async()=>({version:'0.30.11'})}:htmlPage(503);
+  }}};
+  const json=value=>value;
+  assert.deepEqual(await handleDialogueStatus({},env,{json}),{ready:false,waking:true});
+  ready=true;assert.deepEqual(await handleDialogueStatus({},env,{json}),{ready:false,waking:true});assert.equal(calls,1);
+  env.DIALOGUE.status.at=0;assert.deepEqual(await handleDialogueStatus({},env,{json}),{ready:true,waking:false});assert.equal(calls,2);
+  assert.deepEqual(await dialogueStatus(dialogueConfig({}),{fetchImpl:offline}),{ready:false,waking:false});
+  assert.deepEqual(await dialogueStatus(undefined),{ready:false,waking:false});
+});
+
+test('the request handler records one metrics line per reply, including failures and wake-ups',async()=>{
   const lines=[],json=(value,status=200)=>({status,value});
   const env={DIALOGUE:{config:dialogueConfig({}),log:e=>lines.push(e),fetch:async()=>ollamaReply('Fine.')}};
   assert.deepEqual(await handleDialogueRequest({},env,{readBody:async()=>input,json}),{status:200,value:{text:'Fine.',gate:'off',prompt_version:DIALOGUE_PROMPT_VERSION}});
   env.DIALOGUE.fetch=offline;
   assert.equal((await handleDialogueRequest({},env,{readBody:async()=>input,json})).status,503);
-  assert.equal(lines.length,2);
+  env.DIALOGUE.config=dialogueConfig(remoteEnv);
+  const asleep=await handleDialogueRequest({},env,{readBody:async()=>input,json});
+  assert.deepEqual([asleep.status,asleep.value.waking,asleep.value.retry_after_s],[503,true,WAKE_RETRY_S]);
+  assert.equal(lines.length,3);
   assert.deepEqual([lines[0].ok,lines[0].gate,lines[0].model,lines[0].prompt_version,lines[0].emotion,lines[0].chars_out],[true,'off','llama3.2:3b','echo-dialogue-v3','calm',5]);
-  assert.deepEqual([lines[1].ok,lines[1].status],[false,503]);
+  assert.deepEqual([lines[1].ok,lines[1].status,lines[1].waking],[false,503,undefined]);
+  assert.deepEqual([lines[2].ok,lines[2].status,lines[2].waking],[false,503,true]);
+  assert.ok(lines.every(l=>!JSON.stringify(l).includes('hf_test_token')));
 });
