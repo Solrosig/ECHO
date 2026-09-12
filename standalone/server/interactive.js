@@ -1,4 +1,6 @@
 import {audioUpload,deleteSessionAudio} from './audio.js';
+import {validatePlayback,savePlayback,deletePlayback} from './playback.js';
+import {LISTENER_PATTERN} from '../listener.js';
 import {validateNickname,validateConversationTurn} from '../participant.js';
 import {INTERACTIVE_VERSION} from '../interactive-sync.js';
 import {controlsFor} from '../voice-controls.js';
@@ -17,21 +19,29 @@ export async function interactiveApi(request,url,h){
   if(!['line','explore'].includes(input.mode)||!['interactive_exploration','technical_test'].includes(input.record_type))fail(400,'Invalid session mode.');
   if(input.mode==='explore'?!EXPLORE_ENGINES.includes(input.engine):input.engine!==null)fail(400,'Choose one engine for an Explore conversation.');
   if(input.consent!==true||typeof input.consent_utc!=='string'||!Number.isFinite(Date.parse(input.consent_utc)))fail(400,'Agree to storage before continuing.');
+  if(input.listener_id!=null&&!LISTENER_PATTERN.test(input.listener_id))fail(400,'Invalid listener code.');
   const timestamp=now(),hash=await tokenHash(request);
   if(!await db.prepare('SELECT 1 AS n FROM interactive_sessions WHERE session_id=?').bind(input.session_id).first()&&h.allowNewSession?.()===false)fail(429,'Too many new conversations from this network. Wait an hour and try again.');
-  await db.prepare('INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO NOTHING').bind(input.session_id,hash,nickname,input.mode,input.engine,input.record_type,input.version,input.consent_utc,timestamp,timestamp).run();
+  await db.prepare('INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc,listener_id) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO NOTHING').bind(input.session_id,hash,nickname,input.mode,input.engine,input.record_type,input.version,input.consent_utc,timestamp,timestamp,input.listener_id??null).run();
   const s=await owned(input.session_id);if(s.withdrawn_utc)fail(410,'This conversation was deleted.');
   if(s.nickname!==nickname||s.mode!==input.mode||s.engine!==input.engine||s.version!==input.version||s.record_type!==input.record_type)fail(409,'Nickname and TTS engine are fixed for this conversation. Start a new one to change them.');
+  // A conversation saved before listener codes existed is linked the first time its browser sends one; a code is never replaced.
+  if(input.listener_id&&!s.listener_id)await db.prepare('UPDATE interactive_sessions SET listener_id=? WHERE session_id=? AND listener_id IS NULL').bind(input.listener_id,s.session_id).run();
   return json({session_id:s.session_id});
  }
  const audioRoute=path.match(/^\/api\/interactive\/sessions\/([^/]+)\/audio\/([1-9][0-9]?)$/);
  if(audioRoute){const session=await owned(audioRoute[1]);if(session.withdrawn_utc)fail(410,'This conversation was deleted.');if(request.method!=='PUT')fail(405,'Method not allowed.');return audioUpload(request,h,session,Number(audioRoute[2]));}
- const match=path.match(/^\/api\/interactive\/sessions\/([^/]+)(\/turns|\/ratings|\/attempts)?$/);
+ const match=path.match(/^\/api\/interactive\/sessions\/([^/]+)(\/turns|\/ratings|\/attempts|\/playback)?$/);
  if(!match)fail(404,'Endpoint not found.');const s=await owned(match[1]);
- if(request.method==='DELETE'&&!match[2]){await db.prepare('UPDATE interactive_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?),nickname=\'\' WHERE session_id=?').bind(now(),s.session_id).run();await deleteSessionAudio(db,h.audioBucket,s.session_id);await db.prepare('DELETE FROM generation_attempts WHERE session_id=?').bind(s.session_id).run();await db.prepare('DELETE FROM interactive_turns WHERE session_id=?').bind(s.session_id).run();return json({withdrawn:true});}
+ if(request.method==='DELETE'&&!match[2]){await db.prepare('UPDATE interactive_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?),nickname=\'\' WHERE session_id=?').bind(now(),s.session_id).run();await deleteSessionAudio(db,h.audioBucket,s.session_id);await db.prepare('DELETE FROM generation_attempts WHERE session_id=?').bind(s.session_id).run();await deletePlayback(db,'interactive',s.session_id).run();await db.prepare('DELETE FROM interactive_turns WHERE session_id=?').bind(s.session_id).run();return json({withdrawn:true});}
  if(s.withdrawn_utc)fail(410,'This conversation was deleted.');
  const read=async()=> (await db.prepare('SELECT * FROM interactive_turns WHERE session_id=? ORDER BY turn_order').bind(s.session_id).all()).results;
  if(request.method==='GET'&&!match[2]){const turns=await read(),ratings=(await db.prepare('SELECT turn_order,rating_json FROM interactive_ratings WHERE session_id=? ORDER BY turn_order').bind(s.session_id).all()).results;return json({session_id:s.session_id,nickname:s.nickname,mode:s.mode,engine:s.engine,saved_count:turns.length,turns:turns.map(t=>JSON.parse(t.turn_json)),ratings:ratings.map(r=>({order:r.turn_order,rating:JSON.parse(r.rating_json)}))});}
+ if(request.method==='POST'&&match[2]==='/playback'){
+  const events=validatePlayback(await body(request),{fail,maxOrder:s.mode==='explore'?10:12,transcripts:s.mode==='explore'}),known=new Set((await read()).map(t=>t.turn_order));
+  if(events.some(e=>!known.has(e.item_order)))fail(400,'Save the message before its playback events.');
+  return json(await savePlayback(db,'interactive',s.session_id,events,now()));
+ }
  if(request.method==='POST'&&match[2]==='/attempts'){
   const input=await body(request);if(!Array.isArray(input.attempts)||input.attempts.length>100)fail(400,'Too many generation attempts.');
   const existing=await db.prepare('SELECT COUNT(*) AS n FROM generation_attempts WHERE session_id=?').bind(s.session_id).first();

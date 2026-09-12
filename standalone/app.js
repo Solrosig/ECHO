@@ -8,6 +8,7 @@ import {NeuralClient} from './neural-client.js';
 import {hashAudio} from './audio-utils.js';
 import {readNickname,rememberNickname,MAX_EXCHANGES} from './participant.js';
 import {createInteractiveSession,InteractiveSync,loadOutbox} from './interactive-sync.js';
+import {trackPlayback,trackTranscript} from './playback-log.js';
 const $=id=>document.getElementById(id),neural=new NeuralClient();
 const remote=new RemoteSpeechClient();
 let listeningLoaded=false,listeningLoading=false;
@@ -72,7 +73,7 @@ function addRecord(record,session,order){
  const text=document.createElement('blockquote');text.textContent=record.text;
  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label',`${title.textContent}, ${record.condition}, ${EMOTIONS[record.emotion].name}`);record.url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));audio.src=record.url;
  const meta=document.createElement('div');meta.className='turn-meta';meta.textContent=`${record.duration_s.toFixed(2)}s audio · ${record.elapsed_s.toFixed(1)}s generation · speed ${record.rate.toFixed(2)}× · gain ${record.gain.toFixed(2)}${record.pitch!==null?` · native pitch ${record.pitch}`:` · pitch ${record.pitch_semitones>0?'+':''}${record.pitch_semitones.toFixed(2)} st (DSP)`}`;
- const link=document.createElement('a');link.href=audio.src;link.download=`echo-${record.engine}-${record.emotion}-${record.condition}-${records.length}.wav`;link.textContent='Download WAV';el.append(top,text,audio,meta,link,messageRatingForm(audio,session,order,syncFor(session)));$('results').append(el);$('export').hidden=false;
+ const link=document.createElement('a');link.href=audio.src;link.download=`echo-${record.engine}-${record.emotion}-${record.condition}-${records.length}.wav`;link.textContent='Download WAV';trackPlayback(audio,()=>({item_order:order}),event=>syncFor(session).playback(event));el.append(top,text,audio,meta,link,messageRatingForm(audio,session,order,syncFor(session)));$('results').append(el);$('export').hidden=false;
  if(records.length>12){const old=records.shift();URL.revokeObjectURL(old.url);$('results').firstElementChild.remove();}
 }
 async function runLine({reuse=false,engine,condition}={}){
@@ -106,7 +107,8 @@ async function runChat(){
   const meta=document.createElement('small');meta.textContent=`${ENGINES[record.engine].name} · ${EMOTIONS[record.emotion].name}`;pending.append(label,audio,button,transcript,meta);
   const turn=turnMetadata(chat,record,input);void syncFor(chat).add(turn,record.buffer);pending.append(messageRatingForm(audio,chat,turn.order,syncFor(chat)));$('chat-message').value='';status('Voice reply ready. Play it or open the transcript.');$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
   // Browsers may require another click after model loading; the play control always remains available.
-  document.querySelectorAll('audio').forEach(a=>{if(a!==audio)a.pause();});void audio.play().catch(()=>{});
+  const conversation=chat,saveEvent=event=>syncFor(conversation).playback(event);trackPlayback(audio,()=>({item_order:turn.order}),saveEvent);trackTranscript(button,transcript,audio,()=>({item_order:turn.order}),saveEvent);
+  document.querySelectorAll('audio').forEach(a=>{if(a!==audio)a.pause();});audio.dataset.autoplay='1';void audio.play().catch(()=>{delete audio.dataset.autoplay;});
  }catch(e){if(id!==job)return;userBubble.remove();pending.remove();$('chat-error').textContent=e.message||String(e);$('chat-error').hidden=false;status('No exchange was counted. Your message is kept so you can retry.');}
  finally{if(id!==job){userBubble.remove();pending.remove();}else lock(false);}
 }
@@ -122,6 +124,8 @@ document.querySelectorAll('[data-compare-engine]').forEach(button=>button.addEve
 $('baseline').addEventListener('click',()=>void runLine({reuse:true,engine:lastComparedEngine,condition:'neutral'}));
 $('export').addEventListener('click',()=>{const turns=records.map(({buffer,url,envelope,...rest})=>rest),url=URL.createObjectURL(new Blob([JSON.stringify({project:'ECHO',purpose:'interactive_exploration_not_scored_study',turns},null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='echo-voice-session.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
 $('retry-interactive-save').addEventListener('click',()=>syncs.forEach(s=>{if(interactivePending(s.session))void s.sync();}));window.addEventListener('online',()=>syncs.forEach(s=>{if(interactivePending(s.session))void s.sync();}));
+// Playback events travel with the next save; this sends the ones recorded after a session's last save.
+setInterval(()=>syncs.forEach(s=>{if(!interactivePending(s.session))void s.flushPlayback();}),60000);
 
 for(const session of loadOutbox())if(session?.turns?.length)void syncFor(session).sync();
 const initial=new URLSearchParams(location.search).get('mode');setMode(['listening','line','explore'].includes(initial)?initial:'line',{url:false});

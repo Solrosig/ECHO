@@ -68,6 +68,48 @@ Keep the resulting SQLite file, .manifest.json and any .audio companion together
 
 Deleting an active participant session does not automatically erase historical backups. Define retention and backup erasure before recruitment.
 
+## Listener export
+
+`scripts/export-listeners.mjs` turns a database copy into one folder per listener, for analysis outside the app:
+
+- `<listener code>/listener.json`: the listener's nicknames and sessions in time order.
+- `<listener code>/listening-test/`, `test-mode/` and `explore-mode/`: one folder per session, named by its first save time and session ID, for example `2026-09-12T10-27-10Z_X-…`.
+- Each session folder holds `metadata.json`:
+  - times, listener code and nickname;
+  - the clips or messages in order, with their ratings;
+  - every play, pause, finish and seek of each voice, in the order it happened;
+  - a summary of listening order and replays.
+- Test and Explore session folders also hold their archived recordings as `01_<engine>_<emotion>.wav`, checked against their stored checksums.
+
+A listener folder is named by the listener's Listening participant code (`P-…`), which is the unit of inference in `analyse_ratings.py`. A listener with no Listening session is named by the browser code, or by a repeatable internal `I-…` ID. Each session's metadata records how it was linked (`listener_id_source`), in this order:
+
+- `coverage_sheet`: the filled application coverage sheet links the session to a Listening participant (`--coverage`, a sheet or a folder of sheets, can be given more than once).
+- `browser_code`: same browser code and same nickname. The browser code is a random `L-…` code kept beside the nickname; a code used under several nicknames is treated as a shared device.
+- `nickname_match`: no code, but the nickname belongs to exactly one browser-code group.
+- `nickname`: no code; grouped by nickname, which listeners are asked to keep throughout their participation.
+- `session`: the nickname is blank or used by several listeners, so the session stands alone.
+
+Two CSVs sit at the top of the export:
+
+- `listening-playback.csv`: one row per Listening trial: participant, order, item, `audio_sha256`, plays, replays, finishes, pauses and seeks. It joins `joined-ratings.csv` by `participant_id` and `audio_sha256`.
+- `application-playback.csv`: one row per Test or Explore message, including whether its transcript was opened before the voice finished. It joins the coverage sheet by `session_id` and `turn_order`.
+
+Exporting the same data again gives the same IDs. Technical test records are left out unless `--include-technical` is given.
+
+From a local installation, export a copy made with `node scripts/backup.mjs`:
+
+```
+node scripts/export-listeners.mjs --database backups/<backup>.sqlite --audio backups/<backup>.sqlite.audio --out <new folder>
+```
+
+From the Hugging Face research bucket, after downloading it with `hf buckets sync`:
+
+```
+node scripts/export-listeners.mjs --bucket <download>/echo --out <new folder>
+```
+
+The export contains personal data: nicknames, typed messages, voices and listening behaviour. Keep it private and out of this repository.
+
 ## Hosting limits
 
 Behind a reverse proxy (Caddy in `compose.production.yaml`, or the Hugging Face host), set `ECHO_TRUST_PROXY=1` so that login attempts and these limits count each visitor rather than the proxy. Per network address, the server accepts 120 voice-synthesis requests and 120 conversation replies per 10 minutes (`ECHO_TTS_REQUESTS_PER_10_MIN`, `ECHO_DIALOGUE_REPLIES_PER_10_MIN`) and 300 new sessions or conversations per hour (`ECHO_SESSIONS_PER_HOUR`); resuming a session does not count. Archived conversation recordings are capped at 2048 MB in total (`ECHO_AUDIO_QUOTA_MB`). Raise these for a lab where many participants share one address. The Hugging Face host serves the voices directly, so its Gradio queue limits apply there instead.

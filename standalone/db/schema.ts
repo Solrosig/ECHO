@@ -19,8 +19,10 @@ export const sessions = sqliteTable('study_sessions', {
   updatedUtc: text('updated_utc').notNull(),
   completedUtc: text('completed_utc'),
   withdrawnUtc: text('withdrawn_utc'),
+  listenerId: text('listener_id'),
 }, t => [
   index('idx_sessions_type_group').on(t.recordType, t.groupNumber),
+  index('idx_study_sessions_listener').on(t.listenerId),
   check('session_type', sql`${t.recordType} IN ('human_response', 'technical_test')`),
   check('session_group', sql`${t.groupNumber} BETWEEN 1 AND 16`),
   check('session_seed', sql`${t.seed} BETWEEN 0 AND 4294967295`),
@@ -52,8 +54,8 @@ export const responses = sqliteTable('study_responses', {
 ]);
 
 export const interactiveSessions = sqliteTable('interactive_sessions', {
- sessionId:text('session_id').primaryKey(), tokenHash:text('token_hash').notNull(), nickname:text('nickname').notNull(), mode:text('mode').notNull(), engine:text('engine'), recordType:text('record_type').notNull(), version:text('version').notNull(), consentUtc:text('consent_utc').notNull(), receivedUtc:text('received_utc').notNull(), updatedUtc:text('updated_utc').notNull(), withdrawnUtc:text('withdrawn_utc')
-}, t=>[index('idx_interactive_sessions_updated').on(t.updatedUtc),check('interactive_mode',sql`${t.mode} IN ('line','explore')`),check('interactive_engine',sql`${t.engine} IS NULL OR ${t.engine} IN ('pyttsx3','sapi5xml','espeak','kokoro','chatterbox','zipvoice','styletts2','cosyvoice2','parlertts','piper')`),check('interactive_type',sql`${t.recordType} IN ('interactive_exploration','technical_test')`),check('interactive_engine_mode',sql`(${t.mode}='explore' AND ${t.engine} IS NOT NULL) OR (${t.mode}='line' AND ${t.engine} IS NULL)`)]);
+ sessionId:text('session_id').primaryKey(), tokenHash:text('token_hash').notNull(), nickname:text('nickname').notNull(), mode:text('mode').notNull(), engine:text('engine'), recordType:text('record_type').notNull(), version:text('version').notNull(), consentUtc:text('consent_utc').notNull(), receivedUtc:text('received_utc').notNull(), updatedUtc:text('updated_utc').notNull(), withdrawnUtc:text('withdrawn_utc'), listenerId:text('listener_id')
+}, t=>[index('idx_interactive_sessions_updated').on(t.updatedUtc),index('idx_interactive_sessions_listener').on(t.listenerId),check('interactive_mode',sql`${t.mode} IN ('line','explore')`),check('interactive_engine',sql`${t.engine} IS NULL OR ${t.engine} IN ('pyttsx3','sapi5xml','espeak','kokoro','chatterbox','zipvoice','styletts2','cosyvoice2','parlertts','piper')`),check('interactive_type',sql`${t.recordType} IN ('interactive_exploration','technical_test')`),check('interactive_engine_mode',sql`(${t.mode}='explore' AND ${t.engine} IS NOT NULL) OR (${t.mode}='line' AND ${t.engine} IS NULL)`)]);
 export const interactiveTurns = sqliteTable('interactive_turns', {
  sessionId:text('session_id').notNull().references(()=>interactiveSessions.sessionId,{onDelete:'cascade'}), turnOrder:integer('turn_order').notNull(), engine:text('engine').notNull(), emotion:text('emotion').notNull(), inputText:text('input_text').notNull(), outputText:text('output_text').notNull(), turnJson:text('turn_json').notNull(), createdUtc:text('created_utc').notNull(), receivedUtc:text('received_utc').notNull()
 },t=>[primaryKey({columns:[t.sessionId,t.turnOrder]}),check('interactive_order',sql`${t.turnOrder} BETWEEN 1 AND 100`),check('interactive_turn_engine',sql`${t.engine} IN ('pyttsx3','sapi5xml','espeak','kokoro','chatterbox','zipvoice','styletts2','cosyvoice2','parlertts','piper')`),check('interactive_emotion',sql`${t.emotion} IN ('happy','upset','sad','calm')`)]);
@@ -70,3 +72,10 @@ export const generationAttempts=sqliteTable('generation_attempts',{
  sessionId:text('session_id').notNull().references(()=>interactiveSessions.sessionId,{onDelete:'cascade'}),
  attemptId:text('attempt_id').notNull(),eventJson:text('event_json').notNull(),receivedUtc:text('received_utc').notNull()
 },t=>[primaryKey({columns:[t.sessionId,t.attemptId]})]);
+
+// Every play, pause, finish and seek of a Listening clip (session_kind 'study') or a Test/Explore message ('interactive'),
+// and each opening or closing of an Explore transcript.
+// item_order is the trial order or the message order; sessions are deleted explicitly on withdrawal.
+export const playbackEvents=sqliteTable('playback_events',{
+ sessionKind:text('session_kind').notNull(),sessionId:text('session_id').notNull(),eventId:text('event_id').notNull(),seq:integer('seq').notNull(),event:text('event').notNull(),itemOrder:integer('item_order').notNull(),itemId:text('item_id'),positionSeconds:real('position_s').notNull(),durationSeconds:real('duration_s'),playbackRate:real('playback_rate').notNull(),autoplay:integer('autoplay').notNull(),clientUtc:text('client_utc').notNull(),receivedUtc:text('received_utc').notNull()
+},t=>[primaryKey({columns:[t.sessionKind,t.sessionId,t.eventId]}),index('idx_playback_session_seq').on(t.sessionKind,t.sessionId,t.seq),check('playback_kind',sql`${t.sessionKind} IN ('study', 'interactive')`),check('playback_event',sql`${t.event} IN ('play', 'pause', 'ended', 'seeked', 'transcript_open', 'transcript_close')`)]);

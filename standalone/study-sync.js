@@ -34,8 +34,25 @@ export class StudySync {
   }
   async register() {
     const s=this.session;
-    const result=await this.request('/api/study/sessions','POST',{participant_id:s.participant_id,nickname:s.nickname,rating_scale:s.rating_scale,study_version:s.study_version,collection_version:COLLECTION_VERSION,record_type:s.record_type,group:s.group,seed:s.seed,eligibility:s.eligibility,consent:true,consent_utc:s.remote.consent_utc});
+    const result=await this.request('/api/study/sessions','POST',{participant_id:s.participant_id,nickname:s.nickname,rating_scale:s.rating_scale,study_version:s.study_version,collection_version:COLLECTION_VERSION,record_type:s.record_type,group:s.group,seed:s.seed,eligibility:s.eligibility,consent:true,consent_utc:s.remote.consent_utc,listener_id:s.listener_id??null});
     this.registered=true;return result;
+  }
+  // Playback events wait in the session and travel with the next save, so listening adds no requests of its own.
+  playback(event) {
+    this.session.playback||=[];this.session.playback_seq=(this.session.playback_seq||0)+1;
+    this.session.playback.push({...event,seq:this.session.playback_seq});
+  }
+  // A playback failure never blocks or relabels the responses: events the server rejects are counted and dropped,
+  // and unsent events wait for the next save.
+  async sendPlayback() {
+    try {
+      while(this.session.playback?.length&&!this.stopped) {
+        const batch=this.session.playback.slice(0,200);let received;
+        try {received=(await this.request(`/api/study/sessions/${this.session.participant_id}/playback`,'POST',{events:batch})).received_event_ids;}
+        catch(error) {if(error.status!==400)throw error;received=batch.map(e=>e.event_id);this.session.playback_rejected=(this.session.playback_rejected||0)+batch.length;}
+        const done=new Set(received);this.session.playback=this.session.playback.filter(e=>!done.has(e.event_id));
+      }
+    } catch {}
   }
   async restore() {const result=await this.register();reconcileSession(this.session,result);return result;}
   sync() {
@@ -51,6 +68,7 @@ export class StudySync {
         const rows=wireRows(this.session,this.trials);
         const result=rows.length?await this.request(`/api/study/sessions/${this.session.participant_id}/responses`,'POST',{rows}):{saved_count:0};
         this.session.remote.saved_count=result.saved_count;
+        await this.sendPlayback();
         this.onStatus({state:this.dirty?'saving':'saved',saved:result.saved_count});
       }
     } catch(error) {
