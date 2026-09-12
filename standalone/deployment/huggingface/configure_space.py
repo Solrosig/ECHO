@@ -56,7 +56,9 @@ def apply(steps):
                 continue
             api.request_space_hardware(repo, step[2], sleep_time=step[3])
         elif action == 'create private Docker Space':
-            api.create_repo(repo, repo_type='space', space_sdk='docker', private=True, exist_ok=True)
+            # A Space created in the web interface is reused, so the login token needs no right to create repositories.
+            if not api.repo_exists(repo, repo_type='space'):
+                api.create_repo(repo, repo_type='space', space_sdk='docker', private=True)
             api.request_space_hardware(repo, step[2], sleep_time=step[3])
         elif action == 'upload folder':
             api.upload_folder(repo_id=repo, repo_type='space', folder_path=step[2])
