@@ -16,7 +16,18 @@ const remoteEnv={ECHO_OLLAMA_URL:'https://owner-echo-llm.hf.space/',ECHO_OLLAMA_
 
 test('defaults: llama3.2:3b through local Ollama with the coherence gate off',()=>{
   assert.equal(PRIMARY_MODEL,'llama3.2:3b');
-  assert.deepEqual(dialogueConfig({}),{gate:'off',model:'llama3.2:3b',timeoutMs:120000,ollamaUrl:'http://127.0.0.1:11434',gateUrl:'http://127.0.0.1:8790',apiKey:null,remote:false});
+  assert.deepEqual(dialogueConfig({}),{gate:'off',model:'llama3.2:3b',timeoutMs:120000,ollamaUrl:'http://127.0.0.1:11434',gateUrl:'http://127.0.0.1:8790',apiKey:null,remote:false,embedded:false});
+});
+
+test('Ollama embedded in the Hugging Face Space reads as starting until it and its model answer',async()=>{
+  const config=dialogueConfig({ECHO_LLM_MODE:' Embedded '});
+  assert.deepEqual([config.ollamaUrl,config.apiKey,config.remote,config.embedded,config.timeoutMs],['http://127.0.0.1:11434',null,false,true,120000]);
+  const starting=e=>e instanceof DialogueError&&e.status===503&&e.details.waking===true&&e.details.retry_after_s===WAKE_RETRY_S&&!namesAModel(e.message);
+  const pulling=async()=>({ok:false,status:404,json:async()=>({error:{message:'model "llama3.2:3b" not found, try pulling it first'}})});
+  for(const fetchImpl of [offline,pulling])await assert.rejects(dialogueReply(input,config,{fetchImpl}),starting);
+  assert.equal((await dialogueReply(input,config,{fetchImpl:async()=>ollamaReply('Ready.')})).text,'Ready.');
+  await assert.rejects(dialogueReply(input,dialogueConfig({ECHO_LLM_MODE:'off'}),{fetchImpl:pulling}),e=>e.status===503&&e.details.waking===undefined&&/not installed/.test(e.message));
+  assert.equal(dialogueConfig({ECHO_LLM_MODE:'embedded',...remoteEnv}).embedded,false);
 });
 
 test('the gate switch accepts only off or on',()=>{

@@ -18,6 +18,8 @@ const LOOPBACK=/^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/|$)/
 //                      'on'  = option A, the same request goes through ECHO's coherence gate (gate_service.py).
 // ECHO_OLLAMA_URL and ECHO_OLLAMA_TOKEN point at a remote Ollama, such as a private Hugging Face Space that sleeps
 // when unused. The token is sent as a Bearer header and never reaches the page.
+// ECHO_LLM_MODE=embedded, set on the Hugging Face Space, is a local Ollama that starts beside the website and downloads
+// its model again after every wake-up; until it answers, the page is told the model is starting.
 export function dialogueConfig(env=process.env){
   const gate=String(env.ECHO_COHERENCE_GATE||'off').trim().toLowerCase();
   if(!['off','on'].includes(gate))throw new Error('ECHO_COHERENCE_GATE must be off or on.');
@@ -25,15 +27,16 @@ export function dialogueConfig(env=process.env){
   if(/qwen/i.test(model)&&!QWEN_BACKUP_ALLOWED)throw new Error('The backup language model is locked in this version; unset ECHO_LLM_BACKUP and ECHO_OLLAMA_MODEL.');
   const ollamaUrl=String(env.ECHO_OLLAMA_URL||'http://127.0.0.1:11434').replace(/\/+$/,''),apiKey=String(env.ECHO_OLLAMA_TOKEN||'').trim()||null;
   const remote=Boolean(apiKey)||!LOOPBACK.test(ollamaUrl);
+  const embedded=!remote&&String(env.ECHO_LLM_MODE||'').trim().toLowerCase()==='embedded';
   // A remote model gets a shorter wait, so a sleeping Space becomes a quick "starting" answer instead of a hung page.
   const timeoutMs=Number(env.ECHO_LLM_TIMEOUT_MS||(remote?45000:120000));
   if(!Number.isFinite(timeoutMs)||timeoutMs<1000)throw new Error('ECHO_LLM_TIMEOUT_MS must be at least 1000.');
-  return {gate,model,timeoutMs,ollamaUrl,gateUrl:String(env.ECHO_GATE_URL||'http://127.0.0.1:8790').replace(/\/+$/,''),apiKey,remote};
+  return {gate,model,timeoutMs,ollamaUrl,gateUrl:String(env.ECHO_GATE_URL||'http://127.0.0.1:8790').replace(/\/+$/,''),apiKey,remote,embedded};
 }
 
 const waking=()=>new DialogueError(503,'The conversation model is starting after a quiet period. ECHO keeps trying; this can take about two minutes.',{waking:true,retry_after_s:WAKE_RETRY_S});
 
-async function send(fetchImpl,url,{method='POST',payload,apiKey=null,remote=false,timeoutMs}){
+async function send(fetchImpl,url,{method='POST',payload,apiKey=null,wakes=false,timeoutMs}){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   const headers={...(payload===undefined?{}:{'Content-Type':'application/json'}),...(apiKey?{Authorization:`Bearer ${apiKey}`}:{})};
   try{
@@ -41,7 +44,7 @@ async function send(fetchImpl,url,{method='POST',payload,apiKey=null,remote=fals
     let data=null;try{data=await response.json();}catch{}
     return {response,data};
   }catch{
-    if(remote)throw waking();
+    if(wakes)throw waking();
     throw new DialogueError(503,'The local language model is not reachable. Start Ollama and try again.');
   }finally{clearTimeout(timer);}
 }
@@ -65,9 +68,10 @@ export async function dialogueReply(input,config,{fetchImpl=fetch}={}){
     if(!response.ok||!text)throw new DialogueError(502,'The coherence gate could not produce a reply. Try again.');
     return {text,gate:'on',prompt_version:DIALOGUE_PROMPT_VERSION,passed:data.passed===true,attempts:Array.isArray(data.attempts)?data.attempts.length:0};
   }
-  const {response,data}=await send(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{payload:{model:config.model,messages,...GENERATION,stream:false},apiKey:config.apiKey,remote:config.remote,timeoutMs:config.timeoutMs});
+  const {response,data}=await send(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{payload:{model:config.model,messages,...GENERATION,stream:false},apiKey:config.apiKey,wakes:config.remote||config.embedded,timeoutMs:config.timeoutMs});
   checkRemote(config,response,data);
-  if(response.status===404)throw new DialogueError(503,'The language model is not installed in Ollama.');
+  // An embedded Ollama answers 404 while it is still downloading the model after a wake-up.
+  if(response.status===404){if(config.embedded)throw waking();throw new DialogueError(503,'The language model is not installed in Ollama.');}
   if(!response.ok)throw new DialogueError(502,'The language model could not produce a reply. Try again.');
   const choice=data?.choices?.[0],text=typeof choice?.message?.content==='string'?unwrapQuotedReply(choice.message.content):'';
   if(!text||choice.finish_reason==='length')throw new DialogueError(502,'The reply was empty or incomplete. Try a shorter message.');
@@ -78,7 +82,7 @@ export async function dialogueReply(input,config,{fetchImpl=fetch}={}){
 export async function dialogueStatus(config,{fetchImpl=fetch}={}){
   if(!config)return {ready:false,waking:false};
   try{
-    const {response,data}=await send(fetchImpl,`${config.ollamaUrl}/api/version`,{method:'GET',apiKey:config.apiKey,remote:config.remote,timeoutMs:Math.min(config.timeoutMs,8000)});
+    const {response,data}=await send(fetchImpl,`${config.ollamaUrl}/api/version`,{method:'GET',apiKey:config.apiKey,wakes:config.remote||config.embedded,timeoutMs:Math.min(config.timeoutMs,8000)});
     checkRemote(config,response,data);
     return {ready:response.ok&&typeof data?.version==='string',waking:false};
   }catch(error){return {ready:false,waking:error.details?.waking===true};}

@@ -56,7 +56,10 @@ def start_embedded_ollama(cache):
         if sha(archive)!=OLLAMA_SHA:archive.unlink();raise RuntimeError('Ollama runtime checksum mismatch')
         subprocess.run(['tar','--zstd','-xf',str(archive),'-C',str(runtime)],check=True);archive.unlink()
     (cache/'home').mkdir(parents=True,exist_ok=True)
-    env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home')}
+    # The voices are loaded first. Ollama sizes itself to the GPU memory left, so it is told to keep a margin (default
+    # 2 GiB) for the voices' working memory during synthesis; on a small GPU it moves some model layers to the CPU instead.
+    env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home'),
+         'OLLAMA_GPU_OVERHEAD':os.environ.get('ECHO_OLLAMA_GPU_OVERHEAD',str(2*1024**3))}
     OLLAMA_PROCESS=subprocess.Popen([str(binary),'serve'],env=env)
     for _ in range(240):
         if OLLAMA_PROCESS.poll() is not None:raise RuntimeError('Ollama stopped during startup')

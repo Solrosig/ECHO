@@ -21,7 +21,10 @@ nltk.download('punkt_tab',quiet=True)
 torch.set_num_threads(2)
 # Pinned checkpoints are unpickled freely only while models.load_engine runs (models.trusted_checkpoint_loads).
 
-enabled=os.environ.get('ECHO_ENGINES',','.join(models.ENGINES)).split(',')
+# The website's server voices: TEST_ENGINES and EXPLORE_ENGINES in engine-catalog.js, less the in-browser Kokoro.
+# ZipVoice is not offered on the website, so the Space loads it only when ECHO_ENGINES names it.
+SITE_ENGINES=['chatterbox','styletts2','cosyvoice2','parlertts']
+enabled=os.environ.get('ECHO_ENGINES',','.join(SITE_ENGINES)).split(',')
 failures={}
 for engine in enabled:
     try:models.load_engine(engine)
