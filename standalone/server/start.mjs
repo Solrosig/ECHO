@@ -9,6 +9,7 @@ import {localDatabase} from './local-db.js';
 import {createAuth} from './auth.mjs';
 import {QWEN_REVISION} from './llm-backup.mjs';
 import {dialogueConfig,createMetricsLog} from './dialogue.mjs';
+import {createOllamaLauncher} from './ollama-launcher.mjs';
 import {proxySpeech} from './speech-proxy.mjs';
 import {createLimiter} from './limits.mjs';
 import {SHOW_RESEARCH_PAGE} from '../frontend-visibility.js';
@@ -24,14 +25,15 @@ export function clientAddress(req,trustProxy=false){
 }
 export function createEchoServer({dataDir=resolve(ROOT,'data'),clientDir=resolve(ROOT,'dist/client'),publicDir=resolve(ROOT,'public'),publicOrigin=null,host='127.0.0.1',allowLocalContainer=false,speechService=process.env.ECHO_TTS_URL||'http://127.0.0.1:7860',dialogue=dialogueConfig(),
   trustProxy=process.env.ECHO_TRUST_PROXY==='1',speechLimit=positive(process.env.ECHO_TTS_REQUESTS_PER_10_MIN??120,'ECHO_TTS_REQUESTS_PER_10_MIN'),sessionLimit=positive(process.env.ECHO_SESSIONS_PER_HOUR??300,'ECHO_SESSIONS_PER_HOUR'),audioQuotaMb=positive(process.env.ECHO_AUDIO_QUOTA_MB??2048,'ECHO_AUDIO_QUOTA_MB'),
-  dialogueLimit=positive(process.env.ECHO_DIALOGUE_REPLIES_PER_10_MIN??120,'ECHO_DIALOGUE_REPLIES_PER_10_MIN')}={}) {
+  dialogueLimit=positive(process.env.ECHO_DIALOGUE_REPLIES_PER_10_MIN??120,'ECHO_DIALOGUE_REPLIES_PER_10_MIN'),ollamaLauncher=null}={}) {
   if(publicOrigin){const u=new URL(publicOrigin);if(u.origin!==publicOrigin||u.protocol!=='https:')throw new Error('PUBLIC_ORIGIN must be an HTTPS origin without a trailing slash.');}
   if(host!=='127.0.0.1'&&host!=='::1'&&!publicOrigin&&!allowLocalContainer)throw new Error('A non-loopback server requires PUBLIC_ORIGIN=https://your-domain.');
   if(!existsSync(join(clientDir,'index.html')))throw new Error('Built website missing: restore dist/client from the archive or run pnpm build.');
   clientDir=realpathSync(clientDir);const assetDirs=[clientDir,realpathSync(publicDir)];mkdirSync(dataDir,{recursive:true,mode:0o700});
   const auth=createAuth(dataDir,{secure:Boolean(publicOrigin)}),DB=localDatabase(join(dataDir,'study.sqlite')),dialogueLog=createMetricsLog(join(dataDir,'dialogue-metrics.jsonl'));
   const speechAllowed=createLimiter({limit:speechLimit,windowMs:10*60*1000}),sessionAllowed=createLimiter({limit:sessionLimit,windowMs:60*60*1000});
-  const dialogueAllowed=createLimiter({limit:dialogueLimit,windowMs:10*60*1000}),dialogueState={config:dialogue,log:dialogueLog,status:{at:0,value:null}};
+  // Only the command-line start passes a launcher, so servers built by tests never start Ollama.
+  const dialogueAllowed=createLimiter({limit:dialogueLimit,windowMs:10*60*1000}),dialogueState={config:dialogue,log:dialogueLog,status:{at:0,value:null},launcher:ollamaLauncher};
   function staticFile(req,res,url){
     if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);return res.end();}
     let path;try{path=decodeURIComponent(url.pathname);}catch{res.writeHead(400);return res.end();}
@@ -109,7 +111,8 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
     const major=Number(process.versions.node.split('.')[0]);if(major!==24)throw new Error('This release requires Node.js 24 LTS.');
     const host=process.env.HOST||'127.0.0.1',port=Number(process.env.PORT||8787),publicOrigin=process.env.PUBLIC_ORIGIN||null;
     if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT.');
-    const server=createEchoServer({host,publicOrigin,dataDir:resolve(process.env.ECHO_DATA_DIR||join(ROOT,'data')),allowLocalContainer:process.env.ECHO_ALLOW_LOCAL_CONTAINER==='1'});
+    const dialogue=dialogueConfig(),ollamaLauncher=dialogue.autostart?createOllamaLauncher({url:dialogue.ollamaUrl,model:dialogue.model}):null;
+    const server=createEchoServer({host,publicOrigin,dataDir:resolve(process.env.ECHO_DATA_DIR||join(ROOT,'data')),allowLocalContainer:process.env.ECHO_ALLOW_LOCAL_CONTAINER==='1',dialogue,ollamaLauncher});
     server.on('error',e=>{console.error(e.code==='EADDRINUSE'?'Port is busy. Set a different PORT and retry.':e.message);process.exitCode=1;});
     server.listen(port,host,()=>console.log(`ECHO ready: ${publicOrigin||`http://${host}:${port}`}\n${SHOW_RESEARCH_PAGE?'Research dashboard: /research':'Research dashboard: hidden in this build (SHOW_RESEARCH_PAGE in frontend-visibility.js)'}\nStop with Ctrl+C. Data remain on disk.`));
     for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{server.close(()=>process.exit(0));server.closeIdleConnections();setTimeout(()=>process.exit(1),10000).unref();});

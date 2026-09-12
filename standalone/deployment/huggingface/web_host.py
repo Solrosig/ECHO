@@ -148,7 +148,8 @@ def prepare():
     print('Loading pinned browser models for ECHO...',flush=True)
     with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(download,rows))
     origin=os.environ.get('ECHO_PUBLIC_ORIGIN','https://'+os.environ.get('SPACE_HOST','your-space.hf.space'))
-    env={**os.environ,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(LOCAL),'ECHO_TRUST_PROXY':'1'}
+    # The Space runs Ollama itself (embedded) or reaches a remote one, so the website never launches it.
+    env={**os.environ,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(LOCAL),'ECHO_TRUST_PROXY':'1','ECHO_OLLAMA_AUTOSTART':'0'}
     if mode=='remote':
         if not (os.environ.get('ECHO_OLLAMA_URL') and os.environ.get('ECHO_OLLAMA_TOKEN')):print('ECHO_LLM_MODE=remote needs the variable ECHO_OLLAMA_URL and the secret ECHO_OLLAMA_TOKEN; conversation replies stay unavailable.',flush=True)
     else:
