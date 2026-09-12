@@ -43,7 +43,9 @@ function setMode(next,{url=true}={}){
  if(busy)return;mode=next;
  $('studio').classList.toggle('blind',mode==='listening');$('studio').classList.toggle('exploring',mode==='explore');
  for(const [id,active] of [['mode-listening',mode==='listening'],['mode-test',mode==='line'],['mode-explore',mode==='explore']]){$(id).classList.toggle('active',active);$(id).setAttribute('aria-pressed',String(active));}
- $('workspace-title').textContent=mode==='listening'?'Listening test':mode==='line'?'Test mode':'Explore Mode';$('listening-panel').hidden=mode!=='listening';$('interactive-panel').hidden=mode==='listening';$('line-panel').hidden=mode!=='line';$('explore-panel').hidden=mode!=='explore';
+ $('workspace-title').textContent=mode==='listening'?'Listening test':mode==='line'?'Test Mode':'Explore Mode';$('listening-panel').hidden=mode!=='listening';$('interactive-panel').hidden=mode==='listening';$('line-panel').hidden=mode!=='line';$('explore-panel').hidden=mode!=='explore';
+ // Test mode and Explore stay on their own activity: their pages offer no way to switch to another activity.
+ const inActivity=mode!=='listening',listeningLink=document.querySelector('.topbar nav a[href="/?mode=listening"]');document.querySelector('.main-modes').hidden=inActivity;if(listeningLink)listeningLink.hidden=inActivity;
  if(mode==='listening')void ensureListening();
  // Opening Explore starts a hosted conversation model that sleeps between study sessions.
  if(mode==='explore')void checkDialogue();
@@ -73,7 +75,7 @@ function addRecord(record,session,order){
  const text=document.createElement('blockquote');text.textContent=record.text;
  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label',`${title.textContent}, ${record.condition}, ${EMOTIONS[record.emotion].name}`);record.url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));audio.src=record.url;
  const meta=document.createElement('div');meta.className='turn-meta';meta.textContent=`${record.duration_s.toFixed(2)}s audio · ${record.elapsed_s.toFixed(1)}s generation · speed ${record.rate.toFixed(2)}× · gain ${record.gain.toFixed(2)}${record.pitch!==null?` · native pitch ${record.pitch}`:` · pitch ${record.pitch_semitones>0?'+':''}${record.pitch_semitones.toFixed(2)} st (DSP)`}`;
- const link=document.createElement('a');link.href=audio.src;link.download=`echo-${record.engine}-${record.emotion}-${record.condition}-${records.length}.wav`;link.textContent='Download WAV';trackPlayback(audio,()=>({item_order:order}),event=>syncFor(session).playback(event));el.append(top,text,audio,meta,link,messageRatingForm(audio,session,order,syncFor(session)));$('results').append(el);$('export').hidden=false;
+ const link=document.createElement('a');link.href=audio.src;link.download=`echo-${record.engine}-${record.emotion}-${record.condition}-${records.length}.wav`;link.textContent='Download WAV';trackPlayback(audio,()=>({item_order:order}),event=>syncFor(session).playback(event));el.append(top,text,audio,meta,link,messageRatingForm(audio,session,order,syncFor(session)));$('results').append(el);
  if(records.length>12){const old=records.shift();URL.revokeObjectURL(old.url);$('results').firstElementChild.remove();}
 }
 async function runLine({reuse=false,engine,condition}={}){
