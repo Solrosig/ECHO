@@ -18,7 +18,12 @@ Independent installation of ECHO with 45-clip Listening, Test and Explore. Mount
 
 Explore replies come from Ollama with `llama3.2:3b`, build `a80c4f17acd5`, the build ECHO's prompt was tested with. The Space variable `ECHO_LLM_MODE` chooses where it runs. `configure_space.py` applies a variant, and only prints its plan unless given `--apply`.
 
-- `embedded` (variant a, one Space): this Space downloads the pinned Ollama and model at startup and runs them beside the voices. Use paid GPU hardware such as `t4-small` with a sleep time. The whole site sleeps and restarts together, and each wake-up downloads Ollama and the model again; until the model answers, Explore tells participants it is starting and keeps trying. Ollama leaves 2 GiB of GPU memory to the voices (`ECHO_OLLAMA_GPU_OVERHEAD`, in bytes) and runs some layers on the CPU when the GPU is too small. The model's CPU threads follow the container's CPU limit, because llama.cpp otherwise starts one thread per core of the whole host and stalls under the limit; `ECHO_OLLAMA_THREADS` sets the count instead.
+- `embedded` (variant a, one Space): this Space downloads the pinned Ollama and model at startup and runs them beside the voices.
+  - **On ZeroGPU (the default):** the model runs on the Space's CPU and costs nothing. Ollama cannot use a ZeroGPU GPU, which exists only inside `@spaces.GPU` calls.
+  - **On paid GPU hardware** such as `t4-small`: the model uses the GPU. Set a sleep time.
+  - **Threads:** the model uses one CPU thread per CPU the container may use, because llama.cpp otherwise starts one per core of the whole host and stalls. The count is set through `llama3.2:3b-t<threads>`, a copy of the verified build that adds only the `num_thread` parameter. `ECHO_OLLAMA_THREADS` sets the count.
+  - **Sleep and wake:** the whole site sleeps and restarts together, and each wake-up downloads Ollama and the model again. Until the model answers, Explore tells participants it is starting and keeps trying.
+  - **GPU memory:** Ollama leaves 2 GiB of GPU memory to the voices (`ECHO_OLLAMA_GPU_OVERHEAD`, in bytes) and runs some layers on the CPU when the GPU is too small.
 - `remote` (variant b, split): this Space stays on ZeroGPU, and `../huggingface-llm` runs as a private Docker Space on paid hardware with a short sleep time. Set the variable `ECHO_OLLAMA_URL` to its address and the secret `ECHO_OLLAMA_TOKEN` to a token that can only read it. The website wakes it when someone opens Explore.
 - `off` (default): no conversation replies; Listening and Test work normally.
 

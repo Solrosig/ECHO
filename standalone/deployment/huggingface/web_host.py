@@ -1,5 +1,5 @@
 """Serve the standalone ECHO application beside its existing Gradio TTS service."""
-import asyncio,hashlib,json,os,secrets,shutil,subprocess,tarfile,threading,time,urllib.request,zipfile
+import asyncio,hashlib,json,os,re,secrets,shutil,subprocess,tarfile,threading,time,urllib.request,zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import httpx
@@ -19,6 +19,8 @@ OLLAMA_MODEL='llama3.2:3b'
 # The llama3.2:3b build (Q4_K_M) the 2026-09-11 prompt screen used; any other build is refused.
 OLLAMA_MODEL_DIGEST='a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72'
 OLLAMA_PROCESS=None
+# With the owner's token on Hugging Face, Gradio listens here and the website's server relays /api/tts to it.
+GPU_SPEECH_PATH='/api/tts-gpu'
 
 def unpack(archive,dest):
     dest=Path(dest);dest.mkdir(parents=True,exist_ok=True)
@@ -69,21 +71,24 @@ def ollama_threads(env=os.environ,root='/sys/fs/cgroup',cores=None):
     if cores is None:cores=len(os.sched_getaffinity(0)) if hasattr(os,'sched_getaffinity') else os.cpu_count() or 1
     return min(limit,cores) if limit else None
 
-def ollama_environment(cache,threads):
+def ollama_environment(cache):
     cache=Path(cache)
     # The voices are loaded first. Ollama sizes itself to the GPU memory left, so it is told to keep a margin (default
     # 2 GiB) for the voices' working memory during synthesis; on a small GPU it moves some model layers to the CPU instead.
     env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home'),
          'OLLAMA_GPU_OVERHEAD':os.environ.get('ECHO_OLLAMA_GPU_OVERHEAD',str(2*1024**3))}
-    # Ollama passes -t only for a model's num_thread option, which would reload the model whenever a request differs, so the
-    # count travels in the environment llama-server inherits from Ollama (LLAMA_ARG_THREADS is its --threads).
-    if threads:env['LLAMA_ARG_THREADS']=str(threads)
+    env.pop('ECHO_ZEROGPU_TOKEN',None)
     return env
 
-def start_embedded_ollama(cache):
+def ollama_model(threads):
+    """The name Explore asks Ollama for. With a thread count it is a copy of the verified build that adds only the num_thread
+    parameter: Ollama passes -t to llama-server for that parameter alone, and a per-request option would reload the model."""
+    return f'{OLLAMA_MODEL}-t{threads}' if threads else OLLAMA_MODEL
+
+def start_embedded_ollama(cache,threads):
     """Run the pinned Ollama and model inside this Space. They download to local disk again after every wake-up."""
     global OLLAMA_PROCESS
-    cache=Path(cache);runtime=cache/'runtime';binary=runtime/'bin/ollama';base='http://127.0.0.1:11434';threads=ollama_threads()
+    cache=Path(cache);runtime=cache/'runtime';binary=runtime/'bin/ollama';base='http://127.0.0.1:11434';name=ollama_model(threads)
     print(f"Starting Ollama on {os.environ.get('ACCELERATOR','unknown hardware')}; without a GPU it runs on the CPU. "
           f"Container CPU limit: {cpu_limit() or 'none'}; model threads: {threads or 'llama.cpp default'}.",flush=True)
     if not binary.exists():
@@ -92,11 +97,7 @@ def start_embedded_ollama(cache):
         if sha(archive)!=OLLAMA_SHA:archive.unlink();raise RuntimeError('Ollama runtime checksum mismatch')
         subprocess.run(['tar','--zstd','-xf',str(archive),'-C',str(runtime)],check=True);archive.unlink()
     (cache/'home').mkdir(parents=True,exist_ok=True)
-    # The voices are loaded first. Ollama sizes itself to the GPU memory left, so it is told to keep a margin (default
-    # 2 GiB) for the voices' working memory during synthesis; on a small GPU it moves some model layers to the CPU instead.
-    env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home'),
-         'OLLAMA_GPU_OVERHEAD':os.environ.get('ECHO_OLLAMA_GPU_OVERHEAD',str(2*1024**3))}
-    OLLAMA_PROCESS=subprocess.Popen([str(binary),'serve'],env=env)
+    OLLAMA_PROCESS=subprocess.Popen([str(binary),'serve'],env=ollama_environment(cache))
     for _ in range(240):
         if OLLAMA_PROCESS.poll() is not None:raise RuntimeError('Ollama stopped during startup')
         try:
@@ -109,12 +110,40 @@ def start_embedded_ollama(cache):
     digest=model_digest(httpx.get(base+'/api/tags',timeout=10).json())
     if digest!=OLLAMA_MODEL_DIGEST:
         OLLAMA_PROCESS.terminate();raise RuntimeError(f'{OLLAMA_MODEL} is build {digest}, not the tested {OLLAMA_MODEL_DIGEST[:12]}')
-    httpx.post(base+'/api/generate',json={'model':OLLAMA_MODEL,'keep_alive':-1},timeout=httpx.Timeout(600,connect=10)).raise_for_status()
-    print(f'Conversation model ready: {OLLAMA_MODEL} build {OLLAMA_MODEL_DIGEST[:12]}.',flush=True)
+    if threads:
+        httpx.post(base+'/api/create',json={'model':name,'from':OLLAMA_MODEL,'parameters':{'num_thread':threads},'stream':False},
+                   timeout=httpx.Timeout(600,connect=10)).raise_for_status()
+        parameters=httpx.post(base+'/api/show',json={'model':name},timeout=30).json().get('parameters','')
+        if not re.search(rf'\bnum_thread\s+{threads}\b',parameters):
+            OLLAMA_PROCESS.terminate();raise RuntimeError(f'{name} does not carry num_thread {threads}')
+    httpx.post(base+'/api/generate',json={'model':name,'keep_alive':-1},timeout=httpx.Timeout(600,connect=10)).raise_for_status()
+    print(f'Conversation model ready: {name}, from {OLLAMA_MODEL} build {OLLAMA_MODEL_DIGEST[:12]}.',flush=True)
 
-def run_embedded_ollama():
-    try:start_embedded_ollama(os.environ.get('ECHO_OLLAMA_CACHE','/tmp/echo-ollama'))
+def run_embedded_ollama(threads):
+    try:start_embedded_ollama(os.environ.get('ECHO_OLLAMA_CACHE','/tmp/echo-ollama'),threads)
     except Exception as exc:print(f'Conversation replies unavailable: {exc}',flush=True)
+
+def voice_gpu_seconds(text,*_):
+    """GPU seconds one voice reserves on ZeroGPU. A call is refused when its reservation exceeds the caller's time left, and
+    shorter reservations queue sooner. Voices took about 3 s warm and 18 s after idle on 2026-09-12; long text takes longer."""
+    return min(60,25+len(text or '')//10)
+
+def owner_token(env=os.environ):
+    """The Space secret ECHO_ZEROGPU_TOKEN. With it the website's server calls the voices as the Space owner, so ZeroGPU
+    counts them against the owner's quota (PRO: 40 minutes a day, then credits) instead of each anonymous visitor's."""
+    token=str(env.get('ECHO_ZEROGPU_TOKEN','')).strip()
+    return token if token and env.get('SPACE_ID') else None
+
+def node_environment(origin,mode,threads,local,env=os.environ):
+    child={**env,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(local),'ECHO_TRUST_PROXY':'1','ECHO_OLLAMA_AUTOSTART':'0'}
+    token=owner_token(env);child.pop('ECHO_ZEROGPU_TOKEN',None)
+    if mode!='remote':
+        child['ECHO_OLLAMA_URL']='http://127.0.0.1:11434';child.pop('ECHO_OLLAMA_TOKEN',None)
+        if mode=='embedded' and threads:child['ECHO_OLLAMA_MODEL']=ollama_model(threads)
+    # Hugging Face turns the token into the ZeroGPU identity only on requests that reach the Space through its public
+    # address, so the server relays each voice there; Gradio then listens on GPU_SPEECH_PATH and advertises /api/tts.
+    if token:child.update({'ECHO_TTS_URL':origin+GPU_SPEECH_PATH,'ECHO_TTS_TOKEN':token})
+    return child
 
 def prepare():
     mode=llm_mode()
@@ -186,13 +215,16 @@ def prepare():
     with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(download,rows))
     origin=os.environ.get('ECHO_PUBLIC_ORIGIN','https://'+os.environ.get('SPACE_HOST','your-space.hf.space'))
     # The Space runs Ollama itself (embedded) or reaches a remote one, so the website never launches it.
-    env={**os.environ,'HOST':'127.0.0.1','PORT':'8787','PUBLIC_ORIGIN':origin,'ECHO_DATA_DIR':str(LOCAL),'ECHO_TRUST_PROXY':'1','ECHO_OLLAMA_AUTOSTART':'0'}
+    threads,start_ollama=None,mode=='embedded'
+    if start_ollama:
+        try:threads=ollama_threads()
+        except RuntimeError as error:start_ollama=False;print(f'Conversation replies unavailable: {error}',flush=True)
     if mode=='remote':
         if not (os.environ.get('ECHO_OLLAMA_URL') and os.environ.get('ECHO_OLLAMA_TOKEN')):print('ECHO_LLM_MODE=remote needs the variable ECHO_OLLAMA_URL and the secret ECHO_OLLAMA_TOKEN; conversation replies stay unavailable.',flush=True)
-    else:
-        env['ECHO_OLLAMA_URL']='http://127.0.0.1:11434';env.pop('ECHO_OLLAMA_TOKEN',None)
-        if mode=='off':print('Conversation replies are off (ECHO_LLM_MODE=off); Listening and Test work normally.',flush=True)
-    child=subprocess.Popen([node,str(WEB/'server/start.mjs')],env=env)
+    elif mode=='off':print('Conversation replies are off (ECHO_LLM_MODE=off); Listening and Test work normally.',flush=True)
+    if owner_token():print("Server voices are called with the Space secret ECHO_ZEROGPU_TOKEN, so ZeroGPU counts them against the owner's quota.",flush=True)
+    elif os.environ.get('SPACE_ID'):print("Server voices use each visitor's own ZeroGPU allowance, which is very small without a Hugging Face account. Add the Space secret ECHO_ZEROGPU_TOKEN to use the owner's quota.",flush=True)
+    child=subprocess.Popen([node,str(WEB/'server/start.mjs')],env=node_environment(origin,mode,threads,LOCAL))
     for _ in range(120):
         if child.poll() is not None:raise RuntimeError('Web process stopped during startup')
         try:
@@ -203,13 +235,15 @@ def prepare():
     else:raise RuntimeError('Web process did not become ready')
     if store.last is None:store.checkpoint()
     # The website serves Listening at once; the conversation model starts beside it and Explore waits for it.
-    if mode=='embedded':threading.Thread(target=run_embedded_ollama,daemon=True,name='echo-ollama').start()
+    if start_ollama:threading.Thread(target=run_embedded_ollama,args=(threads,),daemon=True,name='echo-ollama').start()
     return store,child,origin
 
 def add_web_routes(app,store,origin):
     lock=asyncio.Lock()
     async def proxy(request:Request):
         path=request.url.path
+        # With the owner's token the voices pass through the website's server; their event streams must neither wait for nor hold the lock.
+        speech=path=='/api/tts' or path.startswith('/api/tts/')
         if path=='/health':return Response(json.dumps({'app':'ECHO','storage':'private-bucket-snapshots','ready':True}),media_type='application/json')
         # Only the Node server's explicit public directories and API are exposed.
         # No static mount of ROOT, /tmp or /data is created here.
@@ -227,7 +261,7 @@ def add_web_routes(app,store,origin):
                 response=await client.send(client.build_request(request.method,url,headers=headers,content=bytes(body)),stream=True)
                 h={k:v for k,v in response.headers.items() if k not in ['connection','transfer-encoding','content-length','x-frame-options']}
                 if 'content-security-policy' in h:h['content-security-policy']=h['content-security-policy'].replace("frame-ancestors 'none'","frame-ancestors 'self' https://huggingface.co")
-                if path.startswith('/api/'):
+                if path.startswith('/api/') and not speech:
                     data=await response.aread();await response.aclose();await client.aclose()
                     if request.method in ['POST','PUT','PATCH','DELETE'] and not path.startswith('/api/auth/') and response.status_code<400:
                         await asyncio.to_thread(store.checkpoint)
@@ -244,7 +278,7 @@ def add_web_routes(app,store,origin):
             except Exception:
                 await client.aclose()
                 return Response(json.dumps({'error':'The response could not be saved or served. Please retry.'}),status_code=503,media_type='application/json')
-        if path.startswith('/api/'):
+        if path.startswith('/api/') and not speech:
             async with lock:return await forward()
         return await forward()
     app.add_api_route('/{path:path}',proxy,methods=['GET','HEAD','POST','PUT','PATCH','DELETE'],include_in_schema=False)

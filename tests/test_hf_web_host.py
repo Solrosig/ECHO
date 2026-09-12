@@ -1,4 +1,4 @@
-"""The Space's embedded model gets one thread per CPU its container may use, not one per core of the host."""
+"""The Space's hosting helpers: model threads within the container's CPU limit, and server voices on the owner's quota."""
 
 import importlib.util
 import sys
@@ -11,6 +11,8 @@ sys.path.insert(0, str(HF))
 _spec = importlib.util.spec_from_file_location("web_host", HF / "web_host.py")
 web_host = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(web_host)
+
+ORIGIN = "https://solrosig-echo-tts.hf.space"
 
 
 def cgroup(root: Path, files: dict[str, str]) -> Path:
@@ -51,9 +53,67 @@ def test_the_author_can_set_the_thread_count(tmp_path):
             web_host.ollama_threads({"ECHO_OLLAMA_THREADS": wrong}, root, cores=192)
 
 
-def test_llama_server_receives_the_thread_count_through_ollama(tmp_path, monkeypatch):
-    monkeypatch.delenv("LLAMA_ARG_THREADS", raising=False)
-    env = web_host.ollama_environment(tmp_path, 2)
-    assert env["LLAMA_ARG_THREADS"] == "2"
+def test_the_thread_count_is_a_parameter_of_a_named_copy_of_the_verified_build():
+    assert web_host.ollama_model(16) == "llama3.2:3b-t16"
+    assert web_host.ollama_model(None) == web_host.OLLAMA_MODEL == "llama3.2:3b"
+
+
+def test_ollama_gets_its_own_folders_and_never_the_owner_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ECHO_ZEROGPU_TOKEN", "hf_owner_fixture")
+    env = web_host.ollama_environment(tmp_path)
     assert env["OLLAMA_MODELS"] == str(tmp_path / "models")
-    assert "LLAMA_ARG_THREADS" not in web_host.ollama_environment(tmp_path, None)
+    assert env["HOME"] == str(tmp_path / "home")
+    assert "ECHO_ZEROGPU_TOKEN" not in env
+
+
+@pytest.mark.parametrize(
+    ("text", "seconds"),
+    [("", 25), (None, 25), ("x" * 40, 29), ("x" * 350, 60), ("x" * 2000, 60)],
+)
+def test_a_voice_reserves_gpu_time_by_text_length(text, seconds):
+    assert web_host.voice_gpu_seconds(text, "styletts2", "calm", "preset") == seconds
+
+
+def test_the_owner_token_counts_only_on_hugging_face():
+    space = {"SPACE_ID": "solrosig/echo-tts"}
+    assert (
+        web_host.owner_token({**space, "ECHO_ZEROGPU_TOKEN": " hf_owner "})
+        == "hf_owner"
+    )
+    assert web_host.owner_token({"ECHO_ZEROGPU_TOKEN": "hf_owner"}) is None
+    assert web_host.owner_token({**space, "ECHO_ZEROGPU_TOKEN": "  "}) is None
+
+
+def test_with_the_owner_token_the_website_server_calls_voices_through_the_public_address(
+    tmp_path,
+):
+    space = {
+        "SPACE_ID": "solrosig/echo-tts",
+        "ECHO_ZEROGPU_TOKEN": "hf_owner_fixture",
+        "ECHO_OLLAMA_TOKEN": "old",
+    }
+    env = web_host.node_environment(ORIGIN, "embedded", 16, tmp_path, space)
+    assert env["ECHO_TTS_URL"] == ORIGIN + "/api/tts-gpu"
+    assert env["ECHO_TTS_TOKEN"] == "hf_owner_fixture"
+    assert "ECHO_ZEROGPU_TOKEN" not in env
+    assert "ECHO_OLLAMA_TOKEN" not in env
+    assert env["ECHO_OLLAMA_URL"] == "http://127.0.0.1:11434"
+    assert env["ECHO_OLLAMA_MODEL"] == "llama3.2:3b-t16"
+    assert env["PUBLIC_ORIGIN"] == ORIGIN
+    assert env["ECHO_DATA_DIR"] == str(tmp_path)
+
+
+def test_without_the_owner_token_voices_and_the_model_name_stay_as_before(tmp_path):
+    plain = web_host.node_environment(
+        ORIGIN, "embedded", None, tmp_path, {"SPACE_ID": "solrosig/echo-tts"}
+    )
+    for name in ("ECHO_TTS_URL", "ECHO_TTS_TOKEN", "ECHO_OLLAMA_MODEL"):
+        assert name not in plain
+    remote_env = {
+        "ECHO_OLLAMA_URL": "https://llm.example",
+        "ECHO_OLLAMA_TOKEN": "hf_llm",
+    }
+    remote = web_host.node_environment(ORIGIN, "remote", 16, tmp_path, remote_env)
+    assert remote["ECHO_OLLAMA_URL"] == "https://llm.example"
+    assert remote["ECHO_OLLAMA_TOKEN"] == "hf_llm"
+    assert "ECHO_OLLAMA_MODEL" not in remote

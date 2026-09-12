@@ -1,6 +1,7 @@
 """Switch ECHO's conversation model between the two Hugging Face variants. Dry run unless --apply.
 
-  a    One Space: the ECHO Space runs Ollama itself on paid GPU hardware and sleeps after --sleep seconds.
+  a    One Space: the ECHO Space runs Ollama itself. On ZeroGPU (the default) the model runs on the Space's CPU at no
+       cost; with --hardware t4-small or another paid GPU it runs on that GPU and the Space sleeps after --sleep seconds.
   b    Split: the ECHO Space stays on free ZeroGPU; a private Docker Space runs Ollama on paid hardware, sleeps
        after --sleep seconds and is woken by the website when someone opens Explore.
   off  Back to ZeroGPU without conversation replies; the conversation Space, if it exists, is paused.
@@ -9,6 +10,8 @@ Uses this computer's Hugging Face login (hf auth login). Variant b also needs EC
 a fine-grained token that can only read the conversation Space. It is stored as a Space secret and never printed.
 Paid hardware is billed per minute while a Space is starting or awake, never while it sleeps or is paused.
 The ECHO Space must already run code that understands ECHO_LLM_MODE (package_space.py builds it).
+On ZeroGPU, server voices use the owner's quota only when the owner adds the Space secret ECHO_ZEROGPU_TOKEN on the
+Space's settings page; this script never sets it.
 """
 import argparse
 import os
@@ -21,13 +24,15 @@ ZERO_GPU = 'zero-a10g'
 
 def plan_for(args):
     sleep = args.sleep or (3600 if args.variant == 'a' else 900)
+    hardware = args.hardware or (ZERO_GPU if args.variant == 'a' else 't4-small')
     host = 'https://' + args.llm_space.replace('/', '-').replace('_', '-').replace('.', '-').lower() + '.hf.space'
     if args.variant == 'a':
         return [('set variable', args.space, 'ECHO_LLM_MODE', 'embedded'), ('remove variable', args.space, 'ECHO_OLLAMA_URL'),
-                ('remove secret', args.space, 'ECHO_OLLAMA_TOKEN'), ('set hardware', args.space, args.hardware, sleep),
+                ('remove secret', args.space, 'ECHO_OLLAMA_TOKEN'),
+                ('set hardware', args.space, hardware, None if hardware == ZERO_GPU else sleep),
                 ('pause if it exists', args.llm_space)]
     if args.variant == 'b':
-        return [('create private Docker Space', args.llm_space, args.hardware, sleep), ('upload folder', args.llm_space, str(LLM_FOLDER)),
+        return [('create private Docker Space', args.llm_space, hardware, sleep), ('upload folder', args.llm_space, str(LLM_FOLDER)),
                 ('set variable', args.space, 'ECHO_LLM_MODE', 'remote'), ('set variable', args.space, 'ECHO_OLLAMA_URL', host),
                 ('set secret', args.space, 'ECHO_OLLAMA_TOKEN', '(value of ECHO_OLLAMA_TOKEN)'), ('set hardware', args.space, ZERO_GPU, None)]
     return [('set variable', args.space, 'ECHO_LLM_MODE', 'off'), ('set hardware', args.space, ZERO_GPU, None),
@@ -74,8 +79,9 @@ def main():
     parser.add_argument('variant', choices=['a', 'b', 'off'])
     parser.add_argument('--space', default='solrosig/echo-tts', help='the public ECHO Space')
     parser.add_argument('--llm-space', default='solrosig/echo-llm', help='variant b: the private conversation Space')
-    parser.add_argument('--hardware', default='t4-small',
-                        help='variant a: the ECHO Space; variant b: the conversation Space (cpu-upgrade is cheaper and slower)')
+    parser.add_argument('--hardware',
+                        help='variant a: the ECHO Space (default zero-a10g, the model on the CPU at no cost); '
+                             'variant b: the conversation Space (default t4-small; cpu-upgrade is cheaper and slower)')
     parser.add_argument('--sleep', type=int, help='seconds without requests before sleeping (default: a 3600, b 900)')
     parser.add_argument('--apply', action='store_true', help='make the changes; without it the plan is only printed')
     args = parser.parse_args()
