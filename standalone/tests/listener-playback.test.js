@@ -15,7 +15,7 @@ import {trackPlayback} from '../playback-log.js';
 import {listenerId,LISTENER_PATTERN} from '../listener.js';
 import {audioResult,hashAudio} from '../audio-utils.js';
 import {controlsFor} from '../voice-controls.js';
-import {exportListeners,UNKNOWN_LISTENER} from '../scripts/export-listeners.mjs';
+import {exportListeners,assignListeners} from '../scripts/export-listeners.mjs';
 import manifest from '../public/study/manifest.json' with {type:'json'};
 
 const origin='https://echo.example';
@@ -102,6 +102,27 @@ test('Test and Explore playback waits for its message, travels with saves and is
  assert.equal(f.count('playback_events'),0);
 });
 
+test('every exported session gets a listener ID: the browser code, a nickname match, or a repeatable internal ID',()=>{
+ const A='L-'+'A'.repeat(32),B='L-'+'B'.repeat(32);
+ const ids=assignListeners([
+  {activity:'listening-test',session_id:'P-1',listener_id:A,nickname:'mira'},
+  {activity:'explore-mode',session_id:'X-1',listener_id:null,nickname:' Mira '},
+  {activity:'listening-test',session_id:'P-2',listener_id:null,nickname:'oleh'},
+  {activity:'test-mode',session_id:'X-2',listener_id:null,nickname:'OLEH'},
+  {activity:'listening-test',session_id:'P-3',listener_id:null,nickname:'listener_07'},
+  {activity:'listening-test',session_id:'P-4',listener_id:B,nickname:'listener_07'},
+  {activity:'explore-mode',session_id:'X-3',listener_id:null,nickname:'listener_07'},
+  {activity:'explore-mode',session_id:'X-4',listener_id:null,nickname:''}
+ ]);
+ const pick=id=>[ids.get(id).listener_id,ids.get(id).source];
+ assert.deepEqual(pick('P-1'),[A,'browser_code']);assert.deepEqual(pick('X-1'),[A,'nickname_match']);
+ assert.equal(ids.get('P-2').listener_id,ids.get('X-2').listener_id);assert.equal(ids.get('P-2').source,'nickname');assert.match(ids.get('P-2').listener_id,/^I-[A-F0-9]{32}$/);
+ assert.deepEqual(pick('P-4'),[B,'browser_code']);
+ for(const id of ['P-3','X-3','X-4'])assert.equal(ids.get(id).source,'session');
+ assert.equal(new Set(['P-3','X-3','X-4'].map(id=>ids.get(id).listener_id)).size,3);
+ assert.deepEqual(assignListeners([{activity:'test-mode',session_id:'X-4',listener_id:null,nickname:''}]).get('X-4'),ids.get('X-4'));
+});
+
 test('the researcher export builds listener, activity and timestamped session folders with metadata and verified recordings',async t=>{
  const f=site(t),listener=listenerId();
  const s=listeningSession(listener),trials=makeTrials(manifest,s.group,s.seed),study=new StudySync({session:s,trials,fetcher:f.fetcher});
@@ -118,12 +139,15 @@ test('the researcher export builds listener, activity and timestamped session fo
  assert.deepEqual(human.sessions,{'listening-test':0,'test-mode':1,'explore-mode':1});
  const all=exportListeners({database,audio,out,includeTechnical:true});
  assert.deepEqual(all.sessions,{'listening-test':1,'test-mode':1,'explore-mode':1});assert.equal(all.recordings_copied,1);assert.deepEqual(all.warnings,[]);
- assert.deepEqual(readdirSync(out).sort(),[listener,'export.json',UNKNOWN_LISTENER].sort());
+ assert.deepEqual(all.listener_id_sources,{browser_code:2,nickname:1});
+ const earlierId=assignListeners([{activity:'test-mode',session_id:legacy.session_id,listener_id:null,nickname:'earlier_visitor'}]).get(legacy.session_id).listener_id;
+ assert.deepEqual(readdirSync(out).sort(),[listener,'export.json',earlierId].sort());
  assert.deepEqual(readdirSync(join(out,listener)).sort(),['explore-mode','listener.json','listening-test']);
 
  const [chatFolder]=readdirSync(join(out,listener,'explore-mode'));assert.match(chatFolder,new RegExp(`^\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z_${chat.session_id}$`));
  const conversation=JSON.parse(readFileSync(join(out,listener,'explore-mode',chatFolder,'metadata.json'),'utf8'));
- assert.equal(conversation.listener_id,listener);assert.equal(conversation.activity,'explore-mode');assert.equal(conversation.messages[0].audio_file,'01_kokoro_happy.wav');assert.equal(conversation.messages[0].rating.target_match,4);
+ assert.equal(conversation.listener_id,listener);assert.equal(conversation.listener_id_source,'browser_code');assert.equal(conversation.browser_listener_code,listener);
+ assert.equal(conversation.activity,'explore-mode');assert.equal(conversation.messages[0].audio_file,'01_kokoro_happy.wav');assert.equal(conversation.messages[0].rating.target_match,4);
  assert.deepEqual(conversation.playback_events.map(e=>[e.seq,e.event,e.autoplay]),[[1,'play',true],[2,'ended',false],[3,'play',false]]);
  assert.deepEqual(conversation.listening.first_play_order,[1]);assert.equal(conversation.listening.per_item[0].replays,1);assert.equal(conversation.listening.per_item[0].finishes,1);
  assert.equal(await hashAudio(readFileSync(join(out,listener,'explore-mode',chatFolder,'01_kokoro_happy.wav'))),sha);
@@ -132,9 +156,10 @@ test('the researcher export builds listener, activity and timestamped session fo
  assert.equal(listening.session_id,s.participant_id);assert.equal(listening.clips.length,2);assert.equal(listening.clips[0].audio,manifest.items.find(i=>i.item_id===trials[0].item_id).audio);
  assert.deepEqual(listening.listening.first_play_order,[1,2]);assert.equal(listening.playback_events.length,3);
 
- const listenerFile=JSON.parse(readFileSync(join(out,listener,'listener.json'),'utf8'));assert.deepEqual(listenerFile.sessions.map(x=>x.activity).sort(),['explore-mode','listening-test']);assert.deepEqual(listenerFile.nicknames,['playback_listener']);
- const unknown=JSON.parse(readFileSync(join(out,UNKNOWN_LISTENER,'listener.json'),'utf8'));assert.equal(unknown.listener_id,null);assert.equal(unknown.sessions[0].activity,'test-mode');
- const earlier=JSON.parse(readFileSync(join(out,UNKNOWN_LISTENER,'test-mode',readdirSync(join(out,UNKNOWN_LISTENER,'test-mode'))[0],'metadata.json'),'utf8'));assert.equal(earlier.messages[0].audio_problem,'not_archived');
+ const listenerFile=JSON.parse(readFileSync(join(out,listener,'listener.json'),'utf8'));assert.deepEqual(listenerFile.sessions.map(x=>x.activity).sort(),['explore-mode','listening-test']);assert.deepEqual(listenerFile.nicknames,['playback_listener']);assert.deepEqual(listenerFile.listener_id_sources,['browser_code']);
+ const earlierFile=JSON.parse(readFileSync(join(out,earlierId,'listener.json'),'utf8'));assert.deepEqual(earlierFile.listener_id_sources,['nickname']);assert.equal(earlierFile.sessions[0].activity,'test-mode');
+ const earlier=JSON.parse(readFileSync(join(out,earlierId,'test-mode',readdirSync(join(out,earlierId,'test-mode'))[0],'metadata.json'),'utf8'));
+ assert.equal(earlier.messages[0].audio_problem,'not_archived');assert.equal(earlier.listener_id_source,'nickname');assert.equal(earlier.browser_listener_code,null);
  assert.throws(()=>exportListeners({database,audio,out}),/not empty/);
 
  // The Hugging Face bucket layout: the newest verified snapshot and the audio folder beside it.
@@ -147,13 +172,14 @@ test('the researcher export builds listener, activity and timestamped session fo
  assert.throws(()=>execFileSync(process.execPath,['scripts/export-listeners.mjs','--bucket',bucket,'--out',join(f.dir,'refused')],{stdio:'pipe'}),/does not match its checksum/);
 });
 
-test('an export of a snapshot from before listener codes still works',t=>{
+test('an export of a snapshot from before listener codes still works and assigns internal IDs',t=>{
  const dir=mkdtempSync(join(tmpdir(),'echo-old-export-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
  const database=join(dir,'old.sqlite'),DB=localDatabase(database);
  DB.sqlite.exec("INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc) VALUES ('X-'||hex(randomblob(16)),'hash','old_visitor','explore','chatterbox','interactive_exploration','v','2026-09-10T10:00:00Z','2026-09-10T10:00:00Z','2026-09-10T10:00:00Z')");
  DB.sqlite.exec('DROP TABLE playback_events; DROP INDEX idx_interactive_sessions_listener; DROP INDEX idx_study_sessions_listener; ALTER TABLE interactive_sessions DROP COLUMN listener_id; ALTER TABLE study_sessions DROP COLUMN listener_id;');DB.close();
  const summary=exportListeners({database,audio:join(dir,'audio'),out:join(dir,'out')});
  assert.deepEqual(summary.sessions,{'listening-test':0,'test-mode':0,'explore-mode':1});
- const [folder]=readdirSync(join(dir,'out',UNKNOWN_LISTENER,'explore-mode'));assert.match(folder,/^2026-09-10T10-00-00Z_X-/);
- assert.deepEqual(JSON.parse(readFileSync(join(dir,'out',UNKNOWN_LISTENER,'explore-mode',folder,'metadata.json'),'utf8')).playback_events,[]);
+ const [id]=readdirSync(join(dir,'out')).filter(name=>name!=='export.json');assert.match(id,/^I-[A-F0-9]{32}$/);
+ const [folder]=readdirSync(join(dir,'out',id,'explore-mode'));assert.match(folder,/^2026-09-10T10-00-00Z_X-/);
+ const metadata=JSON.parse(readFileSync(join(dir,'out',id,'explore-mode',folder,'metadata.json'),'utf8'));assert.deepEqual(metadata.playback_events,[]);assert.equal(metadata.listener_id_source,'nickname');
 });

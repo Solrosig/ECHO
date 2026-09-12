@@ -81,7 +81,13 @@ Deleting an active participant session does not automatically erase historical b
   - a summary of listening order and replays.
 - Test and Explore session folders also hold their archived recordings as `01_<engine>_<emotion>.wav`, checked against their stored checksums.
 
-The listener code is a random `L-…` code the browser keeps beside the nickname. It links one browser's Listening, Test and Explore sessions. Sessions saved before listener codes existed, or from a browser without storage, go to `unknown-listener/`. Technical test records are left out unless `--include-technical` is given.
+The listener code is a random `L-…` code the browser keeps beside the nickname. It links one browser's Listening, Test and Explore sessions. A session without a code still gets a listener ID, and its metadata records how (`listener_id_source`):
+
+- `nickname_match`: its nickname belongs to exactly one browser code, so it joins that listener.
+- `nickname`: an internal `I-…` ID derived from the nickname, which listeners are asked to keep throughout their participation.
+- `session`: the nickname is blank, or several listeners used it (more than one browser code, or more than one Listening session). The session gets an internal ID of its own.
+
+Internal IDs are repeatable: exporting the same data again gives the same IDs. Technical test records are left out unless `--include-technical` is given.
 
 From a local installation, export a copy made with `node scripts/backup.mjs`:
 
