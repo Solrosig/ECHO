@@ -73,8 +73,9 @@ export const generationAttempts=sqliteTable('generation_attempts',{
  attemptId:text('attempt_id').notNull(),eventJson:text('event_json').notNull(),receivedUtc:text('received_utc').notNull()
 },t=>[primaryKey({columns:[t.sessionId,t.attemptId]})]);
 
-// Every play, pause, finish and seek of a Listening clip (session_kind 'study') or a Test/Explore message ('interactive').
+// Every play, pause, finish and seek of a Listening clip (session_kind 'study') or a Test/Explore message ('interactive'),
+// and each opening or closing of an Explore transcript.
 // item_order is the trial order or the message order; sessions are deleted explicitly on withdrawal.
 export const playbackEvents=sqliteTable('playback_events',{
  sessionKind:text('session_kind').notNull(),sessionId:text('session_id').notNull(),eventId:text('event_id').notNull(),seq:integer('seq').notNull(),event:text('event').notNull(),itemOrder:integer('item_order').notNull(),itemId:text('item_id'),positionSeconds:real('position_s').notNull(),durationSeconds:real('duration_s'),playbackRate:real('playback_rate').notNull(),autoplay:integer('autoplay').notNull(),clientUtc:text('client_utc').notNull(),receivedUtc:text('received_utc').notNull()
-},t=>[primaryKey({columns:[t.sessionKind,t.sessionId,t.eventId]}),index('idx_playback_session_seq').on(t.sessionKind,t.sessionId,t.seq),check('playback_kind',sql`${t.sessionKind} IN ('study', 'interactive')`),check('playback_event',sql`${t.event} IN ('play', 'pause', 'ended', 'seeked')`)]);
+},t=>[primaryKey({columns:[t.sessionKind,t.sessionId,t.eventId]}),index('idx_playback_session_seq').on(t.sessionKind,t.sessionId,t.seq),check('playback_kind',sql`${t.sessionKind} IN ('study', 'interactive')`),check('playback_event',sql`${t.event} IN ('play', 'pause', 'ended', 'seeked', 'transcript_open', 'transcript_close')`)]);

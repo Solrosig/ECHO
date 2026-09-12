@@ -38,7 +38,7 @@ export async function interactiveApi(request,url,h){
  const read=async()=> (await db.prepare('SELECT * FROM interactive_turns WHERE session_id=? ORDER BY turn_order').bind(s.session_id).all()).results;
  if(request.method==='GET'&&!match[2]){const turns=await read(),ratings=(await db.prepare('SELECT turn_order,rating_json FROM interactive_ratings WHERE session_id=? ORDER BY turn_order').bind(s.session_id).all()).results;return json({session_id:s.session_id,nickname:s.nickname,mode:s.mode,engine:s.engine,saved_count:turns.length,turns:turns.map(t=>JSON.parse(t.turn_json)),ratings:ratings.map(r=>({order:r.turn_order,rating:JSON.parse(r.rating_json)}))});}
  if(request.method==='POST'&&match[2]==='/playback'){
-  const events=validatePlayback(await body(request),{fail,maxOrder:s.mode==='explore'?10:12}),known=new Set((await read()).map(t=>t.turn_order));
+  const events=validatePlayback(await body(request),{fail,maxOrder:s.mode==='explore'?10:12,transcripts:s.mode==='explore'}),known=new Set((await read()).map(t=>t.turn_order));
   if(events.some(e=>!known.has(e.item_order)))fail(400,'Save the message before its playback events.');
   return json(await savePlayback(db,'interactive',s.session_id,events,now()));
  }

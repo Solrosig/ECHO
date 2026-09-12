@@ -81,13 +81,20 @@ Deleting an active participant session does not automatically erase historical b
   - a summary of listening order and replays.
 - Test and Explore session folders also hold their archived recordings as `01_<engine>_<emotion>.wav`, checked against their stored checksums.
 
-The listener code is a random `L-…` code the browser keeps beside the nickname. It links one browser's Listening, Test and Explore sessions. A session without a code still gets a listener ID, and its metadata records how (`listener_id_source`):
+A listener folder is named by the listener's Listening participant code (`P-…`), which is the unit of inference in `analyse_ratings.py`. A listener with no Listening session is named by the browser code, or by a repeatable internal `I-…` ID. Each session's metadata records how it was linked (`listener_id_source`), in this order:
 
-- `nickname_match`: its nickname belongs to exactly one browser code, so it joins that listener.
-- `nickname`: an internal `I-…` ID derived from the nickname, which listeners are asked to keep throughout their participation.
-- `session`: the nickname is blank, or several listeners used it (more than one browser code, or more than one Listening session). The session gets an internal ID of its own.
+- `coverage_sheet`: the filled application coverage sheet links the session to a Listening participant (`--coverage`, a sheet or a folder of sheets, can be given more than once).
+- `browser_code`: same browser code and same nickname. The browser code is a random `L-…` code kept beside the nickname; a code used under several nicknames is treated as a shared device.
+- `nickname_match`: no code, but the nickname belongs to exactly one browser-code group.
+- `nickname`: no code; grouped by nickname, which listeners are asked to keep throughout their participation.
+- `session`: the nickname is blank or used by several listeners, so the session stands alone.
 
-Internal IDs are repeatable: exporting the same data again gives the same IDs. Technical test records are left out unless `--include-technical` is given.
+Two CSVs sit at the top of the export:
+
+- `listening-playback.csv`: one row per Listening trial: participant, order, item, `audio_sha256`, plays, replays, finishes, pauses and seeks. It joins `joined-ratings.csv` by `participant_id` and `audio_sha256`.
+- `application-playback.csv`: one row per Test or Explore message, including whether its transcript was opened before the voice finished. It joins the coverage sheet by `session_id` and `turn_order`.
+
+Exporting the same data again gives the same IDs. Technical test records are left out unless `--include-technical` is given.
 
 From a local installation, export a copy made with `node scripts/backup.mjs`:
 

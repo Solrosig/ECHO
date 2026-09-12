@@ -8,7 +8,7 @@ import {NeuralClient} from './neural-client.js';
 import {hashAudio} from './audio-utils.js';
 import {readNickname,rememberNickname,MAX_EXCHANGES} from './participant.js';
 import {createInteractiveSession,InteractiveSync,loadOutbox} from './interactive-sync.js';
-import {trackPlayback} from './playback-log.js';
+import {trackPlayback,trackTranscript} from './playback-log.js';
 const $=id=>document.getElementById(id),neural=new NeuralClient();
 const remote=new RemoteSpeechClient();
 let listeningLoaded=false,listeningLoading=false;
@@ -107,7 +107,7 @@ async function runChat(){
   const meta=document.createElement('small');meta.textContent=`${ENGINES[record.engine].name} · ${EMOTIONS[record.emotion].name}`;pending.append(label,audio,button,transcript,meta);
   const turn=turnMetadata(chat,record,input);void syncFor(chat).add(turn,record.buffer);pending.append(messageRatingForm(audio,chat,turn.order,syncFor(chat)));$('chat-message').value='';status('Voice reply ready. Play it or open the transcript.');$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
   // Browsers may require another click after model loading; the play control always remains available.
-  const conversation=chat;trackPlayback(audio,()=>({item_order:turn.order}),event=>syncFor(conversation).playback(event));
+  const conversation=chat,saveEvent=event=>syncFor(conversation).playback(event);trackPlayback(audio,()=>({item_order:turn.order}),saveEvent);trackTranscript(button,transcript,audio,()=>({item_order:turn.order}),saveEvent);
   document.querySelectorAll('audio').forEach(a=>{if(a!==audio)a.pause();});audio.dataset.autoplay='1';void audio.play().catch(()=>{delete audio.dataset.autoplay;});
  }catch(e){if(id!==job)return;userBubble.remove();pending.remove();$('chat-error').textContent=e.message||String(e);$('chat-error').hidden=false;status('No exchange was counted. Your message is kept so you can retry.');}
  finally{if(id!==job){userBubble.remove();pending.remove();}else lock(false);}
