@@ -38,7 +38,7 @@ function showTrial(){
   for(const k of ['valence','arousal']){$(k).value=String(locked[k]*100);$(k+'-value').textContent=String(Math.round(locked[k]*100));}
   document.querySelector(`input[name=naturalness][value="${locked.naturalness}"]`).checked=true;
   $('perceived').disabled=true;$('reveal-target').hidden=true;$('target-rating').hidden=false;
-  $('intended-emotion').textContent=`${t.target.name} · ${t.target.arousal>0?'active':'subdued'}, ${t.target.valence>0?'positive':'negative'}`;
+  $('intended-emotion').textContent=`${t.target.name} · ${t.target.arousal>0?'active':'passive'}, ${t.target.valence>0?'positive':'negative'}`;
   $('play-instruction').textContent='Your first ratings are saved and locked. Complete the target-match rating.';
  }
  $('clip-title').focus();
@@ -48,7 +48,7 @@ function perception(){
  if(!touched.has('valence')||!touched.has('arousal'))throw new Error('Rate both emotional dimensions. Use the neutral buttons if your rating is zero.');
  const r={valence:Number($('valence').value)/100,arousal:Number($('arousal').value)/100,naturalness:Number(document.querySelector('input[name=naturalness]:checked')?.value),target_match:1};validateRating(r);delete r.target_match;return r;
 }
-function reveal(){try{error('');locked=perception();session.current={index:session.rows.length,locked,heard,playCount,elapsed_s:previousElapsed+(performance.now()-started)/1000,created_utc:new Date().toISOString()};save();$('perceived').disabled=true;$('reveal-target').hidden=true;$('target-rating').hidden=false;const t=trials[session.rows.length];$('intended-emotion').textContent=`${t.target.name} · ${t.target.arousal>0?'active':'subdued'}, ${t.target.valence>0?'positive':'negative'}`;}catch(e){error(e.message);}}
+function reveal(){try{error('');locked=perception();session.current={index:session.rows.length,locked,heard,playCount,elapsed_s:previousElapsed+(performance.now()-started)/1000,created_utc:new Date().toISOString()};save();$('perceived').disabled=true;$('reveal-target').hidden=true;$('target-rating').hidden=false;const t=trials[session.rows.length];$('intended-emotion').textContent=`${t.target.name} · ${t.target.arousal>0?'active':'passive'}, ${t.target.valence>0?'positive':'negative'}`;}catch(e){error(e.message);}}
 function record(){
  if(!locked)throw new Error('Save your perception ratings first.');
  if(!touched.has('target-match'))throw new Error('Rate the emotion match. Use the midpoint button if your rating is 3.');
