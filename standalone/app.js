@@ -44,6 +44,8 @@ function setMode(next,{url=true}={}){
  $('studio').classList.toggle('blind',mode==='listening');$('studio').classList.toggle('exploring',mode==='explore');
  for(const [id,active] of [['mode-listening',mode==='listening'],['mode-test',mode==='line'],['mode-explore',mode==='explore']]){$(id).classList.toggle('active',active);$(id).setAttribute('aria-pressed',String(active));}
  $('workspace-title').textContent=mode==='listening'?'Listening test':mode==='line'?'Test mode':'Explore Mode';$('listening-panel').hidden=mode!=='listening';$('interactive-panel').hidden=mode==='listening';$('line-panel').hidden=mode!=='line';$('explore-panel').hidden=mode!=='explore';
+ // Explore stays on the conversation: its page offers no way to switch to the Listening test or Test mode.
+ const exploring=mode==='explore',listeningLink=document.querySelector('.topbar nav a[href="/?mode=listening"]');document.querySelector('.main-modes').hidden=exploring;if(listeningLink)listeningLink.hidden=exploring;
  if(mode==='listening')void ensureListening();
  // Opening Explore starts a hosted conversation model that sleeps between study sessions.
  if(mode==='explore')void checkDialogue();
