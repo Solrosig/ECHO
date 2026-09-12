@@ -16,7 +16,7 @@ const remoteEnv={ECHO_OLLAMA_URL:'https://owner-echo-llm.hf.space/',ECHO_OLLAMA_
 
 test('defaults: llama3.2:3b through local Ollama with the coherence gate off',()=>{
   assert.equal(PRIMARY_MODEL,'llama3.2:3b');
-  assert.deepEqual(dialogueConfig({}),{gate:'off',model:'llama3.2:3b',timeoutMs:120000,ollamaUrl:'http://127.0.0.1:11434',gateUrl:'http://127.0.0.1:8790',apiKey:null,remote:false,embedded:false});
+  assert.deepEqual(dialogueConfig({}),{gate:'off',model:'llama3.2:3b',timeoutMs:120000,ollamaUrl:'http://127.0.0.1:11434',gateUrl:'http://127.0.0.1:8790',apiKey:null,remote:false,embedded:false,autostart:true});
 });
 
 test('Ollama embedded in the Hugging Face Space reads as starting until it and its model answer',async()=>{
