@@ -54,6 +54,17 @@ test('every page uses the quadrant names, and Q numbers appear only inside the c
   }
 });
 
+test('the selected target shows only its bold name, and the quadrants are separated along the axes', () => {
+  const studio = read('studio.html');
+  assert.match(studio, /<strong id="target-name">Happy<\/strong><p>/);
+  for (const name of ['studio.html', 'app.js', 'listen.js']) {
+    assert.doesNotMatch(read(name), /target-coordinates|Valence \$\{|Valence [+−-]\d/, name);
+  }
+  const css = read('style.css');
+  assert.match(css, /\.circumplex-disc\{[^}]*display:grid;[^}]*gap:6px/);
+  assert.match(css, /\.target-note strong\{[^}]*font-weight:700/);
+});
+
 test('the retired calibration gallery is not linked and offers no recordings', () => {
   assert.doesNotMatch(read('studio.html'), /href="\/calibration\//);
   const calibration = read('public/calibration/index.html');
