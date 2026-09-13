@@ -15,7 +15,8 @@ function persist(session){
 export class InteractiveSync{
  constructor(session,{fetcher=fetch,onStatus=()=>{}}={}){Object.assign(this,{session,fetcher,onStatus});this.running=null;this.dirty=false;this.audio=new Map();}
  async request(path,data){const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);try{const response=await this.fetcher.call(globalThis,path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${this.session.token}`},body:JSON.stringify(data),signal:c.signal});const result=await response.json();if(!response.ok){const e=new Error(result.error||'The database could not save this session.');e.status=response.status;throw e;}return result;}finally{clearTimeout(timer);}}
- attempt(event){this.session.attempts||=[];this.session.attempts.push(event);persist(this.session);return this.sync();}
+ // A diagnostic that a message save will follow can travel with that save instead of adding one ({sync:false}).
+ attempt(event,{sync=true}={}){this.session.attempts||=[];this.session.attempts.push(event);persist(this.session);return sync?this.sync():Promise.resolve();}
  // Playback events wait in the session and travel with the next save; the page also flushes them now and then.
  playback(event){this.session.playback||=[];this.session.playback_seq=(this.session.playback_seq||0)+1;this.session.playback.push({...event,seq:this.session.playback_seq});persist(this.session);}
  // Sends only the waiting playback events: one request, where a full sync would repeat every save.

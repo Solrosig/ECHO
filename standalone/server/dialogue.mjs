@@ -1,4 +1,4 @@
-import {appendFileSync} from 'node:fs';
+import {appendFileSync,readFileSync} from 'node:fs';
 import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply} from './dialogue-prompt.mjs';
 import {QWEN_BACKUP_ALLOWED,QWEN_BACKUP_MODEL} from './llm-backup.mjs';
 
@@ -96,14 +96,27 @@ export async function dialogueStatus(config,{fetchImpl=fetch,launcher=null}={}){
   }catch(error){return {ready:false,waking:error.details?.waking===true};}
 }
 
-// One JSON line per reply in the private data folder, so option B's latency and failures can be reviewed.
+// One JSON line per reply in the private data folder, so option B's latency and failures can be reviewed; researchers
+// download the file from /api/research/dialogue-metrics.jsonl.
 export function createMetricsLog(file){
-  return entry=>{try{appendFileSync(file,JSON.stringify(entry)+'\n',{mode:0o600});}catch(error){console.error('Could not record dialogue metrics:',error.message);}};
+  const log=entry=>{try{appendFileSync(file,JSON.stringify(entry)+'\n',{mode:0o600});}catch(error){console.error('Could not record dialogue metrics:',error.message);}};
+  log.read=()=>{try{return readFileSync(file,'utf8');}catch(error){if(error.code==='ENOENT')return '';throw error;}};
+  return log;
+}
+
+// The page names its conversation, planned message and browser attempt, so a metrics line joins the saved message and its
+// generation attempt. Malformed identifiers are left out; they never refuse a reply.
+export function metricsLink(input){
+  const link={};
+  if(typeof input?.session_id==='string'&&/^X-[A-F0-9]{32}$/.test(input.session_id))link.session_id=input.session_id;
+  if(Number.isInteger(input?.turn_order)&&input.turn_order>=1&&input.turn_order<=12)link.turn_order=input.turn_order;
+  if(typeof input?.attempt_id==='string'&&/^[a-f0-9-]{36}$/.test(input.attempt_id))link.attempt_id=input.attempt_id;
+  return link;
 }
 
 export async function handleDialogueRequest(request,env,{readBody,json}){
   const started=Date.now(),dialogue=env.DIALOGUE;let input={};
-  const record=fields=>dialogue?.log?.({utc:new Date().toISOString(),gate:dialogue?.config?.gate,model:dialogue?.config?.model,prompt_version:DIALOGUE_PROMPT_VERSION,emotion:input?.emotion,ms:Date.now()-started,...fields});
+  const record=fields=>dialogue?.log?.({utc:new Date().toISOString(),gate:dialogue?.config?.gate,model:dialogue?.config?.model,prompt_version:DIALOGUE_PROMPT_VERSION,emotion:input?.emotion,ms:Date.now()-started,...metricsLink(input),...fields});
   try{
     input=await readBody(request);
     const out=await dialogueReply(input,dialogue?.config,{fetchImpl:dialogue?.fetch||fetch,launcher:dialogue?.launcher});
