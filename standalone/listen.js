@@ -47,7 +47,7 @@ function showTrial(){
 }
 function perception(){
  if(!heard&&!test)throw new Error('Please listen to the whole clip first.');
- if(!touched.has('valence')||!touched.has('arousal'))throw new Error('Rate both emotional dimensions. Use the neutral buttons if your rating is zero.');
+ if(!touched.has('valence')||!touched.has('arousal'))throw new Error('Rate both emotional dimensions. For zero, move the slider away and back to 0, or use the arrow keys.');
  const r={valence:Number($('valence').value)/100,arousal:Number($('arousal').value)/100,naturalness:Number(document.querySelector('input[name=naturalness]:checked')?.value),target_match:1};validateRating(r);delete r.target_match;return r;
 }
 function reveal(){try{error('');locked=perception();session.current={index:session.rows.length,locked,heard,playCount,elapsed_s:previousElapsed+(performance.now()-started)/1000,created_utc:new Date().toISOString()};save();$('perceived').disabled=true;$('reveal-target').hidden=true;$('target-rating').hidden=false;const t=trials[session.rows.length];$('intended-emotion').textContent=`${targetName(t.target)} · ${t.target.arousal>0?'active':'passive'}, ${t.target.valence>0?'positive':'negative'}`;}catch(e){error(e.message);}}
@@ -63,7 +63,7 @@ $('study-audio').addEventListener('error',()=>error('This audio could not load. 
 $('study-audio').addEventListener('loadstart',()=>{activeTrial=pendingTrial;});
 trackPlayback($('study-audio'),()=>activeTrial,event=>{if(!syncClient)return;syncClient.playback(event);persist();});
 for(const key of ['valence','arousal']){
- const update=()=>{touched.add(key);$(key+'-value').textContent=String(Number($(key).value));};$(key).addEventListener('input',update);$('neutral-'+key).addEventListener('click',()=>{$(key).value='0';update();});
+ const update=()=>{touched.add(key);$(key+'-value').textContent=String(Number($(key).value));};$(key).addEventListener('input',update);
 }
 $('reveal-target').addEventListener('click',reveal);
 $('rating-form').addEventListener('submit',e=>{e.preventDefault();try{record();}catch(e){error(e.message);}});
