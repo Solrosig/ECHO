@@ -25,3 +25,4 @@
 .echo-acronym strong{font-family:inherit;font-size:inherit;letter-spacing:inherit;font-weight:700}
 @media(min-width:1280px){.voice-studio-page .intro h1{font-size:clamp(20px,1.78vw,26px)}}
 @media(max-width:760px){.voice-studio-page .topbar{display:flex;flex-wrap:wrap;min-height:72px;height:auto;padding:14px 20px;gap:12px 20px}.voice-studio-page .topbar nav{flex:1;flex-wrap:wrap;gap:8px 16px}.voice-studio-page .topbar nav a{display:block}.voice-studio-page .intro{padding:26px 4px 24px}}
+.chat-engine .chat-actions{padding:0;margin-top:12px}.privacy-note{font-size:12px;line-height:1.6;color:var(--muted);margin:14px 0 0;max-width:1000px}
