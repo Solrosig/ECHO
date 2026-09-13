@@ -76,8 +76,8 @@ function addRecord(record,session,order){
  const text=document.createElement('blockquote');text.textContent=record.text;
  const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label',`${title.textContent}, ${record.condition}, ${QUADRANTS[record.emotion].name}`);record.url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));audio.src=record.url;
  const meta=document.createElement('div');meta.className='turn-meta';meta.textContent=`${record.duration_s.toFixed(2)}s audio · ${record.elapsed_s.toFixed(1)}s generation · speed ${record.rate.toFixed(2)}× · gain ${record.gain.toFixed(2)}${record.pitch!==null?` · native pitch ${record.pitch}`:` · pitch ${record.pitch_semitones>0?'+':''}${record.pitch_semitones.toFixed(2)} st (DSP)`}`;
- const link=document.createElement('a');link.href=audio.src;link.download=`echo-${record.engine}-${record.emotion}-${record.condition}-${records.length}.wav`;link.textContent='Download WAV';trackPlayback(audio,()=>({item_order:order}),event=>syncFor(session).playback(event));el.append(top,text,audio,meta,link,messageRatingForm(audio,session,order,syncFor(session)));$('results').append(el);
- if(records.length>12){const old=records.shift();URL.revokeObjectURL(old.url);$('results').firstElementChild.remove();}
+ const link=document.createElement('a');link.href=audio.src;link.download=`echo-${record.engine}-${record.emotion}-${record.condition}-${records.length}.wav`;link.textContent='Download WAV';trackPlayback(audio,()=>({item_order:order}),event=>syncFor(session).playback(event));el.append(top,text,audio,meta,link,messageRatingForm(audio,session,order,syncFor(session)));$('results').prepend(el);
+ if(records.length>12){const old=records.shift();URL.revokeObjectURL(old.url);$('results').lastElementChild.remove();}
 }
 async function runLine({reuse=false,engine,condition}={}){
  if(busy)return;let nickname;try{nickname=identity();}catch(e){$('error').textContent=e.message;$('error').hidden=false;return;}
