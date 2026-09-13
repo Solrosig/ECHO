@@ -3,9 +3,9 @@ export class NeuralClient{
   run(payload,onEvent){
     if(this.pending)return Promise.reject(new Error('A model operation is already active.'));
     return new Promise((resolve,reject)=>{
-      const id=++this.serial;
+      const id=++this.serial,created=!this.worker;
       const total=setTimeout(()=>this.reset(new Error('The model operation timed out. Please retry or choose another voice.')),this.timeout);
-      this.pending={resolve,reject,total,id,onEvent};
+      this.pending={resolve,reject,total,id,onEvent,created};
       const idle=()=>{clearTimeout(this.pending?.idle);if(this.pending)this.pending.idle=setTimeout(()=>this.reset(new Error('No model progress for 120 seconds. Please retry or choose another voice.')),120000);};
       try{
         if(!this.worker){
@@ -16,7 +16,8 @@ export class NeuralClient{
             if(worker!==this.worker||data.id!==this.pending?.id)return;
             idle();if(data.type==='result'||data.type==='error'){
               const p=this.pending;clearTimeout(p.total);clearTimeout(p.idle);this.pending=null;
-              if(data.type==='result')p.resolve(data.result);else p.reject(new Error(data.message));
+              // A worker started for this request also loaded its scripts, which the request's time includes.
+              if(data.type==='result'){if(data.result?.timing)data.result.timing.worker_created=p.created;p.resolve(data.result);}else p.reject(new Error(data.message));
             }else this.pending.onEvent(data);
           };
         }

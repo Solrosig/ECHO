@@ -10,11 +10,12 @@ import {hashAudio} from './audio-utils.js';
 import {readNickname,rememberNickname,MAX_EXCHANGES} from './participant.js';
 import {createInteractiveSession,InteractiveSync,loadOutbox} from './interactive-sync.js';
 import {trackPlayback,trackTranscript} from './playback-log.js';
+import {GENERATION_METADATA_VERSION,seconds,visibilityWatch,deviceContext} from './generation-timing.js';
 const $=id=>document.getElementById(id),neural=new NeuralClient();
 const remote=new RemoteSpeechClient();
 let listeningLoaded=false,listeningLoading=false;
 let mode='listening',busy=false,job=0,ticker,started,phase='',records=[],lastLine=null,lastComparedEngine=null,chat=null,lineSession=null,replyRequest=null;
-const syncs=new Map();
+const syncs=new Map(),requestedEngines=new Set();
 function selection(){return {emotion:document.querySelector('input[name=emotion]:checked').value,intensity:1,engine:mode==='explore'?(chat?.engine||$('chat-engine').value):$('engine').value,condition:mode==='explore'?'preset':$('condition').value,custom:{rate:Number($('custom-rate').value)/100,gain:Number($('custom-gain').value)/100,pitch:Number($('custom-pitch').value)}};}
 for(const [id,engines] of [['engine',TEST_ENGINES],['chat-engine',EXPLORE_ENGINES]])$(id).replaceChildren(...engines.map(e=>new Option(ENGINES[e].name,e)));
 $('compare-actions').querySelectorAll('[data-compare-engine]').forEach(b=>b.remove());
@@ -62,10 +63,12 @@ function eventFor(id){return event=>{if(id===job&&event.type==='progress')status
 function identity(){if(!$('identity-form').reportValidity())throw new Error('Enter your nickname and agree to storage before continuing.');return rememberNickname($('nickname').value);}
 function syncFor(session){if(!syncs.has(session.session_id))syncs.set(session.session_id,new InteractiveSync(session,{onStatus:updateSaveStatus}));return syncs.get(session.session_id);}
 function updateSaveStatus(){const pending=[...syncs.values()].filter(s=>interactivePending(s.session));$('interactive-save-status').dataset.state=pending.length?'offline':'saved';$('interactive-save-status').textContent=pending.length?'Messages, recordings or ratings are waiting to be saved. Keep this page open or retry saving.':'Messages, recordings and submitted ratings saved.';$('retry-interactive-save').hidden=!pending.length;refreshMessageRatings();}
-function turnMetadata(session,record,input){return {order:session.turns.length+1,engine:record.engine,emotion:record.emotion,input_text:input,output_text:record.text,controls:Object.fromEntries(['engine','emotion','condition','rate','gain','pitch','voice','intensity','control_version','words_per_minute','length_scale','pitch_semitones','pitch_mechanism','level_reference','conditioning'].map(k=>[k,record[k]])),audio_metrics:Object.fromEntries(['processing_version','pitch_processing','pitch_shift_semitones','active_rms_dbfs','headroom_attenuation_db','peak','clipped_samples'].map(k=>[k,record[k]])),generation_metadata:{version:'echo-generation-v1',timing_scope:'tts_request_to_processed_wav_including_connect_queue_download',engine_source:record.engine==='kokoro'?'browser_kokoro':'python_service',service:record.service_metadata||null,dialogue:record.dialogue||null},audio_sha256:record.sha256,duration_s:record.duration_s,elapsed_s:record.elapsed_s,created_utc:record.created_utc};}
-async function speech(text,s,id,session){const params=controlsFor(s),start=performance.now(),attempt_id=crypto.randomUUID();let outcome='error',order=null;
- try{const result=await (s.engine==='kokoro'?neural:remote).run({task:'speech',text,params},eventFor(id));if(id!==job){outcome='cancelled';return null;}const sha256=await hashAudio(result.buffer);if(id!==job){outcome='cancelled';return null;}outcome='success';order=session.turns.length+1;return {...params,...result,text,sha256,elapsed_s:(performance.now()-start)/1000,created_utc:new Date().toISOString(),purpose:'interactive_exploration_not_scored_study'};}
- finally{if(id!==job)outcome='cancelled';void syncFor(session).attempt({attempt_id,engine:s.engine,emotion:s.emotion,status:outcome,stage:'tts',elapsed_s:(performance.now()-start)/1000,created_utc:new Date().toISOString(),turn_order:order});}
+function turnMetadata(session,record,input){return {order:session.turns.length+1,engine:record.engine,emotion:record.emotion,input_text:input,output_text:record.text,controls:Object.fromEntries(['engine','emotion','condition','rate','gain','pitch','voice','intensity','control_version','words_per_minute','length_scale','pitch_semitones','pitch_mechanism','level_reference','conditioning'].map(k=>[k,record[k]])),audio_metrics:Object.fromEntries(['processing_version','pitch_processing','pitch_shift_semitones','active_rms_dbfs','headroom_attenuation_db','peak','clipped_samples'].map(k=>[k,record[k]])),generation_metadata:{version:GENERATION_METADATA_VERSION,timing_scope:'tts_request_to_processed_wav_including_connect_queue_download',engine_source:record.engine==='kokoro'?'browser_kokoro':'python_service',service:record.service_metadata||null,dialogue:record.dialogue||null,timing:record.timing||null,exchange:record.exchange||null,client:record.client||null},audio_sha256:record.sha256,duration_s:record.duration_s,elapsed_s:record.elapsed_s,created_utc:record.created_utc};}
+async function speech(text,s,id,session){const params=controlsFor(s),start=performance.now(),attempt_id=crypto.randomUUID(),hidden=visibilityWatch(),first=!requestedEngines.has(s.engine);requestedEngines.add(s.engine);let outcome='error',order=null;
+ try{const result=await (s.engine==='kokoro'?neural:remote).run({task:'speech',text,params},eventFor(id));if(id!==job){outcome='cancelled';return null;}const sha256=await hashAudio(result.buffer);if(id!==job){outcome='cancelled';return null;}outcome='success';order=session.turns.length+1;const elapsed=performance.now()-start;
+  // Where this voice's time went, plus the coarse device and network class that shape it (echo-generation-v2).
+  return {...params,...result,text,sha256,elapsed_s:elapsed/1000,created_utc:new Date().toISOString(),purpose:'interactive_exploration_not_scored_study',timing:{...result.timing,total_s:seconds(elapsed),first_request_for_engine_in_page:first,page_hidden:hidden.stop()},client:deviceContext()};}
+ finally{hidden.stop();if(id!==job)outcome='cancelled';void syncFor(session).attempt({attempt_id,engine:s.engine,emotion:s.emotion,status:outcome,stage:'tts',elapsed_s:(performance.now()-start)/1000,created_utc:new Date().toISOString(),turn_order:order});}
 }
 
 function addRecord(record,session,order){
@@ -98,11 +101,21 @@ async function runChat(){
  if(!$('chat-messages').querySelector('.chat-bubble'))$('chat-messages').replaceChildren();
  const userBubble=bubble('user',input),pending=bubble('assistant','Preparing a voice message…');$('chat-messages').append(userBubble,pending);$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
  ticker=setInterval(()=>{$('chat-status').textContent=`${phase} · ${Math.floor((Date.now()-started)/1000)}s`;},1000);
+ // The exchange is timed from here, with the message on screen, until its voice reply is ready.
+ const exchangeStart=performance.now(),exchangeHidden=visibilityWatch();
  try{
   const previous=chat.turns.flatMap(t=>[{role:'user',content:t.input_text},{role:'assistant',content:t.output_text}]);
   status('Writing a reply with your chosen emotion…');replyRequest=new AbortController();
-  const generated=await requestReplyWhenReady({text:input,emotion:s.emotion,history:previous},{signal:replyRequest.signal,onWaiting:()=>status('The conversation model is starting after a quiet period. This can take about two minutes…')});replyRequest=null;if(id!==job)return;
-  status(`Voicing the reply with ${ENGINES[s.engine].name}…`);const record=await speech(validateText(generated.text),s,id,chat);if(!record)return;record.dialogue={prompt_version:generated.prompt_version??null,gate:generated.gate??null};
+  // The server's metrics line for this reply names the conversation, planned message and attempt, so its model time joins the saved message.
+  const session=chat,replyAttempt=crypto.randomUUID(),replyStart=performance.now();let generated,retries=0,replyOutcome='error';
+  try{generated=await requestReplyWhenReady({text:input,emotion:s.emotion,history:previous,link:{session_id:session.session_id,turn_order:session.turns.length+1,attempt_id:replyAttempt}},{signal:replyRequest.signal,onWaiting:()=>{retries++;status('The conversation model is starting after a quiet period. This can take about two minutes…');}});replyOutcome='success';}
+  finally{replyRequest=null;const cancelled=id!==job;
+   // A successful reply's diagnostic travels with the message save; a failed or cancelled reply is sent at once.
+   void syncFor(session).attempt({attempt_id:replyAttempt,engine:s.engine,emotion:s.emotion,status:cancelled?'cancelled':replyOutcome,stage:'dialogue',elapsed_s:(performance.now()-replyStart)/1000,created_utc:new Date().toISOString(),turn_order:null},{sync:cancelled||replyOutcome!=='success'});}
+  if(id!==job)return;const replyWait=performance.now()-replyStart;
+  status(`Voicing the reply with ${ENGINES[s.engine].name}…`);const record=await speech(validateText(generated.text),s,id,session);if(!record)return;
+  record.dialogue={prompt_version:generated.prompt_version??null,gate:generated.gate??null,attempt_id:replyAttempt,reply_wait_s:seconds(replyWait),model_start_retries:retries};
+  record.exchange={end_to_end_s:seconds(performance.now()-exchangeStart),page_hidden:exchangeHidden.stop()};
   pending.replaceChildren();const label=document.createElement('span');label.className='voice-label';label.textContent=`Voice message · ${record.duration_s.toFixed(1)}s`;
   const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label','ECHO voice reply');const url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));chat.audioUrls.push(url);audio.src=url;
   const button=document.createElement('button');button.type='button';button.className='transcript-button';button.textContent='Show transcript';button.setAttribute('aria-expanded','false');
@@ -113,7 +126,7 @@ async function runChat(){
   const conversation=chat,saveEvent=event=>syncFor(conversation).playback(event);trackPlayback(audio,()=>({item_order:turn.order}),saveEvent);trackTranscript(button,transcript,audio,()=>({item_order:turn.order}),saveEvent);
   document.querySelectorAll('audio').forEach(a=>{if(a!==audio)a.pause();});audio.dataset.autoplay='1';void audio.play().catch(()=>{delete audio.dataset.autoplay;});
  }catch(e){if(id!==job)return;userBubble.remove();pending.remove();$('chat-error').textContent=e.message||String(e);$('chat-error').hidden=false;status('No exchange was counted. Your message is kept so you can retry.');}
- finally{if(id!==job){userBubble.remove();pending.remove();}else lock(false);}
+ finally{exchangeHidden.stop();if(id!==job){userBubble.remove();pending.remove();}else lock(false);}
 }
 function cancel(){job++;replyRequest?.abort();replyRequest=null;remote.reset();neural.reset();lock(false);status('Cancelled. Your message is kept; you can retry.');}
 $('voice-form').addEventListener('submit',e=>{e.preventDefault();void runLine();});$('chat-form').addEventListener('submit',e=>{e.preventDefault();void runChat();});$('identity-form').addEventListener('submit',e=>e.preventDefault());

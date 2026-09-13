@@ -37,7 +37,7 @@ test('requested copy, hero semantics and accessible acronym survive the producti
   assert.ok(studio.includes('Write in the chat. ECHO replies'));
   assert.match(studio.match(/<section id="explore-panel"[\s\S]*?<\/section>/)[0],/Built with Llama\. <a href="https:\/\/www\.llama\.com\/llama3_2\/license\/"/);
   assert.ok(home.includes('href="/README.html">Project guide</a>'));
-  assert.ok(home.includes('aria-label="ECHO - Emotionally Coherent Conversational system"'));
+  assert.ok(home.includes('aria-label="ECHO - Emotionally Coherent Conversational system - Open academic prototype"'));
   assert.ok(home.includes('<strong>E</strong>motionally <strong>C</strong>o<strong>H</strong>erent c<strong>O</strong>nversational system'));
   assert.ok(!home.includes('Academic voice research'));
 });
