@@ -45,13 +45,18 @@ test('Listening reveals every frozen manifest target under its page name', () =>
 
 test('every page uses the quadrant names, and Q numbers appear only inside the circle', () => {
   const calibration = read('public/calibration/index.html');
-  assert.equal(calibration.match(/<h3>Angry<\/h3>/g).length, 3);
-  assert.equal(calibration.match(/<h3>Relaxed<\/h3>/g).length, 3);
-  assert.doesNotMatch(calibration.replace(/src="[^"]*"/g, ''), /\b(upset|calm)\b/i);
+  assert.doesNotMatch(calibration, /\b(upset|calm)\b/i);
   for (const name of ['public/listener-instructions.html', 'public/ECHO_Application_Coverage_EN.csv']) assert.doesNotMatch(read(name), /\b(Upset|Calm)\b/, name);
   const studio = read('studio.html').replace(/<b><small>Q[1-4]<\/small> [A-Za-z]+<\/b>/g, '');
   const pages = ['app.js', 'listen.js', 'public/listener-instructions.html', 'public/calibration/index.html', 'public/ECHO_Application_Coverage_EN.csv'];
   for (const [name, text] of [['studio.html', studio], ...pages.map(page => [page, read(page)])]) {
     assert.doesNotMatch(text, /Q[1-4]\W{0,12}(Happy|Angry|Sad|Relaxed)/, name);
   }
+});
+
+test('the retired calibration gallery is not linked and offers no recordings', () => {
+  assert.doesNotMatch(read('studio.html'), /href="\/calibration\//);
+  const calibration = read('public/calibration/index.html');
+  assert.doesNotMatch(calibration, /<audio|examples\.js/);
+  assert.match(calibration, /not part of the current study/);
 });
