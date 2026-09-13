@@ -8,6 +8,13 @@ export function validateNickname(value){
 }
 export function readNickname(){try{return validateNickname(localStorage.getItem(PROFILE_KEY));}catch{return '';}}
 export function rememberNickname(value){const name=validateNickname(value);try{localStorage.setItem(PROFILE_KEY,name);}catch{}return name;}
+export const NICKNAME_TAKEN='This nickname already exists. Change the nickname.';
+// Asks the server whether another browser already uses this nickname. When the check cannot run, the page continues and
+// the server still refuses a duplicate when the new session is saved.
+export async function nicknameAvailable(nickname,listener,fetcher=globalThis.fetch){
+ try{const response=await fetcher.call(globalThis,'/api/nicknames/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nickname,listener_id:listener})});
+  if(!response.ok)return true;return (await response.json()).available!==false;}catch{return true;}
+}
 export const MAX_EXCHANGES=10;
 export function validateConversationTurn(session,turn){
  if(!(session.mode==='explore'?EXPLORE_ENGINES:TEST_ENGINES).includes(turn.engine))throw new Error('Choose a TTS engine available in this mode.');

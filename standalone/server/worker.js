@@ -4,6 +4,7 @@ import {interactiveApi,explorationCSV} from './interactive.js';
 import {handleDialogueRequest,handleDialogueStatus} from './dialogue.mjs';
 import {validatePlayback,savePlayback,deletePlayback} from './playback.js';
 import {LISTENER_PATTERN} from '../listener.js';
+import {nicknameTaken,NICKNAME_TAKEN} from './nicknames.js';
 import manifest from '../public/study/manifest.json' with { type: 'json' };
 import previousManifest from '../public/study/manifest-v4.json' with { type: 'json' };
 const manifests=new Map([manifest,previousManifest].map(m=>[m.study_version,m]));
@@ -118,6 +119,12 @@ async function api(request,env,url) {
   if(path==='/api/dialogue/reply'&&method==='POST')return handleDialogueRequest(request,env,{readBody:body,json});
   if(path==='/api/dialogue/status'&&method==='GET')return handleDialogueStatus(request,env,{json});
   if(path.startsWith('/api/interactive/'))return interactiveApi(request,url,{db,body,tokenHash,fail,json,now,audioBucket:env.AUDIO,audioQuotaBytes:env.AUDIO_QUOTA_BYTES,allowNewSession:env.NEW_SESSION_ALLOWED});
+  if(path==='/api/nicknames/check' && method==='POST') {
+    const input=await body(request);let nickname;try{nickname=validateNickname(input.nickname);}catch(e){fail(400,e.message);}
+    if(!LISTENER_PATTERN.test(input.listener_id||''))fail(400,'Invalid listener code.');
+    const taken=await nicknameTaken(db,nickname,input.listener_id);
+    return json({available:!taken,message:taken?NICKNAME_TAKEN:null});
+  }
   if(path==='/api/study/status' && method==='GET') {
     await db.prepare('SELECT participant_id FROM study_sessions LIMIT 1').first();
     return json({available:true,study_version:manifest.study_version,collection_version:COLLECTION_VERSION});
@@ -126,6 +133,7 @@ async function api(request,env,url) {
     const input=sessionMetadata(await body(request)), hash=await tokenHash(request), timestamp=now(), existing=await readSession(db,input.participant_id);
     // The 27-clip v4 design is retired (protocol amendment 2026-09-10): its stored sessions may finish, but no new one starts.
     if(!existing && input.study_version!==manifest.study_version) fail(409,'This study version changed. Reload the page.');
+    if(!existing && input.record_type==='human_response' && await nicknameTaken(db,input.nickname,input.listener_id)) fail(409,NICKNAME_TAKEN);
     if(!existing && env.NEW_SESSION_ALLOWED?.()===false) fail(429,'Too many new sessions from this network. Wait an hour and try again.');
     await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale,listener_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(participant_id) DO NOTHING`).bind(input.participant_id,hash,input.study_version,input.collection_version,input.record_type,input.group+1,input.seed,Number(input.eligibility.comfortable_english),Number(input.eligibility.headphones),Number(input.eligibility.previously_used_studio),input.consent_utc,timestamp,timestamp,input.nickname,input.rating_scale,input.listener_id??null).run();

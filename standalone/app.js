@@ -7,8 +7,9 @@ import {QUADRANTS} from './circumplex.js';
 import {requestReplyWhenReady,checkDialogue} from './dialogue-client.js';
 import {NeuralClient} from './neural-client.js';
 import {hashAudio} from './audio-utils.js';
-import {readNickname,rememberNickname,MAX_EXCHANGES} from './participant.js';
+import {readNickname,rememberNickname,validateNickname,nicknameAvailable,NICKNAME_TAKEN,MAX_EXCHANGES} from './participant.js';
 import {createInteractiveSession,InteractiveSync,loadOutbox} from './interactive-sync.js';
+import {listenerId} from './listener.js';
 import {trackPlayback,trackTranscript} from './playback-log.js';
 import {GENERATION_METADATA_VERSION,seconds,visibilityWatch,deviceContext} from './generation-timing.js';
 const $=id=>document.getElementById(id),neural=new NeuralClient();
@@ -60,7 +61,11 @@ function setMode(next,{url=true}={}){
 function status(text){phase=text;$(mode==='explore'?'chat-status':'status').textContent=text;}
 function lock(value){busy=value;document.querySelectorAll('#studio input,#studio select,#studio textarea,#studio button').forEach(el=>{if(!el.closest('#listening-content')&&!['cancel','chat-cancel'].includes(el.id))el.disabled=value;});$('cancel').hidden=!value||mode==='explore';$('chat-cancel').hidden=!value||mode!=='explore';if(!value){clearInterval(ticker);update();refreshMessageRatings();document.querySelectorAll('[data-compare-engine]').forEach(b=>{b.disabled=b.dataset.unsupported==='true';});}}
 function eventFor(id){return event=>{if(id===job&&event.type==='progress')status(event.text);};}
-function identity(){if(!$('identity-form').reportValidity())throw new Error('Enter your nickname and agree to storage before continuing.');return rememberNickname($('nickname').value);}
+function identity(){if(!$('identity-form').reportValidity())throw new Error('Enter your nickname and agree to storage before continuing.');return validateNickname($('nickname').value);}
+// Another browser's nickname is refused before a new session starts; the server refuses it again when the session is saved.
+const confirmedNicknames=new Set();
+function nicknameError(message){$('nickname-error').textContent=message;$('nickname-error').hidden=!message;$('nickname').setCustomValidity(message);if(message)$('nickname').reportValidity();}
+async function claimNickname(nickname){if(!confirmedNicknames.has(nickname)){if(!await nicknameAvailable(nickname,listenerId())){nicknameError(NICKNAME_TAKEN);return false;}confirmedNicknames.add(nickname);}nicknameError('');rememberNickname(nickname);return true;}
 function syncFor(session){if(!syncs.has(session.session_id))syncs.set(session.session_id,new InteractiveSync(session,{onStatus:updateSaveStatus}));return syncs.get(session.session_id);}
 function updateSaveStatus(){const pending=[...syncs.values()].filter(s=>interactivePending(s.session));$('interactive-save-status').dataset.state=pending.length?'offline':'saved';$('interactive-save-status').textContent=pending.length?'Messages, recordings or ratings are waiting to be saved. Keep this page open or retry saving.':'Messages, recordings and submitted ratings saved.';$('retry-interactive-save').hidden=!pending.length;refreshMessageRatings();}
 function turnMetadata(session,record,input){return {order:session.turns.length+1,engine:record.engine,emotion:record.emotion,input_text:input,output_text:record.text,controls:Object.fromEntries(['engine','emotion','condition','rate','gain','pitch','voice','intensity','control_version','words_per_minute','length_scale','pitch_semitones','pitch_mechanism','level_reference','conditioning'].map(k=>[k,record[k]])),audio_metrics:Object.fromEntries(['processing_version','pitch_processing','pitch_shift_semitones','active_rms_dbfs','headroom_attenuation_db','peak','clipped_samples'].map(k=>[k,record[k]])),generation_metadata:{version:GENERATION_METADATA_VERSION,timing_scope:'tts_request_to_processed_wav_including_connect_queue_download',engine_source:record.engine==='kokoro'?'browser_kokoro':'python_service',service:record.service_metadata||null,dialogue:record.dialogue||null,timing:record.timing||null,exchange:record.exchange||null,client:record.client||null},audio_sha256:record.sha256,duration_s:record.duration_s,elapsed_s:record.elapsed_s,created_utc:record.created_utc};}
@@ -87,6 +92,7 @@ async function runLine({reuse=false,engine,condition}={}){
  const id=++job;let s=selection();if(engine)s.engine=engine;if(condition)s.condition=condition;
  $('error').hidden=true;started=Date.now();lock(true);status('Preparing your voice…');ticker=setInterval(()=>{$('status').textContent=`${phase} · ${Math.floor((Date.now()-started)/1000)}s`;},1000);
  try{
+  if(!await claimNickname(nickname)){status('Change the nickname to continue.');return;}
   let text;if(reuse){if(!lastLine)throw new Error('Generate a line first.');text=lastLine.text;s={...lastLine.selection,engine:engine||lastLine.selection.engine,condition:condition||lastLine.selection.condition};}else{text=validateText($('message').value);lastLine={text,selection:{...s}};}
   if(!lineSession||lineSession.nickname!==nickname||lineSession.turns.length>=12||(lineSession.attempts?.length||0)>=100)lineSession=createInteractiveSession('line',nickname,null);
   const record=await speech(text,s,id,lineSession);if(!record)return;
@@ -96,7 +102,7 @@ async function runLine({reuse=false,engine,condition}={}){
 function bubble(role,text){const el=document.createElement('article');el.className='chat-bubble '+role;if(text){const p=document.createElement('p');p.textContent=text;el.append(p);}return el;}
 async function runChat(){
  if(busy||(chat?.turns.length||0)>=MAX_EXCHANGES)return;let nickname,input;try{nickname=identity();input=validateText($('chat-message').value);}catch(e){$('chat-error').textContent=e.message;$('chat-error').hidden=false;return;}
- if(!chat){chat=createInteractiveSession('explore',nickname,$('chat-engine').value);chat.audioUrls=[];}
+ if(!chat){lock(true);const free=await claimNickname(nickname);lock(false);if(!free){status('Change the nickname to continue.');return;}chat=createInteractiveSession('explore',nickname,$('chat-engine').value);chat.audioUrls=[];}
  const s=selection(),id=++job;started=Date.now();$('chat-error').hidden=true;lock(true);status('Preparing your voice reply…');
  if(!$('chat-messages').querySelector('.chat-bubble'))$('chat-messages').replaceChildren();
  const userBubble=bubble('user',input),pending=bubble('assistant','Preparing a voice message…');$('chat-messages').append(userBubble,pending);$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
@@ -134,7 +140,7 @@ $('cancel').addEventListener('click',cancel);$('chat-cancel').addEventListener('
 $('mode-listening').addEventListener('click',()=>setMode('listening'));$('mode-test').addEventListener('click',()=>setMode('line'));$('mode-explore').addEventListener('click',()=>setMode('explore'));
 window.addEventListener('popstate',()=>setMode(new URLSearchParams(location.search).get('mode')||'line',{url:false}));
 $('new-conversation').addEventListener('click',()=>{if(busy)return;chat?.audioUrls?.forEach(url=>URL.revokeObjectURL(url));chat=null;$('chat-messages').replaceChildren();$('chat-error').hidden=true;$('chat-message').value='';$('chat-status').textContent='New conversation. Choose one TTS engine, then send your first message.';update();});
-$('nickname').value=readNickname();$('nickname').addEventListener('change',()=>{try{rememberNickname($('nickname').value);$('nickname').setCustomValidity('');}catch(e){$('nickname').setCustomValidity(e.message);}});$('nickname').addEventListener('input',()=>$('nickname').setCustomValidity(''));
+$('nickname').value=readNickname();$('nickname').addEventListener('change',()=>{let name;try{name=validateNickname($('nickname').value);}catch(e){$('nickname').setCustomValidity(e.message);return;}void claimNickname(name);});$('nickname').addEventListener('input',()=>nicknameError(''));
 for(const id of ['engine','condition','custom-rate','custom-gain','custom-pitch','message','chat-engine'])$(id).addEventListener('input',update);document.querySelectorAll('input[name=emotion]').forEach(el=>el.addEventListener('change',update));
 document.querySelectorAll('[data-compare-engine]').forEach(button=>button.addEventListener('click',()=>void runLine({reuse:true,engine:button.dataset.compareEngine})));
 $('baseline').addEventListener('click',()=>void runLine({reuse:true,engine:lastComparedEngine,condition:'neutral'}));

@@ -307,7 +307,8 @@ def add_web_routes(app,store,origin):
                 if 'content-security-policy' in h:h['content-security-policy']=h['content-security-policy'].replace("frame-ancestors 'none'","frame-ancestors 'self' https://huggingface.co")
                 if path.startswith('/api/') and not speech:
                     data=await response.aread();await response.aclose();await client.aclose()
-                    if request.method in ['POST','PUT','PATCH','DELETE'] and not path.startswith('/api/auth/') and response.status_code<400:
+                    # A nickname check only reads the database, so it saves no snapshot.
+                    if request.method in ['POST','PUT','PATCH','DELETE'] and not path.startswith('/api/auth/') and path!='/api/nicknames/check' and response.status_code<400:
                         await asyncio.to_thread(store.checkpoint)
                     elif path=='/api/dialogue/reply':
                         # A failed reply saves no study data, but its latency and error belong in the reply metrics.
