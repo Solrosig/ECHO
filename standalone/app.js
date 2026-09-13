@@ -2,7 +2,7 @@ import {TEST_ENGINES,EXPLORE_ENGINES} from './engine-catalog.js';
 import {messageRatingForm,refreshMessageRatings} from './message-rating-ui.js';
 import {interactivePending} from './message-rating.js';
 import {RemoteSpeechClient} from './remote-speech.js';
-import {EMOTIONS,ENGINES,controlsFor,validateText} from './voice-controls.js';
+import {ENGINES,controlsFor,validateText} from './voice-controls.js';
 import {QUADRANTS} from './circumplex.js';
 import {requestReplyWhenReady,checkDialogue} from './dialogue-client.js';
 import {NeuralClient} from './neural-client.js';
@@ -20,7 +20,7 @@ for(const [id,engines] of [['engine',TEST_ENGINES],['chat-engine',EXPLORE_ENGINE
 $('compare-actions').querySelectorAll('[data-compare-engine]').forEach(b=>b.remove());
 for(const e of TEST_ENGINES){const button=document.createElement('button');button.type='button';button.className='secondary';button.dataset.compareEngine=e;button.textContent='Compare '+ENGINES[e].name;$('compare-actions').append(button);}
 function update(){
- const s=selection(),e=EMOTIONS[s.emotion],engine=ENGINES[s.engine];
+ const s=selection(),engine=ENGINES[s.engine];
  for(const option of $('condition').options)option.disabled=s.engine!=='kokoro'&&!['preset','neutral'].includes(option.value);
  if($('condition').selectedOptions[0].disabled){$('condition').value='preset';s.condition='preset';}
  $('pitch-option').disabled=!engine.pitch;$('custom-pitch').disabled=!engine.pitch;
@@ -28,7 +28,7 @@ function update(){
  const nativePitch=false;if($('custom-pitch').dataset.engine!==s.engine){Object.assign($('custom-pitch'),{min:nativePitch?'20':'-4',max:nativePitch?'80':'4',step:nativePitch?'1':'.25',value:nativePitch?'50':'0'});$('custom-pitch').dataset.engine=s.engine;s.custom.pitch=Number($('custom-pitch').value);}
  const p=controlsFor(s);
  document.querySelectorAll('.quadrant').forEach(el=>el.classList.toggle('chosen',el.dataset.emotion===s.emotion));
- $('target-name').textContent=QUADRANTS[s.emotion].name;$('target-coordinates').textContent=`Valence ${e.v>0?'+':''}${e.v.toFixed(2)} · Arousal ${e.a>0?'+':''}${e.a.toFixed(2)}`;
+ $('target-name').textContent=QUADRANTS[s.emotion].name;
  $('rate-readout').textContent=p.words_per_minute?`${p.words_per_minute} words/min`:`${p.rate.toFixed(2)}× speed`;
  $('gain-readout').textContent=`${p.gain.toFixed(2)}× calibrated level`;$('pitch-readout').textContent=p.pitch===null?`${p.pitch_semitones>0?'+':''}${p.pitch_semitones.toFixed(2)} semitones · DSP`:`${p.pitch} / 100 · native`;
  $('voice-readout').textContent=p.voice;$('mechanism-name').textContent=engine.mechanism;$('engine-detail').textContent=engine.detail;
