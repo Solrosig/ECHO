@@ -4,7 +4,8 @@
 // to a quadrant and compares it with the user's chosen emotion. A reply that does not respond to the message, or misses the
 // quadrant, is generated again with the next seed, at most twice; if no attempt passes, the best-scoring attempt is used
 // and flagged (the author's choice, 2026-09-13). The judge is the reply's own model, so it is not an independent
-// instrument; its agreement with independent labels is measured in the 2026-09-13 screen.
+// instrument. In the pre-registered 2026-09-13 screen it often disagreed with independent labels on whether a reply responds
+// to the message and did not meet its rules, so it stays off by default (dialogue.mjs).
 export const REPLY_CHECK_VERSION='echo-reply-check-v1';
 export const CHECK_GENERATION={temperature:0,seed:666,max_tokens:60};
 export const CHECK_FORMAT={type:'json_object'};

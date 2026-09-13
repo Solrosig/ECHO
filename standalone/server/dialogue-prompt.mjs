@@ -3,7 +3,9 @@
 // delivery cue and one example reply; the author chose it on 2026-09-11 from a screen of four prompts. v4a and v4b are the
 // 2026-09-13 candidates against replies that miss what the user said (evidence 2026-09-12-emotion-coherence-investigation):
 // an answer-first rule with four examples (a request, a question, a greeting and news), and in v4b a one-word reading of the
-// message that the server removes before the reply is checked or spoken.
+// message that the server removes before the reply is checked or spoken. The pre-registered 2026-09-13 screen selected
+// neither: both answered the message more often than v3 but carried the chosen emotion less often, so fewer replies did
+// both (evidence 2026-09-13-reply-check-prompt-v4-screen). v3 stays the default.
 import {EMOTIONS,validateText} from '../voice-controls.js';
 
 export const PROMPT_VERSIONS={v3:'echo-dialogue-v3',v4a:'echo-dialogue-v4a',v4b:'echo-dialogue-v4b'};

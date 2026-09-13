@@ -9,7 +9,9 @@ export const PRIMARY_MODEL='llama3.2:3b';
 export const GENERATION={temperature:.7,seed:666,max_tokens:150};
 // A hosted model that sleeps between study sessions answers again after a wake-up; the page retries at this interval.
 export const WAKE_RETRY_S=15;
-// The reply check stays off until the 2026-09-13 screen has validated it against independent labels.
+// The reply check stays off. In the pre-registered 2026-09-13 screen (evidence 2026-09-13-reply-check-prompt-v4-screen) the
+// replies it passed were right 81% of the time (85% required) and an exchange took about five times as long.
+// ECHO_REPLY_CHECK=on keeps it available for research.
 export const DEFAULT_REPLY_CHECK='off';
 const STATUS_CACHE_MS=30000;
 
