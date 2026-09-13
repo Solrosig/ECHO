@@ -1,5 +1,6 @@
 import {appendFileSync,readFileSync} from 'node:fs';
-import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply} from './dialogue-prompt.mjs';
+import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply,stripActLabel,PROMPT_VERSIONS,DEFAULT_PROMPT} from './dialogue-prompt.mjs';
+import {REPLY_CHECK_VERSION,CHECK_GENERATION,CHECK_FORMAT,replyCheckMessages,parseVerdict,judgeReply,acceptedAttempt} from './reply-check.mjs';
 import {QWEN_BACKUP_ALLOWED,QWEN_BACKUP_MODEL} from './llm-backup.mjs';
 
 // ECHO's primary language model is llama3.2:3b served by Ollama (decision 2026-09-11).
@@ -8,6 +9,8 @@ export const PRIMARY_MODEL='llama3.2:3b';
 export const GENERATION={temperature:.7,seed:666,max_tokens:150};
 // A hosted model that sleeps between study sessions answers again after a wake-up; the page retries at this interval.
 export const WAKE_RETRY_S=15;
+// The reply check stays off until the 2026-09-13 screen has validated it against independent labels.
+export const DEFAULT_REPLY_CHECK='off';
 const STATUS_CACHE_MS=30000;
 
 export class DialogueError extends Error{constructor(status,message,details={}){super(message);this.status=status;this.details=details;}}
@@ -33,7 +36,15 @@ export function dialogueConfig(env=process.env){
   // A remote model gets a shorter wait, so a sleeping Space becomes a quick "starting" answer instead of a hung page.
   const timeoutMs=Number(env.ECHO_LLM_TIMEOUT_MS||(remote?45000:120000));
   if(!Number.isFinite(timeoutMs)||timeoutMs<1000)throw new Error('ECHO_LLM_TIMEOUT_MS must be at least 1000.');
-  return {gate,model,timeoutMs,ollamaUrl,gateUrl:String(env.ECHO_GATE_URL||'http://127.0.0.1:8790').replace(/\/+$/,''),apiKey,remote,embedded,autostart};
+  // ECHO_DIALOGUE_PROMPT picks the conversation prompt: v3, or the 2026-09-13 candidates v4a and v4b.
+  const prompt=String(env.ECHO_DIALOGUE_PROMPT||DEFAULT_PROMPT).trim().toLowerCase();
+  if(!Object.hasOwn(PROMPT_VERSIONS,prompt))throw new Error(`ECHO_DIALOGUE_PROMPT must be one of: ${Object.keys(PROMPT_VERSIONS).join(', ')}.`);
+  // ECHO_REPLY_CHECK=on checks each reply against the message and the chosen quadrant and generates a miss again (reply-check.mjs).
+  const check=String(env.ECHO_REPLY_CHECK||DEFAULT_REPLY_CHECK).trim().toLowerCase();
+  if(!['off','on'].includes(check))throw new Error('ECHO_REPLY_CHECK must be off or on.');
+  const checkRetries=Number(env.ECHO_REPLY_CHECK_RETRIES??2);
+  if(!Number.isInteger(checkRetries)||checkRetries<0||checkRetries>4)throw new Error('ECHO_REPLY_CHECK_RETRIES must be a whole number from 0 to 4.');
+  return {gate,model,timeoutMs,ollamaUrl,gateUrl:String(env.ECHO_GATE_URL||'http://127.0.0.1:8790').replace(/\/+$/,''),apiKey,remote,embedded,autostart,prompt,check,checkRetries};
 }
 
 const waking=()=>new DialogueError(503,'The conversation model is starting after a quiet period. ECHO keeps trying; this can take about two minutes.',{waking:true,retry_after_s:WAKE_RETRY_S});
@@ -64,23 +75,50 @@ const startsOllama=(config,launcher)=>()=>config.autostart&&launcher?.start()===
 // Error messages never name a model: they reach the page.
 export async function dialogueReply(input,config,{fetchImpl=fetch,launcher=null}={}){
   if(!config)throw new DialogueError(503,'Conversation replies are not configured on this server.');
+  const variant=config.prompt||DEFAULT_PROMPT,prompt_version=PROMPT_VERSIONS[variant],history=Array.isArray(input?.history)?input.history:[];
   let messages;
-  try{messages=dialogueMessages(input?.text,input?.emotion,Array.isArray(input?.history)?input.history:[]);}
+  try{messages=dialogueMessages(input?.text,input?.emotion,history,{variant});}
   catch(error){throw new DialogueError(400,error.message);}
   if(config.gate==='on'){
     const {response,data}=await send(fetchImpl,`${config.gateUrl}/v1/gated-reply`,{payload:{messages,emotion:input.emotion,model:config.model,...GENERATION},timeoutMs:config.timeoutMs});
     const text=typeof data?.text==='string'?unwrapQuotedReply(data.text):'';
     if(!response.ok||!text)throw new DialogueError(502,'The coherence gate could not produce a reply. Try again.');
-    return {text,gate:'on',prompt_version:DIALOGUE_PROMPT_VERSION,passed:data.passed===true,attempts:Array.isArray(data.attempts)?data.attempts.length:0};
+    return {text,gate:'on',prompt_version,passed:data.passed===true,attempts:Array.isArray(data.attempts)?data.attempts.length:0};
   }
-  const {response,data}=await send(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{payload:{model:config.model,messages,...GENERATION,stream:false},apiKey:config.apiKey,wakes:config.remote||config.embedded,onUnreachable:startsOllama(config,launcher),timeoutMs:config.timeoutMs});
-  checkRemote(config,response,data);
-  // An embedded Ollama answers 404 while it is still downloading the model after a wake-up.
-  if(response.status===404){if(config.embedded)throw waking();throw new DialogueError(503,'The language model is not installed in Ollama.');}
-  if(!response.ok)throw new DialogueError(502,'The language model could not produce a reply. Try again.');
-  const choice=data?.choices?.[0],text=typeof choice?.message?.content==='string'?unwrapQuotedReply(choice.message.content):'';
-  if(!text||choice.finish_reason==='length')throw new DialogueError(502,'The reply was empty or incomplete. Try a shorter message.');
-  return {text,gate:'off',prompt_version:DIALOGUE_PROMPT_VERSION};
+  const ask=payload=>send(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{payload,apiKey:config.apiKey,wakes:config.remote||config.embedded,onUnreachable:startsOllama(config,launcher),timeoutMs:config.timeoutMs});
+  const generate=async seed=>{
+    const {response,data}=await ask({model:config.model,messages,...GENERATION,seed,stream:false});
+    checkRemote(config,response,data);
+    // An embedded Ollama answers 404 while it is still downloading the model after a wake-up.
+    if(response.status===404){if(config.embedded)throw waking();throw new DialogueError(503,'The language model is not installed in Ollama.');}
+    if(!response.ok)throw new DialogueError(502,'The language model could not produce a reply. Try again.');
+    const choice=data?.choices?.[0],content=typeof choice?.message?.content==='string'?choice.message.content:'';
+    // v4b replies begin with a one-word reading of the message, removed before the reply is checked or spoken.
+    const {reply,act}=variant==='v4b'?stripActLabel(content):{reply:content,act:null},text=unwrapQuotedReply(reply);
+    if(!text||choice.finish_reason==='length')throw new DialogueError(502,'The reply was empty or incomplete. Try a shorter message.');
+    return {text,act,seed};
+  };
+  const first=await generate(GENERATION.seed);
+  if(config.check!=='on')return {text:first.text,gate:'off',prompt_version};
+  // The reply check (reply-check.mjs): each attempt is checked; a miss is generated again with the next seed. A failure of
+  // the check itself, or of a later attempt, never refuses the reply: the best attempt so far is used.
+  const attempts=[first],verdicts=[],checkMs=[];
+  for(let i=0;;i++){
+    const started=Date.now();let verdict=null;
+    try{
+      const {response,data}=await ask({model:config.model,messages:replyCheckMessages(input.text,attempts[i].text,history),...CHECK_GENERATION,response_format:CHECK_FORMAT,stream:false});
+      const parsed=response.ok?parseVerdict(data?.choices?.[0]?.message?.content):null;
+      verdict=parsed&&judgeReply(parsed,input.emotion);
+    }catch{verdict=null;}
+    verdicts.push(verdict);checkMs.push(Date.now()-started);
+    if(!verdict||verdict.passed||i>=config.checkRetries)break;
+    try{attempts.push(await generate(GENERATION.seed+i+1));}catch{break;}
+  }
+  const {status,index}=acceptedAttempt(verdicts);
+  return {text:attempts[index].text,gate:'off',prompt_version,
+    check:{version:REPLY_CHECK_VERSION,status,attempts:verdicts.length,accepted:index,
+      verdicts:verdicts.map((v,i)=>v&&{seed:attempts[i].seed,responds:v.responds,feeling:v.feeling,energy:v.energy,quadrant:v.quadrant,passed:v.passed})},
+    details:attempts.map((a,i)=>({seed:a.seed,text:a.text,act:a.act,check_ms:checkMs[i]}))};
 }
 
 // Whether the model answers. Asking a sleeping hosted model also starts it, so the page asks when Explore opens; a local
@@ -116,11 +154,13 @@ export function metricsLink(input){
 
 export async function handleDialogueRequest(request,env,{readBody,json}){
   const started=Date.now(),dialogue=env.DIALOGUE;let input={};
-  const record=fields=>dialogue?.log?.({utc:new Date().toISOString(),gate:dialogue?.config?.gate,model:dialogue?.config?.model,prompt_version:DIALOGUE_PROMPT_VERSION,emotion:input?.emotion,ms:Date.now()-started,...metricsLink(input),...fields});
+  const record=fields=>dialogue?.log?.({utc:new Date().toISOString(),gate:dialogue?.config?.gate,model:dialogue?.config?.model,prompt_version:PROMPT_VERSIONS[dialogue?.config?.prompt]??DIALOGUE_PROMPT_VERSION,emotion:input?.emotion,ms:Date.now()-started,...metricsLink(input),...fields});
   try{
     input=await readBody(request);
-    const out=await dialogueReply(input,dialogue?.config,{fetchImpl:dialogue?.fetch||fetch,launcher:dialogue?.launcher});
-    record({ok:true,chars_in:String(input.text||'').length,chars_out:out.text.length,...(out.gate==='on'?{passed:out.passed,attempts:out.attempts}:{})});
+    // Rejected attempts' texts stay in the private metrics line; the page receives the accepted reply and the verdicts only.
+    const {details,...out}=await dialogueReply(input,dialogue?.config,{fetchImpl:dialogue?.fetch||fetch,launcher:dialogue?.launcher});
+    record({ok:true,chars_in:String(input.text||'').length,chars_out:out.text.length,...(out.gate==='on'?{passed:out.passed,attempts:out.attempts}:{}),
+      ...(out.check?{check:{...out.check,replies:details.map(d=>d.text),acts:details.map(d=>d.act),check_ms:details.map(d=>d.check_ms)}}:{})});
     return json(out);
   }catch(error){
     const status=error instanceof DialogueError?error.status:error.status;
