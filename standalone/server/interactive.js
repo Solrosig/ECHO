@@ -1,6 +1,7 @@
 import {audioUpload,deleteSessionAudio} from './audio.js';
 import {validatePlayback,savePlayback,deletePlayback} from './playback.js';
 import {LISTENER_PATTERN} from '../listener.js';
+import {nicknameTaken,NICKNAME_TAKEN} from './nicknames.js';
 import {validateNickname,validateConversationTurn} from '../participant.js';
 import {INTERACTIVE_VERSION} from '../interactive-sync.js';
 import {controlsFor} from '../voice-controls.js';
@@ -22,7 +23,9 @@ export async function interactiveApi(request,url,h){
   if(input.consent!==true||typeof input.consent_utc!=='string'||!Number.isFinite(Date.parse(input.consent_utc)))fail(400,'Agree to storage before continuing.');
   if(input.listener_id!=null&&!LISTENER_PATTERN.test(input.listener_id))fail(400,'Invalid listener code.');
   const timestamp=now(),hash=await tokenHash(request);
-  if(!await db.prepare('SELECT 1 AS n FROM interactive_sessions WHERE session_id=?').bind(input.session_id).first()&&h.allowNewSession?.()===false)fail(429,'Too many new conversations from this network. Wait an hour and try again.');
+  const known=await db.prepare('SELECT 1 AS n FROM interactive_sessions WHERE session_id=?').bind(input.session_id).first();
+  if(!known&&input.record_type!=='technical_test'&&await nicknameTaken(db,nickname,input.listener_id))fail(409,NICKNAME_TAKEN);
+  if(!known&&h.allowNewSession?.()===false)fail(429,'Too many new conversations from this network. Wait an hour and try again.');
   await db.prepare('INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc,listener_id) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO NOTHING').bind(input.session_id,hash,nickname,input.mode,input.engine,input.record_type,input.version,input.consent_utc,timestamp,timestamp,input.listener_id??null).run();
   const s=await owned(input.session_id);if(s.withdrawn_utc)fail(410,'This conversation was deleted.');
   if(s.nickname!==nickname||s.mode!==input.mode||s.engine!==input.engine||s.version!==input.version||s.record_type!==input.record_type)fail(409,'Nickname and TTS engine are fixed for this conversation. Start a new one to change them.');

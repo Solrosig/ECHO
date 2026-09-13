@@ -1,17 +1,18 @@
 import {makeTrials,validateRating,rowsCSV} from './study-session.js';
 import {StudySync,newSessionToken,COLLECTION_VERSION} from './study-sync.js';
-import {readNickname,rememberNickname} from './participant.js';
+import {readNickname,rememberNickname,validateNickname,nicknameAvailable,NICKNAME_TAKEN} from './participant.js';
 import {listenerId} from './listener.js';
 import {trackPlayback} from './playback-log.js';
 import {RATING_SCALE} from './study-session.js';
 import {targetName} from './circumplex.js';
 const $=id=>document.getElementById(id),query=new URLSearchParams(location.search),test=query.get('test')==='1';
 const storageKey=`echo-voice-study-v4${test?'-technical':''}`;let manifest,currentManifest,session,trials,heard=false,playCount=0,started=0,previousElapsed=0,touched=new Set(),locked=null,storageAvailable=true;
-let syncClient=null,lastSyncState='saving';
+let syncClient=null,lastSyncState='saving',starting=false;
 // A playback event belongs to the clip the audio element was loading when it fired, not to the trial shown on screen.
 let pendingTrial=null,activeTrial=null;
 $('test-banner').hidden=!test;$('technical-fill').hidden=!test;
 function error(message){$('study-error').textContent=message;$('study-error').hidden=!message;}
+function nicknameError(message){$('study-nickname-error').textContent=message;$('study-nickname-error').hidden=!message;$('study-nickname').setCustomValidity(message);if(message)$('study-nickname').reportValidity();}
 function persist(){try{localStorage.setItem(storageKey,JSON.stringify(session));}catch{storageAvailable=false;$('study-status').textContent='Browser backup is unavailable. Keep this tab open until the server confirms your responses.';}}
 function save(){persist();if(syncClient)void syncClient.sync();}
 function syncStatus({state,saved,message}){
@@ -66,13 +67,16 @@ for(const key of ['valence','arousal']){
 }
 $('reveal-target').addEventListener('click',reveal);
 $('rating-form').addEventListener('submit',e=>{e.preventDefault();try{record();}catch(e){error(e.message);}});
-$('start-form').addEventListener('submit',e=>{
- e.preventDefault();const random=crypto.getRandomValues(new Uint32Array(2)),requested=query.get('g'),group=requested?Number(requested)-1:random[0]%manifest.groups.length;
+$('start-form').addEventListener('submit',async e=>{
+ e.preventDefault();if(starting)return;const random=crypto.getRandomValues(new Uint32Array(2)),requested=query.get('g'),group=requested?Number(requested)-1:random[0]%manifest.groups.length;
+ starting=true;
  try{
   if(test){/* Technical sessions remain marked even when exercising the ordinary form. */}
+  // Another browser's nickname is refused before the session starts; the server refuses it again when the session is saved.
+  else if(!await nicknameAvailable(validateNickname($('study-nickname').value),listenerId())){nicknameError(NICKNAME_TAKEN);return;}
   session={nickname:rememberNickname($('study-nickname').value),listener_id:listenerId(),collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,study_version:manifest.study_version,participant_id:(test?'TEST-':'P-')+crypto.randomUUID().replaceAll('-','').toUpperCase(),seed:random[1],group,rows:[],eligibility:{comfortable_english:$('english').checked,headphones:$('headphones').checked,previously_used_studio:$('previous-studio').checked||wasExposed()},consent_utc:new Date().toISOString(),record_type:test?'technical_test':'human_response',remote:{token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0}};
   trials=makeTrials(manifest,group,session.seed);connectSync();save();showTrial();
- }catch(e){error(e.message);}
+ }catch(e){error(e.message);}finally{starting=false;}
 });
 $('resume-button').addEventListener('click',async()=>{
  try{
@@ -108,4 +112,4 @@ if(!document.getElementById('studio')){const u=new URL(location.href);u.pathname
 function wasExposed(){try{return localStorage.getItem('echo-studio-exposed')==='1';}catch{return false;}}
 $('target-match').addEventListener('input',()=>{touched.add('target-match');$('target-match-value').textContent=Number($('target-match').value).toFixed(1)+' / 5';});
 $('moderate-match').addEventListener('click',()=>{$('target-match').value='3';touched.add('target-match');$('target-match-value').textContent='3.0 / 5';});
-$('study-nickname').addEventListener('input',()=>$('study-nickname').setCustomValidity(''));
+$('study-nickname').addEventListener('input',()=>nicknameError(''));
