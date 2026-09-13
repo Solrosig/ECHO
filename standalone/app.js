@@ -114,7 +114,7 @@ async function runChat(){
    void syncFor(session).attempt({attempt_id:replyAttempt,engine:s.engine,emotion:s.emotion,status:cancelled?'cancelled':replyOutcome,stage:'dialogue',elapsed_s:(performance.now()-replyStart)/1000,created_utc:new Date().toISOString(),turn_order:null},{sync:cancelled||replyOutcome!=='success'});}
   if(id!==job)return;const replyWait=performance.now()-replyStart;
   status(`Voicing the reply with ${ENGINES[s.engine].name}…`);const record=await speech(validateText(generated.text),s,id,session);if(!record)return;
-  record.dialogue={prompt_version:generated.prompt_version??null,gate:generated.gate??null,attempt_id:replyAttempt,reply_wait_s:seconds(replyWait),model_start_retries:retries};
+  record.dialogue={prompt_version:generated.prompt_version??null,gate:generated.gate??null,attempt_id:replyAttempt,reply_wait_s:seconds(replyWait),model_start_retries:retries,check:generated.check??null};
   record.exchange={end_to_end_s:seconds(performance.now()-exchangeStart),page_hidden:exchangeHidden.stop()};
   pending.replaceChildren();const label=document.createElement('span');label.className='voice-label';label.textContent=`Voice message · ${record.duration_s.toFixed(1)}s`;
   const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label','ECHO voice reply');const url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));chat.audioUrls.push(url);audio.src=url;

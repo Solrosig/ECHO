@@ -94,7 +94,7 @@ test('the exploratory CSV appends rating time and flattened timing columns; olde
   const row={session_id:'X-'+'C'.repeat(32),nickname:'timing_check',mode:'explore',record_type:'technical_test',turn_order:1,engine:'chatterbox',emotion:'calm',input_text:'Hi',output_text:'Hello',created_utc:'2026-09-13T20:00:00.000Z',
     turn_json:JSON.stringify({duration_s:2,elapsed_s:1.2,generation_metadata}),rating_json:JSON.stringify({valence:.1,arousal:.2,naturalness:4,target_match:3.5,elapsed_s:7.5}),audio_stored_utc:null};
   const [header,line]=explorationCSV([row]).trim().split('\r\n'),names=header.split(','),value=Object.fromEntries(names.map((n,i)=>[n,cells(line)[i]]));
-  assert.deepEqual(names.slice(-TIMING_COLUMNS.length),TIMING_COLUMNS);
+  assert.deepEqual(names.slice(-TIMING_COLUMNS.length-4,-4),TIMING_COLUMNS);
   assert.deepEqual(['elapsed_s','rating_elapsed_s','tts_queue_s','tts_service_processing_s','reply_wait_s','reply_attempt_id','exchange_end_to_end_s','tts_cold_start','network_effective_type','generation_metadata_version'].map(k=>value[k]),
     ['1.2','7.5','0.3','0.5','1.7',attemptId,'3.1','','4g','echo-generation-v2']);
   const older=explorationCSV([{...row,turn_json:JSON.stringify({duration_s:2,elapsed_s:1.2,generation_metadata:{version:'echo-generation-v1'}}),rating_json:null}]).trim().split('\r\n')[1];

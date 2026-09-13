@@ -50,3 +50,10 @@ export function timingColumns(meta,rating){
     reply_wait_s:d.reply_wait_s,reply_model_start_retries:d.model_start_retries,reply_attempt_id:d.attempt_id,exchange_end_to_end_s:x.end_to_end_s,exchange_page_hidden:x.page_hidden,
     hardware_concurrency:c.hardware_concurrency,device_memory_gb:c.device_memory_gb,network_effective_type:c.network_effective_type};
 }
+
+// The conversation prompt and the reply check behind each Explore message, appended after the timing columns.
+export const REPLY_CHECK_COLUMNS=['reply_prompt_version','reply_check_status','reply_check_attempts','reply_check_accepted'];
+export function replyCheckColumns(meta){
+  const d=meta?.dialogue||{},c=d.check||{};
+  return {reply_prompt_version:d.prompt_version,reply_check_status:c.status,reply_check_attempts:c.attempts,reply_check_accepted:c.accepted};
+}
