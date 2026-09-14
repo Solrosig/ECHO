@@ -12,10 +12,11 @@ test('Test Mode puts each new recording at the top of the listening desk', () =>
   assert.match(app, /records\.shift\(\);URL\.revokeObjectURL\(old\.url\);\$\('results'\)\.lastElementChild\.remove\(\)/);
 });
 
-test('the compare buttons sit between the desk heading and the newest recording', () => {
+test('the compare buttons sit below the recordings, at the end of the listening desk (author, 2026-09-14)', () => {
   const html = read('studio.html');
   const heading = html.indexOf('class="results-heading"');
-  const compare = html.indexOf('id="compare-actions"');
   const results = html.indexOf('id="results"');
-  assert.ok(heading >= 0 && heading < compare && compare < results, `heading ${heading}, compare ${compare}, results ${results}`);
+  const compare = html.indexOf('id="compare-actions"');
+  const explore = html.indexOf('id="explore-panel"');
+  assert.ok(heading >= 0 && heading < results && results < compare && compare < explore, `heading ${heading}, results ${results}, compare ${compare}, explore ${explore}`);
 });

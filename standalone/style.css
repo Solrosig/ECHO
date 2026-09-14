@@ -31,3 +31,5 @@
 .brand{flex-wrap:wrap}.brand .brand-expansion{display:inline;font:inherit;font-weight:400;letter-spacing:-1px;border-left:0;padding-left:0;color:var(--ink)}.brand .brand-expansion strong{font-weight:700}
 .voice-studio-page .topbar:has(.brand-expansion){grid-template-columns:minmax(0,1fr);justify-items:start}.voice-studio-page .topbar:has(.brand-expansion) nav{justify-content:flex-start}
 span.brand{cursor:default}.brand:has(.brand-expansion){column-gap:.3em}.brand .brand-expansion~span{margin-left:12px}
+/* Guide links at the right of every page header: About project, Listener guide (author, 2026-09-14). */
+.topbar:has(.page-links){flex-wrap:wrap;height:auto;min-height:88px;row-gap:8px;padding-top:12px;padding-bottom:12px}.topbar .page-links{margin-left:auto;gap:28px;white-space:nowrap}.topbar .page-links a{color:var(--muted)}.topbar .page-links a:hover{color:var(--ink)}.voice-studio-page .topbar:has(.page-links){display:flex;flex-wrap:wrap;align-items:center}@media(max-width:760px){.topbar:has(.page-links){min-height:72px}.topbar .page-links{gap:16px}.topbar .page-links a{display:inline-block;padding:6px 0}}
