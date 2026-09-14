@@ -29,3 +29,4 @@
 .nickname-error{color:#a42525;font-size:14px;line-height:1.5;margin:6px 0 0}
 .topbar:has(.activity-nav){flex-wrap:wrap;height:auto;min-height:88px;row-gap:8px;padding-top:12px;padding-bottom:12px}@media(max-width:760px){.topbar .activity-nav{flex-wrap:wrap;gap:6px 14px}.topbar .activity-nav a[href^="/"]{display:inline-block;padding:6px 0}}
 .brand{flex-wrap:wrap}.brand .brand-expansion{display:inline;font:inherit;font-weight:400;letter-spacing:-1px;border-left:0;padding-left:0;color:var(--ink)}.brand .brand-expansion strong{font-weight:700}
+.voice-studio-page .topbar:has(.brand-expansion){grid-template-columns:minmax(0,1fr);justify-items:start}.voice-studio-page .topbar:has(.brand-expansion) nav{justify-content:flex-start}
