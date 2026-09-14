@@ -39,7 +39,7 @@ function update(){
  $('chat-engine').disabled=busy||Boolean(chat);$('nickname').disabled=busy||Boolean(mode==='explore'&&chat);
  $('chat-engine-label').textContent=chat?`${ENGINES[chat.engine].name} · ${chat.nickname}`:'Choose a voice for this conversation';
  const count=chat?.turns.length||0;$('chat-count').textContent=`${count} / ${MAX_EXCHANGES}`;$('chat-send').disabled=busy||count>=MAX_EXCHANGES;$('chat-message').disabled=busy||count>=MAX_EXCHANGES;
- $('engine-lock-note').textContent=chat?'Voice locked for this conversation. Start a new conversation to change it.':'The voice is fixed after your first message. Start a new conversation to change it.';
+ $('engine-lock-note').textContent=chat?'Voice locked for this conversation. Start a new conversation to change it.':'The voice is locked after your first message. Start a new conversation to change it.';
  if(count>=MAX_EXCHANGES&&!busy)$('chat-status').textContent='10 exchanges complete. Start a new conversation to continue.';
 }
 function setMode(next,{url=true}={}){
