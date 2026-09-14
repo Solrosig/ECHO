@@ -86,6 +86,22 @@ $('resume-button').addEventListener('click',async()=>{
   save();showTrial();
  }catch(e){error(e.message);}finally{$('resume-button').disabled=false;}
 });
+// A new session gets a new participant code. The unfinished one is never deleted: its browser copy is sent once more and stays
+// stored as an incomplete session, and a CSV backup downloads when the database has not confirmed it.
+$('restart-session').addEventListener('click',()=>{$('restart-code').textContent=session?.participant_id||'';$('restart-confirm').hidden=false;});
+$('restart-cancel').addEventListener('click',()=>{$('restart-confirm').hidden=true;});
+$('restart-yes').addEventListener('click',async()=>{
+ $('restart-yes').disabled=true;
+ try{
+  error('');let confirmed=false;
+  if(session.remote){session.listener_id||=listenerId();trials=makeTrials(manifest,session.group,session.seed);connectSync();await syncClient.sync();confirmed=lastSyncState==='saved';syncClient.stopped=true;}
+  if(!confirmed&&session.rows.length)download();
+  syncClient=null;try{localStorage.removeItem(storageKey);}catch{}
+  session=null;trials=null;manifest=currentManifest;$('study-status').textContent=`${manifest.trials_per_session} clips · 9 synthesis systems · ${manifest.study_version}`;
+  $('start-form').reset();$('study-nickname').value=readNickname();$('previous-studio').checked=wasExposed();
+  $('session-actions').hidden=true;$('sync-panel').hidden=true;$('restart-confirm').hidden=true;panels('setup');
+ }catch(e){error(e.message);}finally{$('restart-yes').disabled=false;}
+});
 $('new-session').addEventListener('click',()=>{download();if(lastSyncState!=='saved'||session.remote.saved_count!==manifest.trials_per_session){error('Wait until all responses are received, or use Delete my ratings to withdraw this session.');return;}syncClient.stopped=true;syncClient=null;try{localStorage.removeItem(storageKey);}catch{}session=null;trials=null;manifest=currentManifest;$('study-status').textContent='45 clips · 9 synthesis systems';$('start-form').reset();$('session-actions').hidden=true;$('sync-panel').hidden=true;panels('setup');});
 $('download-partial').addEventListener('click',download);$('download-complete').addEventListener('click',download);
 $('retry-save').addEventListener('click',()=>void syncClient?.sync());
