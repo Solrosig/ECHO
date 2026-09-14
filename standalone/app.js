@@ -105,7 +105,7 @@ async function runChat(){
  if(!chat){lock(true);const free=await claimNickname(nickname);lock(false);if(!free){status('Change the nickname to continue.');return;}chat=createInteractiveSession('explore',nickname,$('chat-engine').value);chat.audioUrls=[];}
  const s=selection(),id=++job;started=Date.now();$('chat-error').hidden=true;lock(true);status('Preparing your voice reply…');
  if(!$('chat-messages').querySelector('.chat-bubble'))$('chat-messages').replaceChildren();
- const userBubble=bubble('user',input),pending=bubble('assistant','Preparing a voice message…');$('chat-messages').append(userBubble,pending);$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
+ const userBubble=bubble('user',input),pending=bubble('assistant','Preparing a voice message…');$('chat-messages').append(userBubble,pending);$('chat-message').value='';$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
  ticker=setInterval(()=>{$('chat-status').textContent=`${phase} · ${Math.floor((Date.now()-started)/1000)}s`;},1000);
  // The exchange is timed from here, with the message on screen, until its voice reply is ready.
  const exchangeStart=performance.now(),exchangeHidden=visibilityWatch();
@@ -127,12 +127,12 @@ async function runChat(){
   const button=document.createElement('button');button.type='button';button.className='transcript-button';button.textContent='Show transcript';button.setAttribute('aria-expanded','false');
   const transcript=document.createElement('p');transcript.className='transcript';transcript.textContent=record.text;transcript.hidden=true;transcript.id='transcript-'+crypto.randomUUID();button.setAttribute('aria-controls',transcript.id);button.addEventListener('click',()=>{transcript.hidden=!transcript.hidden;button.textContent=transcript.hidden?'Show transcript':'Hide transcript';button.setAttribute('aria-expanded',String(!transcript.hidden));});
   const meta=document.createElement('small');meta.textContent=`${ENGINES[record.engine].name} · ${QUADRANTS[record.emotion].name}`;pending.append(label,audio,button,transcript,meta);
-  const turn=turnMetadata(chat,record,input);void syncFor(chat).add(turn,record.buffer);pending.append(messageRatingForm(audio,chat,turn.order,syncFor(chat)));$('chat-message').value='';status('Voice reply ready. Play it or open the transcript.');$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
+  const turn=turnMetadata(chat,record,input);void syncFor(chat).add(turn,record.buffer);pending.append(messageRatingForm(audio,chat,turn.order,syncFor(chat)));status('Voice reply ready. Play it or open the transcript.');$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
   // Browsers may require another click after model loading; the play control always remains available.
   const conversation=chat,saveEvent=event=>syncFor(conversation).playback(event);trackPlayback(audio,()=>({item_order:turn.order}),saveEvent);trackTranscript(button,transcript,audio,()=>({item_order:turn.order}),saveEvent);
   document.querySelectorAll('audio').forEach(a=>{if(a!==audio)a.pause();});audio.dataset.autoplay='1';void audio.play().catch(()=>{delete audio.dataset.autoplay;});
- }catch(e){if(id!==job)return;userBubble.remove();pending.remove();$('chat-error').textContent=e.message||String(e);$('chat-error').hidden=false;status('No exchange was counted. Your message is kept so you can retry.');}
- finally{exchangeHidden.stop();if(id!==job){userBubble.remove();pending.remove();}else lock(false);}
+ }catch(e){if(id!==job)return;userBubble.remove();pending.remove();if(!$('chat-message').value)$('chat-message').value=input;$('chat-error').textContent=e.message||String(e);$('chat-error').hidden=false;status('No exchange was counted. Your message is kept so you can retry.');}
+ finally{exchangeHidden.stop();if(id!==job){userBubble.remove();pending.remove();if(!$('chat-message').value)$('chat-message').value=input;}else lock(false);}
 }
 function cancel(){job++;replyRequest?.abort();replyRequest=null;remote.reset();neural.reset();lock(false);status('Cancelled. Your message is kept; you can retry.');}
 $('voice-form').addEventListener('submit',e=>{e.preventDefault();void runLine();});$('chat-form').addEventListener('submit',e=>{e.preventDefault();void runChat();});$('identity-form').addEventListener('submit',e=>e.preventDefault());
