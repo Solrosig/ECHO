@@ -28,3 +28,4 @@
 .chat-engine .chat-actions{padding:0;margin-top:12px}.privacy-note{font-size:12px;line-height:1.6;color:var(--muted);margin:14px 0 0;max-width:1000px}
 .nickname-error{color:#a42525;font-size:14px;line-height:1.5;margin:6px 0 0}
 .topbar:has(.activity-nav){flex-wrap:wrap;height:auto;min-height:88px;row-gap:8px;padding-top:12px;padding-bottom:12px}@media(max-width:760px){.topbar .activity-nav{flex-wrap:wrap;gap:6px 14px}.topbar .activity-nav a[href^="/"]{display:inline-block;padding:6px 0}}
+.brand{flex-wrap:wrap}.brand .brand-expansion{display:inline;font:inherit;font-weight:400;letter-spacing:-1px;border-left:0;padding-left:0;color:var(--ink)}.brand .brand-expansion strong{font-weight:700}

@@ -20,7 +20,7 @@ function syncStatus({state,saved,message}){
  const total=session?.rows.length || 0;
  $('sync-status').textContent=state==='saved'?`Received by the researcher: ${saved} of ${manifest?.trials_per_session||45} responses.`:state==='saving'?`Saving to the study database… ${saved} of ${manifest?.trials_per_session||45} received.`:state==='conflict'?message:`Waiting to send ${Math.max(0,total-saved)} completed responses. Your browser copy is retained; reconnect and retry.`;
  $('sync-status').dataset.state=state;
- $('complete-message').textContent=state==='saved'&&saved===manifest.trials_per_session?'All responses have been received. You do not need to email a file. You can download a copy for your records.':'Your listening is complete, but the database has not confirmed all responses yet. Keep this page open and retry, or download your backup.';
+ $('complete-message').textContent=state==='saved'&&saved===manifest.trials_per_session?'Your responses are saved. All responses have been received, so you do not need to email a file. You can download a copy for your records.':'Your listening is complete, but the database has not confirmed all responses yet. Keep this page open and retry, or download your backup.';
 }
 function connectSync(){syncClient=new StudySync({session,trials,onStatus:syncStatus});}
 function panels(name){for(const id of ['setup','resume','trial','complete'])$(id).hidden=id!==name;}
