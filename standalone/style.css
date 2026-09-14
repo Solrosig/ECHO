@@ -27,3 +27,4 @@
 @media(max-width:760px){.voice-studio-page .topbar{display:flex;flex-wrap:wrap;min-height:72px;height:auto;padding:14px 20px;gap:12px 20px}.voice-studio-page .topbar nav{flex:1;flex-wrap:wrap;gap:8px 16px}.voice-studio-page .topbar nav a{display:block}.voice-studio-page .intro{padding:26px 4px 24px}}
 .chat-engine .chat-actions{padding:0;margin-top:12px}.privacy-note{font-size:12px;line-height:1.6;color:var(--muted);margin:14px 0 0;max-width:1000px}
 .nickname-error{color:#a42525;font-size:14px;line-height:1.5;margin:6px 0 0}
+.topbar:has(.activity-nav){flex-wrap:wrap;height:auto;min-height:88px;row-gap:8px;padding-top:12px;padding-bottom:12px}@media(max-width:760px){.topbar .activity-nav{flex-wrap:wrap;gap:6px 14px}.topbar .activity-nav a[href^="/"]{display:inline-block;padding:6px 0}}
