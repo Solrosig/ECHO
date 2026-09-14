@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync, readdirSync} from 'node:fs';
 
 const read = path => readFileSync(new URL('../'+path, import.meta.url), 'utf8');
-const NAME = 'ECHO - <strong>E</strong>motionally <strong>C</strong>o<strong>H</strong>erent c<strong>O</strong>nversational system - Open academic prototype';
+const NAME = '<strong>ECHO</strong> - <strong>E</strong>motionally <strong>C</strong>o<strong>H</strong>erent c<strong>O</strong>nversational system - Open academic prototype';
 
 test('every page footer names ECHO with the bold acronym letters and "Open academic prototype"', () => {
   const pages = readdirSync(new URL('../', import.meta.url)).filter(name => name.endsWith('.html'))

@@ -20,7 +20,7 @@ function syncStatus({state,saved,message}){
  const total=session?.rows.length || 0;
  $('sync-status').textContent=state==='saved'?`Received by the researcher: ${saved} of ${manifest?.trials_per_session||45} responses.`:state==='saving'?`Saving to the study database… ${saved} of ${manifest?.trials_per_session||45} received.`:state==='conflict'?message:`Waiting to send ${Math.max(0,total-saved)} completed responses. Your browser copy is retained; reconnect and retry.`;
  $('sync-status').dataset.state=state;
- $('complete-message').textContent=state==='saved'&&saved===manifest.trials_per_session?'All responses have been received. You do not need to email a file. You can download a copy for your records.':'Your listening is complete, but the database has not confirmed all responses yet. Keep this page open and retry, or download your backup.';
+ $('complete-message').textContent=state==='saved'&&saved===manifest.trials_per_session?'Your responses are saved. All responses have been received, so you do not need to email a file. You can download a copy for your records.':'Your listening is complete, but the database has not confirmed all responses yet. Keep this page open and retry, or download your backup.';
 }
 function connectSync(){syncClient=new StudySync({session,trials,onStatus:syncStatus});}
 function panels(name){for(const id of ['setup','resume','trial','complete'])$(id).hidden=id!==name;}
@@ -85,6 +85,22 @@ $('resume-button').addEventListener('click',async()=>{
   try{await syncClient.restore();}catch(e){if([400,401,403,409,410].includes(e.status))throw e;}
   save();showTrial();
  }catch(e){error(e.message);}finally{$('resume-button').disabled=false;}
+});
+// A new session gets a new participant code. The unfinished one is never deleted: its browser copy is sent once more and stays
+// stored as an incomplete session, and a CSV backup downloads when the database has not confirmed it.
+$('restart-session').addEventListener('click',()=>{$('restart-code').textContent=session?.participant_id||'';$('restart-confirm').hidden=false;});
+$('restart-cancel').addEventListener('click',()=>{$('restart-confirm').hidden=true;});
+$('restart-yes').addEventListener('click',async()=>{
+ $('restart-yes').disabled=true;
+ try{
+  error('');let confirmed=false;
+  if(session.remote){session.listener_id||=listenerId();trials=makeTrials(manifest,session.group,session.seed);connectSync();await syncClient.sync();confirmed=lastSyncState==='saved';syncClient.stopped=true;}
+  if(!confirmed&&session.rows.length)download();
+  syncClient=null;try{localStorage.removeItem(storageKey);}catch{}
+  session=null;trials=null;manifest=currentManifest;$('study-status').textContent=`${manifest.trials_per_session} clips · 9 synthesis systems · ${manifest.study_version}`;
+  $('start-form').reset();$('study-nickname').value=readNickname();$('previous-studio').checked=wasExposed();
+  $('session-actions').hidden=true;$('sync-panel').hidden=true;$('restart-confirm').hidden=true;panels('setup');
+ }catch(e){error(e.message);}finally{$('restart-yes').disabled=false;}
 });
 $('new-session').addEventListener('click',()=>{download();if(lastSyncState!=='saved'||session.remote.saved_count!==manifest.trials_per_session){error('Wait until all responses are received, or use Delete my ratings to withdraw this session.');return;}syncClient.stopped=true;syncClient=null;try{localStorage.removeItem(storageKey);}catch{}session=null;trials=null;manifest=currentManifest;$('study-status').textContent='45 clips · 9 synthesis systems';$('start-form').reset();$('session-actions').hidden=true;$('sync-panel').hidden=true;panels('setup');});
 $('download-partial').addEventListener('click',download);$('download-complete').addEventListener('click',download);
