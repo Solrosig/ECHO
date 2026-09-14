@@ -14,6 +14,6 @@ test('every nickname field asks for a first name and a nickname, and the privacy
   }
   for (const page of ['listen.html', 'studio.html']) assert.match(read(page), /nickname \(which includes (my|your) first name\)/, page);
   const guide = read('public/listener-instructions.html');
-  assert.match(guide, /enter your first name and a nickname in “Your nickname”/);
+  assert.match(guide, /Enter your first name plus an additional nickname, for example <strong>anna_river<\/strong>\./);
   assert.doesNotMatch(guide, /real name|enter an alias/);
 });

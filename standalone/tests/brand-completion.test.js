@@ -16,5 +16,5 @@ test('the header brand spells out ECHO with the bold letters on every page that 
 test('the Listening completion panel thanks the listener and says the responses are saved once received', () => {
   assert.ok(read('listen.html').includes('<h2>Thank you for completing the listening test.</h2>'));
   assert.match(read('listen.js'), /'Your responses are saved\. All responses have been received/);
-  assert.match(read('public/listener-instructions.html'), /“Thank you for completing the listening test\.”/);
+  assert.ok(read('public/listener-instructions.html').includes('Thank you for listening'));  // Listener guide = Annex C text (author, 2026-09-15)
 });
