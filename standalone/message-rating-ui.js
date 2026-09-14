@@ -1,5 +1,4 @@
-import {RATING_SCALE} from './study-session.js';
-import {MESSAGE_RATING_VERSION} from './message-rating.js';
+import {MESSAGE_RATING_VERSION,MESSAGE_RATING_SCALE} from './message-rating.js';
 const forms=new Set();
 export function refreshMessageRatings(){for(const f of forms){if(f.root.isConnected)f.update();else forms.delete(f);}}
 export function messageRatingForm(audio,session,order,sync){
@@ -9,15 +8,15 @@ export function messageRatingForm(audio,session,order,sync){
  const form=document.createElement('form'),fieldset=document.createElement('fieldset');form.append(fieldset);
  let heard=false,plays=0,started=performance.now(),touched=new Set();const inputs={};
  for(const [key,title,min,max,step,anchors] of [
-  ['valence','How positive or negative does the voice sound?',-100,100,1,['Negative','Neutral','Positive']],
-  ['arousal','How much energy does the voice convey?',-100,100,1,['Low energy','Neutral','High energy']],
-  ['naturalness','How natural does the voice sound?',1,5,1,['Very artificial','Moderate','Very natural']],
+  ['valence','How positive or negative does the voice sound?',-100,100,25,['Negative','Neutral','Positive']],
+  ['arousal','How much energy does the voice transmit?',-100,100,25,['Low energy','Neutral','High energy']],
+  ['naturalness','How natural does the voice sound?',1,5,.5,['Very artificial','Moderate','Very natural']],
   ['target_match','How closely does it match your chosen emotion?',1,5,.5,['Not at all','Moderately','Very closely']]
  ]){
   const wrap=document.createElement('div');wrap.className='message-scale';const label=document.createElement('label'),output=document.createElement('output'),input=document.createElement('input');
   input.type='range';input.min=min;input.max=max;input.step=step;input.value=(min+max)/2;input.id='rating-'+crypto.randomUUID();label.htmlFor=input.id;label.textContent=title;output.htmlFor=input.id;output.textContent='Not rated';
   const ruler=document.createElement('div');ruler.className='message-ruler';ruler.setAttribute('aria-hidden','true');
-  const ticks=key==='target_match'?9:5;for(let i=0;i<ticks;i++){const tick=document.createElement('span');tick.textContent=String(min+(max-min)*i/(ticks-1));ruler.append(tick);}
+  const ticks=9;for(let i=0;i<ticks;i++){const tick=document.createElement('span');tick.textContent=String(min+(max-min)*i/(ticks-1));ruler.append(tick);}
   const ends=document.createElement('div');ends.className='message-anchors';for(const text of anchors){const s=document.createElement('span');s.textContent=text;ends.append(s);}
   const changed=()=>{touched.add(key);output.textContent=min===-100?input.value:Number(input.value).toFixed(step===.5?1:0)+' / 5';};input.addEventListener('input',changed);
   inputs[key]=input;wrap.append(label,output,input,ruler,ends);fieldset.append(wrap);
@@ -28,7 +27,7 @@ export function messageRatingForm(audio,session,order,sync){
  audio.addEventListener('play',()=>plays++);audio.addEventListener('ended',()=>{if(audio.playbackRate===1){heard=true;update();}});
  form.addEventListener('submit',event=>{event.preventDefault();if(session.ratings?.[order])return;try{
   if(!heard||touched.size!==4)throw new Error('Listen to the whole message and rate all four scales. For a middle value, move the slider away and back to it, or use the arrow keys.');
-  const rating={valence:Number(inputs.valence.value)/100,arousal:Number(inputs.arousal.value)/100,naturalness:Number(inputs.naturalness.value),target_match:Number(inputs.target_match.value),rating_scale:RATING_SCALE,version:MESSAGE_RATING_VERSION,completed_audio:true,play_count:plays,elapsed_s:(performance.now()-started)/1000,created_utc:new Date().toISOString()};
+  const rating={valence:Number(inputs.valence.value)/100,arousal:Number(inputs.arousal.value)/100,naturalness:Number(inputs.naturalness.value),target_match:Number(inputs.target_match.value),rating_scale:MESSAGE_RATING_SCALE,version:MESSAGE_RATING_VERSION,completed_audio:true,play_count:plays,elapsed_s:(performance.now()-started)/1000,created_utc:new Date().toISOString()};
   void sync.rate(order,rating).then(update);update();
  }catch(e){status.textContent=e.message;}});
  forms.add({root,update});update();return root;
