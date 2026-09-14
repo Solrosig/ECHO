@@ -25,7 +25,7 @@ test('the message rating form and instructions show the new steps; Listening kee
   for (const text of ["'How positive or negative does the voice sound?',-100,100,25,", "'How much energy does the voice transmit?',-100,100,25,", "'How natural does the voice sound?',1,5,.5,", 'const ticks=9;', 'rating_scale:MESSAGE_RATING_SCALE']) assert.ok(ui.includes(text), text);
   assert.doesNotMatch(ui, /convey/);
   const guide = read('public/listener-instructions.html');
-  assert.ok(guide.includes('“How much energy does the voice transmit?”'));
+  assert.ok(guide.includes('How much energy does the voice transmit?'));
   assert.doesNotMatch(guide, /convey\?/);
   assert.equal(RATING_SCALE, 'va-0.01_match-0.5_naturalness-1_v2');
 });

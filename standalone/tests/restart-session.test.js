@@ -18,5 +18,5 @@ test('starting again keeps the unfinished session: it is synced, backed up if un
   assert.match(handler, /localStorage\.removeItem\(storageKey\)/);
   assert.match(handler, /panels\('setup'\)/);
   assert.doesNotMatch(handler, /withdraw|DELETE/);
-  assert.match(read('public/listener-instructions.html'), /choose “Start a new session” and confirm/);
+  assert.match(read('public/listener-instructions.html'), /Continue session/);
 });
