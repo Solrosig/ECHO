@@ -21,7 +21,8 @@ test('visibility flags independently restore complete section content and naviga
     assert.equal(html.includes('href="#research"'),research);
     assert.ok(html.includes('<section id="research"'));
     assert.ok(html.includes('<p class="small">Free hosting has queues and daily GPU limits.</p>'));
-    for (const name of ['index.html','public/README.html','research.html']) {
+    // The researcher page no longer links to itself: its header name is plain text (author, 2026-09-14).
+    for (const name of ['index.html','public/README.html']) {
       assert.equal(renderFrontendVisibility(read(name),flags).includes('href="/research"'),research,name);
     }
     assert.equal(renderFrontendVisibility(read('public/README.html'),{...flags,SHOW_RESEARCH_PAGE:true}),read('public/README.html'));
