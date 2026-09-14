@@ -47,13 +47,13 @@ function showTrial(){
 }
 function perception(){
  if(!heard&&!test)throw new Error('Please listen to the whole clip first.');
- if(!touched.has('valence')||!touched.has('arousal'))throw new Error('Rate both emotional dimensions. Use the neutral buttons if your rating is zero.');
+ if(!touched.has('valence')||!touched.has('arousal'))throw new Error('Rate both emotional dimensions. For zero, move the slider away and back to 0, or use the arrow keys.');
  const r={valence:Number($('valence').value)/100,arousal:Number($('arousal').value)/100,naturalness:Number(document.querySelector('input[name=naturalness]:checked')?.value),target_match:1};validateRating(r);delete r.target_match;return r;
 }
 function reveal(){try{error('');locked=perception();session.current={index:session.rows.length,locked,heard,playCount,elapsed_s:previousElapsed+(performance.now()-started)/1000,created_utc:new Date().toISOString()};save();$('perceived').disabled=true;$('reveal-target').hidden=true;$('target-rating').hidden=false;const t=trials[session.rows.length];$('intended-emotion').textContent=`${targetName(t.target)} · ${t.target.arousal>0?'active':'passive'}, ${t.target.valence>0?'positive':'negative'}`;}catch(e){error(e.message);}}
 function record(){
  if(!locked)throw new Error('Save your perception ratings first.');
- if(!touched.has('target-match'))throw new Error('Rate the emotion match. Use the midpoint button if your rating is 3.');
+ if(!touched.has('target-match'))throw new Error('Rate the emotion match. For 3, move the slider away and back to 3, or use the arrow keys.');
  const rating={...locked,target_match:Number($('target-match').value)};validateRating(rating);
  const i=session.rows.length,t=trials[i];session.rows.push({study_version:manifest.study_version,collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,nickname:session.nickname,record_type:test?'technical_test':'human_response',participant_id:session.participant_id,group:session.group+1,seed:session.seed,order:i+1,item_id:t.item_id,audio_sha256:manifest.items.find(j=>j.item_id===t.item_id).sha256,block_id:t.block_id,...rating,play_count:playCount,completed_audio:heard,elapsed_s:(previousElapsed+(performance.now()-started)/1000).toFixed(2),created_utc:new Date().toISOString(),...session.eligibility});session.current=null;save();showTrial();
 }
@@ -63,7 +63,7 @@ $('study-audio').addEventListener('error',()=>error('This audio could not load. 
 $('study-audio').addEventListener('loadstart',()=>{activeTrial=pendingTrial;});
 trackPlayback($('study-audio'),()=>activeTrial,event=>{if(!syncClient)return;syncClient.playback(event);persist();});
 for(const key of ['valence','arousal']){
- const update=()=>{touched.add(key);$(key+'-value').textContent=String(Number($(key).value));};$(key).addEventListener('input',update);$('neutral-'+key).addEventListener('click',()=>{$(key).value='0';update();});
+ const update=()=>{touched.add(key);$(key+'-value').textContent=String(Number($(key).value));};$(key).addEventListener('input',update);
 }
 $('reveal-target').addEventListener('click',reveal);
 $('rating-form').addEventListener('submit',e=>{e.preventDefault();try{record();}catch(e){error(e.message);}});
@@ -111,5 +111,5 @@ if(!document.getElementById('studio')){const u=new URL(location.href);u.pathname
 
 function wasExposed(){try{return localStorage.getItem('echo-studio-exposed')==='1';}catch{return false;}}
 $('target-match').addEventListener('input',()=>{touched.add('target-match');$('target-match-value').textContent=Number($('target-match').value).toFixed(1)+' / 5';});
-$('moderate-match').addEventListener('click',()=>{$('target-match').value='3';touched.add('target-match');$('target-match-value').textContent='3.0 / 5';});
+
 $('study-nickname').addEventListener('input',()=>nicknameError(''));
