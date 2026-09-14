@@ -1,8 +1,12 @@
-"""The Space's hosting helpers: model threads within the container's CPU limit, and server voices on the owner's quota."""
+"""The Space's hosting helpers: model threads within the container's CPU limit, a model start that is tried again, and
+server voices on the owner's quota."""
 
 import asyncio
+import hashlib
 import importlib.util
+import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -69,6 +73,114 @@ def test_ollama_gets_its_own_folders_and_never_the_owner_token(tmp_path, monkeyp
     assert env["LLAMA_ARG_REPACK"] == "0"
     monkeypatch.setenv("LLAMA_ARG_REPACK", "1")
     assert web_host.ollama_environment(tmp_path)["LLAMA_ARG_REPACK"] == "1"
+
+
+class ExitedProcess:
+    def __init__(self, code):
+        self.code = code
+
+    def wait(self):
+        return self.code
+
+
+class RunningProcess:
+    def __init__(self):
+        self.calls = []
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        self.calls.append("terminate")
+
+    def wait(self, timeout=None):
+        self.calls.append("wait")
+        return 0
+
+
+def supervise(outcomes, clock_times=()):
+    """Run the model supervisor over scripted start outcomes and return its waits. It
+    returns once a start is refused, so each script ends with StartRefused."""
+    outcomes, times, slept = list(outcomes), iter(clock_times), []
+
+    def start(cache, threads):
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    web_host.run_embedded_ollama(
+        16, start=start, sleep=slept.append, clock=lambda: next(times)
+    )
+    assert not outcomes
+    return slept
+
+
+def test_a_failed_model_start_is_tried_again(capsys):
+    # 2026-09-14: one HTTP 504 while downloading Ollama ended replies for a whole run.
+    gateway = urllib.error.HTTPError(
+        "https://github.com", 504, "Gateway Time-out", {}, None
+    )
+    stop = web_host.StartRefused("end of the test")
+    assert supervise([gateway, RuntimeError("Ollama did not start"), stop]) == [15, 30]
+    log = capsys.readouterr().out
+    assert "did not start (attempt 1): HTTP Error 504: Gateway Time-out." in log
+    assert "Trying again in 15 s." in log and "(attempt 2)" in log
+    assert "Conversation replies unavailable: end of the test" in log
+
+
+def test_the_waits_between_failed_starts_grow_to_five_minutes():
+    failures = [RuntimeError("Ollama stopped during startup")] * 7
+    stop = web_host.StartRefused("end of the test")
+    assert supervise([*failures, stop]) == [15, 30, 60, 120, 300, 300, 300]
+
+
+def test_an_ollama_that_stops_is_started_again(capsys):
+    # After a long run the waits start again from 15 s; a quick exit counts as a failure.
+    stop = web_host.StartRefused("end of the test")
+    runs = [ExitedProcess(137), ExitedProcess(1), stop]
+    assert supervise(runs, clock_times=[0, 3600, 4000, 4005]) == [15, 30]
+    log = capsys.readouterr().out
+    assert "exit code 137; starting the conversation model again in 15 s." in log
+
+
+def test_a_refused_start_stops_ollama_and_is_not_tried_again(monkeypatch, capsys):
+    process = RunningProcess()
+    monkeypatch.setattr(web_host, "OLLAMA_PROCESS", process)
+    refused = web_host.StartRefused("llama3.2:3b is build 0000, not the tested one")
+    assert supervise([refused]) == []
+    assert process.calls == ["terminate", "wait"]
+    log = capsys.readouterr().out
+    assert "Conversation replies unavailable: llama3.2:3b is build 0000" in log
+
+
+def test_a_changed_ollama_download_is_refused_and_removed(tmp_path, monkeypatch):
+    def download(url, target):
+        Path(target).write_bytes(b"not the pinned runtime")
+
+    monkeypatch.setattr(web_host.urllib.request, "urlretrieve", download)
+    with pytest.raises(web_host.StartRefused, match="checksum mismatch"):
+        web_host.start_embedded_ollama(tmp_path, 16)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_interrupted_unpacking_leaves_no_half_runtime(tmp_path, monkeypatch):
+    data = b"pinned runtime fixture"
+
+    def download(url, target):
+        Path(target).write_bytes(data)
+
+    def interrupted(command, check):
+        (Path(command[-1]) / "bin").mkdir(parents=True)
+        (Path(command[-1]) / "bin" / "ollama").write_bytes(b"half")
+        raise subprocess.CalledProcessError(2, command)
+
+    monkeypatch.setattr(web_host, "OLLAMA_SHA", hashlib.sha256(data).hexdigest())
+    monkeypatch.setattr(web_host.urllib.request, "urlretrieve", download)
+    monkeypatch.setattr(web_host.subprocess, "run", interrupted)
+    with pytest.raises(subprocess.CalledProcessError):
+        web_host.start_embedded_ollama(tmp_path, 16)
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize(
