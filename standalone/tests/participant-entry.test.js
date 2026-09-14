@@ -64,8 +64,9 @@ test('the check validates its input, fails open offline, and every nickname fiel
  assert.match(read('deployment/huggingface/web_host.py'),/path!='\/api\/nicknames\/check'/);
 });
 
-test('Test mode starts with the shorter default phrase',()=>{
+// The author asked for "Thursday afternoon" back in the default phrase (2026-09-14).
+test('Test mode starts with the default phrase that says Thursday afternoon',()=>{
  const studio=read('studio.html');
- assert.ok(studio.includes('required>The meeting has been moved to Thursday. I will see you there.</textarea>'));
- assert.doesNotMatch(studio,/Thursday afternoon/);
+ assert.ok(studio.includes('required>The meeting has been moved to Thursday afternoon. I will see you there.</textarea>'));
+ assert.ok(!studio.includes('moved to Thursday. I will'));
 });
