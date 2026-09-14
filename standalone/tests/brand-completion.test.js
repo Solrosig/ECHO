@@ -7,7 +7,8 @@ const LETTERS = '<strong>E</strong>motionally <strong>C</strong>o<strong>H</stro
 
 test('the header brand spells out ECHO with the bold letters on every page that shows it', () => {
   for (const page of ['index.html', 'studio.html', 'listen.html', 'research.html']) {
-    assert.match(read(page), new RegExp(`<a class="brand" href="[^"]+">ECHO<span class="brand-expansion">${LETTERS.replace(/\//g, '\\/')}</span>`), page);
+    assert.ok(read(page).includes(`<span class="brand">ECHO<span class="brand-expansion">- ${LETTERS}</span>`), page);
+    assert.doesNotMatch(read(page), /<a class="brand"/, page);
   }
   assert.match(read('style.css'), /\.brand \.brand-expansion\{[^}]*font:inherit;font-weight:400/);
 });

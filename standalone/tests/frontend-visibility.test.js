@@ -21,7 +21,8 @@ test('visibility flags independently restore complete section content and naviga
     assert.equal(html.includes('href="#research"'),research);
     assert.ok(html.includes('<section id="research"'));
     assert.ok(html.includes('<p class="small">Free hosting has queues and daily GPU limits.</p>'));
-    for (const name of ['index.html','public/README.html','research.html']) {
+    // The researcher page no longer links to itself: its header name is plain text (author, 2026-09-14).
+    for (const name of ['index.html','public/README.html']) {
       assert.equal(renderFrontendVisibility(read(name),flags).includes('href="/research"'),research,name);
     }
     assert.equal(renderFrontendVisibility(read('public/README.html'),{...flags,SHOW_RESEARCH_PAGE:true}),read('public/README.html'));
@@ -36,7 +37,7 @@ test('requested copy, hero semantics and accessible acronym survive the producti
   assert.ok(studio.includes('Write any English phrase'));
   assert.ok(studio.includes('Write in the chat. ECHO replies'));
   assert.match(studio.match(/<section id="explore-panel"[\s\S]*?<\/section>/)[0],/Built with Llama\. <a href="https:\/\/www\.llama\.com\/llama3_2\/license\/"/);
-  assert.ok(home.includes('href="/README.html">Project guide</a>'));
+  assert.ok(home.includes('href="/README.html" hidden>Project guide</a>'));
   assert.ok(home.includes('aria-label="ECHO - Emotionally Coherent Conversational system - Open academic prototype"'));
   assert.ok(home.includes('<strong>E</strong>motionally <strong>C</strong>o<strong>H</strong>erent c<strong>O</strong>nversational system'));
   assert.ok(!home.includes('Academic voice research'));
