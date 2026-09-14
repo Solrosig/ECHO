@@ -148,7 +148,7 @@ export function createMetricsLog(file){
 // generation attempt. Malformed identifiers are left out; they never refuse a reply.
 export function metricsLink(input){
   const link={};
-  if(typeof input?.session_id==='string'&&/^X-[A-F0-9]{32}$/.test(input.session_id))link.session_id=input.session_id;
+  if(typeof input?.session_id==='string'&&/^(?:X|EXP1X)-[A-F0-9]{32}$/.test(input.session_id))link.session_id=input.session_id;
   if(Number.isInteger(input?.turn_order)&&input.turn_order>=1&&input.turn_order<=12)link.turn_order=input.turn_order;
   if(typeof input?.attempt_id==='string'&&/^[a-f0-9-]{36}$/.test(input.attempt_id))link.attempt_id=input.attempt_id;
   return link;

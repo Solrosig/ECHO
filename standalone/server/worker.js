@@ -13,7 +13,7 @@ import { makeTrials, rowsCSV, RATING_SCALE } from '../study-session.js';
 import { database, readSession, readResponses } from './db.js';
 
 export const COLLECTION_VERSION = 'echo-collection-sqlite-20260907-v5';
-const ID = /^(?:P|TEST)-[A-F0-9]{8,32}$/;
+const ID = /^(?:P|TEST|EXP1)-[A-F0-9]{8,32}$/;
 class RequestError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const fail = (status, message) => { throw new RequestError(status, message); };
 const now = () => new Date().toISOString();
@@ -133,6 +133,8 @@ async function api(request,env,url) {
     const input=sessionMetadata(await body(request)), hash=await tokenHash(request), timestamp=now(), existing=await readSession(db,input.participant_id);
     // The 27-clip v4 design is retired (protocol amendment 2026-09-10): its stored sessions may finish, but no new one starts.
     if(!existing && input.study_version!==manifest.study_version) fail(409,'This study version changed. Reload the page.');
+    // Official testing (EXP1) began with this release: a new session with the earlier P- code comes from an out-of-date page.
+    if(!existing && input.participant_id.startsWith('P-')) fail(409,'This page is out of date. Reload the page to start a new session.');
     if(!existing && input.record_type==='human_response' && await nicknameTaken(db,input.nickname,input.listener_id)) fail(409,NICKNAME_TAKEN);
     if(!existing && env.NEW_SESSION_ALLOWED?.()===false) fail(429,'Too many new sessions from this network. Wait an hour and try again.');
     await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale,listener_id)
@@ -173,7 +175,7 @@ async function api(request,env,url) {
   }
   if(path.startsWith('/api/research/')) {
     researcher(request,env); if(method!=='GET') fail(405,'Method not allowed.');
-    const audioRoute=path.match(/^\/api\/research\/interactive\/audio\/(X-[A-F0-9]{32})\/([1-9][0-9]?)$/);
+    const audioRoute=path.match(/^\/api\/research\/interactive\/audio\/((?:X|EXP1X)-[A-F0-9]{32})\/([1-9][0-9]?)$/);
     if(audioRoute)return audioDownload(db,env.AUDIO,audioRoute[1],Number(audioRoute[2]),fail);
     if(path==='/api/research/summary') {
       const counts=(await db.prepare(`SELECT s.record_type, s.group_number, COUNT(*) AS started,

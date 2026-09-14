@@ -2,6 +2,7 @@ import {makeTrials,validateRating,rowsCSV} from './study-session.js';
 import {StudySync,newSessionToken,COLLECTION_VERSION} from './study-sync.js';
 import {readNickname,rememberNickname,validateNickname,nicknameAvailable,NICKNAME_TAKEN} from './participant.js';
 import {listenerId} from './listener.js';
+import {LISTENING_ID_PREFIX} from './study-cohort.js';
 import {trackPlayback} from './playback-log.js';
 import {RATING_SCALE} from './study-session.js';
 import {targetName} from './circumplex.js';
@@ -74,7 +75,7 @@ $('start-form').addEventListener('submit',async e=>{
   if(test){/* Technical sessions remain marked even when exercising the ordinary form. */}
   // Another browser's nickname is refused before the session starts; the server refuses it again when the session is saved.
   else if(!await nicknameAvailable(validateNickname($('study-nickname').value),listenerId())){nicknameError(NICKNAME_TAKEN);return;}
-  session={nickname:rememberNickname($('study-nickname').value),listener_id:listenerId(),collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,study_version:manifest.study_version,participant_id:(test?'TEST-':'P-')+crypto.randomUUID().replaceAll('-','').toUpperCase(),seed:random[1],group,rows:[],eligibility:{comfortable_english:$('english').checked,headphones:$('headphones').checked,previously_used_studio:$('previous-studio').checked||wasExposed()},consent_utc:new Date().toISOString(),record_type:test?'technical_test':'human_response',remote:{token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0}};
+  session={nickname:rememberNickname($('study-nickname').value),listener_id:listenerId(),collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,study_version:manifest.study_version,participant_id:(test?'TEST-':LISTENING_ID_PREFIX)+crypto.randomUUID().replaceAll('-','').toUpperCase(),seed:random[1],group,rows:[],eligibility:{comfortable_english:$('english').checked,headphones:$('headphones').checked,previously_used_studio:$('previous-studio').checked||wasExposed()},consent_utc:new Date().toISOString(),record_type:test?'technical_test':'human_response',remote:{token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0}};
   trials=makeTrials(manifest,group,session.seed);connectSync();save();showTrial();
  }catch(e){error(e.message);}finally{starting=false;}
 });

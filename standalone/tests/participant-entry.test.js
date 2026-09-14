@@ -14,7 +14,7 @@ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 function setup(t){
  const DB=localDatabase(':memory:');t.after(()=>DB.close());const env={DB,RESEARCHER_AUTHORIZED:false};
  const call=(path,data,token=newSessionToken(),method='POST')=>worker.fetch(new Request(origin+path,{method,headers:{Origin:origin,'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:data===undefined?undefined:JSON.stringify(data)}),env,{});
- const listening=(nickname,listener_id,extra={})=>({participant_id:'P-'+crypto.randomUUID().replaceAll('-','').toUpperCase(),nickname,listener_id,rating_scale:RATING_SCALE,study_version:manifest.study_version,collection_version:COLLECTION_VERSION,record_type:'human_response',group:0,seed:1,eligibility:{comfortable_english:true,headphones:true,previously_used_studio:false},consent:true,consent_utc:new Date().toISOString(),...extra});
+ const listening=(nickname,listener_id,extra={})=>({participant_id:'EXP1-'+crypto.randomUUID().replaceAll('-','').toUpperCase(),nickname,listener_id,rating_scale:RATING_SCALE,study_version:manifest.study_version,collection_version:COLLECTION_VERSION,record_type:'human_response',group:0,seed:1,eligibility:{comfortable_english:true,headphones:true,previously_used_studio:false},consent:true,consent_utc:new Date().toISOString(),...extra});
  const conversation=(nickname,listener_id)=>{const {token,turns,saved_count,...metadata}=createInteractiveSession('line',nickname,null);return {metadata:{...metadata,listener_id},token};};
  const check=async(nickname,listener_id)=>(await call('/api/nicknames/check',{nickname,listener_id})).json();
  return {call,listening,conversation,check};

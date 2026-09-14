@@ -8,7 +8,7 @@ import {controlsFor} from '../voice-controls.js';
 import {TEST_ENGINES,EXPLORE_ENGINES} from '../engine-catalog.js';
 import {validateMessageRating} from '../message-rating.js';
 import {TIMING_COLUMNS,timingColumns,REPLY_CHECK_COLUMNS,replyCheckColumns} from '../generation-timing.js';
-const ID=/^X-[A-F0-9]{32}$/;
+const ID=/^(?:X|EXP1X)-[A-F0-9]{32}$/;
 const safeCell=value=>{const s=String(value??'');return '"'+(/^[\s]*[=+\-@]/.test(s)?"'"+s:s).replaceAll('"','""')+'"';};
 export function explorationCSV(rows){const fields=['session_id','nickname','record_type','mode','turn_order','engine','emotion','input_text','output_text','created_utc','controls_json','audio_metrics_json','audio_sha256','duration_s','elapsed_s','end_to_end_tts_rtf','generation_metadata_json','audio_archive_status','audio_download_path','audio_stored_utc','rating_status','valence','arousal','naturalness','target_match','rating_scale','rating_version','rating_created_utc','completed_audio','play_count',...TIMING_COLUMNS,...REPLY_CHECK_COLUMNS];return [fields.join(','),...rows.map(r=>{const t=JSON.parse(r.turn_json||'{}'),rating=r.rating_json?JSON.parse(r.rating_json):{},record={...r,...rating,created_utc:r.created_utc,rating_status:r.rating_json?'rated':'not_rated',rating_version:rating.version,rating_created_utc:rating.created_utc,controls_json:JSON.stringify(t.controls||{}),audio_metrics_json:JSON.stringify(t.audio_metrics||{}),audio_sha256:t.audio_sha256,duration_s:t.duration_s,elapsed_s:t.elapsed_s,end_to_end_tts_rtf:t.duration_s>0?t.elapsed_s/t.duration_s:null,generation_metadata_json:JSON.stringify(t.generation_metadata||{}),audio_archive_status:r.audio_stored_utc?'archived':'not_archived',audio_download_path:r.audio_stored_utc?`/api/research/interactive/audio/${r.session_id}/${r.turn_order}`:'',...timingColumns(t.generation_metadata,rating),...replyCheckColumns(t.generation_metadata)};return fields.map(k=>safeCell(record[k])).join(',');})].join('\r\n')+'\r\n';}
 export async function interactiveApi(request,url,h){
@@ -24,6 +24,8 @@ export async function interactiveApi(request,url,h){
   if(input.listener_id!=null&&!LISTENER_PATTERN.test(input.listener_id))fail(400,'Invalid listener code.');
   const timestamp=now(),hash=await tokenHash(request);
   const known=await db.prepare('SELECT 1 AS n FROM interactive_sessions WHERE session_id=?').bind(input.session_id).first();
+  // Official testing (EXP1) began with this release: a new non-technical X- conversation comes from an out-of-date page.
+  if(!known&&input.record_type!=='technical_test'&&input.session_id.startsWith('X-'))fail(409,'This page is out of date. Reload the page to start a new session.');
   if(!known&&input.record_type!=='technical_test'&&await nicknameTaken(db,nickname,input.listener_id))fail(409,NICKNAME_TAKEN);
   if(!known&&h.allowNewSession?.()===false)fail(429,'Too many new conversations from this network. Wait an hour and try again.');
   await db.prepare('INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc,listener_id) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO NOTHING').bind(input.session_id,hash,nickname,input.mode,input.engine,input.record_type,input.version,input.consent_utc,timestamp,timestamp,input.listener_id??null).run();

@@ -47,7 +47,7 @@ class Store:
         shutil.copyfile(source,self.local/'study.sqlite')
         for a in m['audio']:
             key=a['object_key']
-            if not re.fullmatch(r'interactive/X-[A-F0-9]{32}/[0-9]+-[a-f0-9]{64}\.wav',key):raise RuntimeError('Invalid audio path')
+            if not re.fullmatch(r'interactive/(?:X|EXP1X)-[A-F0-9]{32}/[0-9]+-[a-f0-9]{64}\.wav',key):raise RuntimeError('Invalid audio path')
             src=self.durable/'audio'/key;dst=self.local/'audio'/key
             if sha(src)!=a['sha256']:raise RuntimeError('Persistent audio verification failed')
             dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,dst)
