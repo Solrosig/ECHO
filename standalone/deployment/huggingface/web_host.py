@@ -93,17 +93,31 @@ def ollama_model(threads):
     parameter: Ollama passes -t to llama-server for that parameter alone, and a per-request option would reload the model."""
     return f'{OLLAMA_MODEL}-t{threads}' if threads else OLLAMA_MODEL
 
+# A failed start of the conversation model is tried again after these waits in seconds; the last one repeats. On 2026-09-14
+# a single HTTP 504 from GitHub while downloading Ollama left Explore without replies for the whole container run.
+START_RETRY_S=(15,30,60,120,300)
+# An Ollama that ran at least this long before it stopped is started again after the shortest wait.
+STABLE_RUN_S=600
+
+class StartRefused(RuntimeError):
+    """A start that trying again cannot fix: a changed Ollama download or a model build other than the tested one."""
+
 def start_embedded_ollama(cache,threads):
-    """Run the pinned Ollama and model inside this Space. They download to local disk again after every wake-up."""
+    """Run the pinned Ollama and model inside this Space and return the Ollama process. They download to local disk again
+    after every wake-up."""
     global OLLAMA_PROCESS
     cache=Path(cache);runtime=cache/'runtime';binary=runtime/'bin/ollama';base='http://127.0.0.1:11434';name=ollama_model(threads)
     print(f"Starting Ollama on {os.environ.get('ACCELERATOR','unknown hardware')}; without a GPU it runs on the CPU. "
           f"Container CPU limit: {cpu_limit() or 'none'}; model threads: {threads or 'llama.cpp default'}.",flush=True)
     if not binary.exists():
-        runtime.mkdir(parents=True,exist_ok=True);archive=cache/'ollama-linux-amd64.tar.zst'
-        urllib.request.urlretrieve(f'https://github.com/ollama/ollama/releases/download/{OLLAMA_VERSION}/ollama-linux-amd64.tar.zst',archive)
-        if sha(archive)!=OLLAMA_SHA:archive.unlink();raise RuntimeError('Ollama runtime checksum mismatch')
-        subprocess.run(['tar','--zstd','-xf',str(archive),'-C',str(runtime)],check=True);archive.unlink()
+        # Unpacked beside the runtime folder and moved into place whole, so an interrupted attempt leaves no half runtime.
+        archive=cache/'ollama-linux-amd64.tar.zst';unpacking=cache/'runtime-unpacking'
+        shutil.rmtree(runtime,ignore_errors=True);shutil.rmtree(unpacking,ignore_errors=True);unpacking.mkdir(parents=True)
+        try:
+            urllib.request.urlretrieve(f'https://github.com/ollama/ollama/releases/download/{OLLAMA_VERSION}/ollama-linux-amd64.tar.zst',archive)
+            if sha(archive)!=OLLAMA_SHA:raise StartRefused('Ollama runtime checksum mismatch')
+            subprocess.run(['tar','--zstd','-xf',str(archive),'-C',str(unpacking)],check=True);unpacking.rename(runtime)
+        finally:archive.unlink(missing_ok=True);shutil.rmtree(unpacking,ignore_errors=True)
     (cache/'home').mkdir(parents=True,exist_ok=True)
     OLLAMA_PROCESS=subprocess.Popen([str(binary),'serve'],env=ollama_environment(cache))
     for _ in range(240):
@@ -116,20 +130,42 @@ def start_embedded_ollama(cache,threads):
     if model_digest(httpx.get(base+'/api/tags',timeout=10).json())!=OLLAMA_MODEL_DIGEST:
         httpx.post(base+'/api/pull',json={'model':OLLAMA_MODEL,'stream':False},timeout=httpx.Timeout(3600,connect=10)).raise_for_status()
     digest=model_digest(httpx.get(base+'/api/tags',timeout=10).json())
-    if digest!=OLLAMA_MODEL_DIGEST:
-        OLLAMA_PROCESS.terminate();raise RuntimeError(f'{OLLAMA_MODEL} is build {digest}, not the tested {OLLAMA_MODEL_DIGEST[:12]}')
+    if digest!=OLLAMA_MODEL_DIGEST:raise StartRefused(f'{OLLAMA_MODEL} is build {digest}, not the tested {OLLAMA_MODEL_DIGEST[:12]}')
     if threads:
         httpx.post(base+'/api/create',json={'model':name,'from':OLLAMA_MODEL,'parameters':{'num_thread':threads},'stream':False},
                    timeout=httpx.Timeout(600,connect=10)).raise_for_status()
         parameters=httpx.post(base+'/api/show',json={'model':name},timeout=30).json().get('parameters','')
-        if not re.search(rf'\bnum_thread\s+{threads}\b',parameters):
-            OLLAMA_PROCESS.terminate();raise RuntimeError(f'{name} does not carry num_thread {threads}')
+        if not re.search(rf'\bnum_thread\s+{threads}\b',parameters):raise StartRefused(f'{name} does not carry num_thread {threads}')
     httpx.post(base+'/api/generate',json={'model':name,'keep_alive':-1},timeout=httpx.Timeout(600,connect=10)).raise_for_status()
     print(f'Conversation model ready: {name}, from {OLLAMA_MODEL} build {OLLAMA_MODEL_DIGEST[:12]}.',flush=True)
+    return OLLAMA_PROCESS
 
-def run_embedded_ollama(threads):
-    try:start_embedded_ollama(os.environ.get('ECHO_OLLAMA_CACHE','/tmp/echo-ollama'),threads)
-    except Exception as exc:print(f'Conversation replies unavailable: {exc}',flush=True)
+def stop_embedded_ollama(wait_s=10):
+    """Stop the Ollama this Space started, if it still runs, so the next start gets the port and a clean state."""
+    process=OLLAMA_PROCESS
+    if process is None or process.poll() is not None:return
+    process.terminate()
+    try:process.wait(timeout=wait_s)
+    except subprocess.TimeoutExpired:process.kill();process.wait()
+
+def run_embedded_ollama(threads,start=start_embedded_ollama,sleep=time.sleep,clock=time.monotonic,waits=START_RETRY_S):
+    """Start the conversation model beside the website and keep it running. A failed start is tried again after a growing
+    wait and an Ollama that stops is started again, while Explore tells participants the model is starting. Only a refused
+    download or model build ends the attempts until the Space restarts."""
+    failures=0
+    while True:
+        try:process=start(os.environ.get('ECHO_OLLAMA_CACHE','/tmp/echo-ollama'),threads)
+        except StartRefused as exc:
+            stop_embedded_ollama();print(f'Conversation replies unavailable: {exc}',flush=True);return
+        except Exception as exc:
+            stop_embedded_ollama();wait=waits[min(failures,len(waits)-1)];failures+=1
+            print(f'Conversation model did not start (attempt {failures}): {exc}. Trying again in {wait} s.',flush=True)
+            sleep(wait);continue
+        started=clock();code=process.wait()
+        if clock()-started>=STABLE_RUN_S:failures=0
+        wait=waits[min(failures,len(waits)-1)];failures+=1
+        print(f'Ollama stopped with exit code {code}; starting the conversation model again in {wait} s.',flush=True)
+        sleep(wait)
 
 def voice_gpu_seconds(text,*_):
     """GPU seconds one voice reserves on ZeroGPU. A call is refused when its reservation exceeds the caller's time left, and
