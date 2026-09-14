@@ -8,7 +8,9 @@
 // both (evidence 2026-09-13-reply-check-prompt-v4-screen). v3 stays the default.
 import {EMOTIONS,validateText} from '../voice-controls.js';
 
-export const PROMPT_VERSIONS={v3:'echo-dialogue-v3',v4a:'echo-dialogue-v4a',v4b:'echo-dialogue-v4b'};
+// v4c (2026-09-14) writes in two passes: a plain reply that answers the message, then a rewrite of that reply into the
+// chosen emotion (Think Twice, AAMAS 2023), because one pass traded answering against emotion in the 2026-09-13 screen.
+export const PROMPT_VERSIONS={v3:'echo-dialogue-v3',v4a:'echo-dialogue-v4a',v4b:'echo-dialogue-v4b',v4c:'echo-dialogue-v4c'};
 export const DEFAULT_PROMPT='v3';
 export const DIALOGUE_PROMPT_VERSION=PROMPT_VERSIONS[DEFAULT_PROMPT];
 
@@ -66,10 +68,34 @@ function v4System(emotion,act){
   ].join('\n');
 }
 
+// v4c's first pass: no emotion yet, only a plain reply that answers what the user said.
+const DRAFT_SYSTEM=[
+  'You write short spoken replies for a speech prototype.',
+  'Respond to what the user actually said or asked: help with a request or ask what they need, answer a question, return a greeting, or react to their news. Never thank the user for an offer they did not make, and never present their news as your own.',
+  'Use plain, friendly wording. Do not invent facts. Reply in one or two short English sentences, maximum 45 words. Return only the reply, without labels, JSON or stage directions.',
+].join(' ');
+const REWRITE_EXAMPLE_DRAFT='Of course, I can help you move the sofa on Saturday. What time works for you?';
+
+// v4c's second pass: the same meaning, rewritten into the chosen emotion with v3's wording for that emotion.
+export function rewriteMessages(text,draft,emotion){
+  validateText(text);if(!Object.hasOwn(EMOTIONS,emotion))throw new Error('Choose an emotion.');
+  const reply=String(draft??'').trim();if(!reply)throw new Error('There is no reply to rewrite.');
+  const f=FEELING[emotion];
+  const system=[
+    `You rewrite one short spoken reply for a speech prototype so that it expresses the emotion the user has chosen: ${f.label} (${f.axes}): ${f.tone}.`,
+    'Keep what the reply says: the same answer, help, question or reaction to the user\'s message. Change the wording so the emotion is clear, even when the reply is ordinary or neutral. Direct any negative feeling at the situation, never at the user.',
+    f.delivery,
+    `For example, the reply "${REWRITE_EXAMPLE_DRAFT}" rewritten with this emotion could be: "${EXAMPLES[emotion].request}" Do not reuse the example's words.`,
+    'Never infer, diagnose or change the user\'s emotional target. Do not invent facts. Keep one or two short English sentences, maximum 45 words. Return only the rewritten reply, without labels, JSON or stage directions.',
+  ].join(' ');
+  return [{role:'system',content:system},{role:'user',content:`User's message: "${text.slice(0,800)}"\nReply to rewrite: "${reply.slice(0,800)}"`}];
+}
+
+// For v4c these are the first pass's messages; rewriteMessages builds the second pass.
 export function dialogueMessages(text,emotion,history=[],{variant=DEFAULT_PROMPT}={}){
   validateText(text);if(!Object.hasOwn(EMOTIONS,emotion))throw new Error('Choose an emotion.');
   if(!Object.hasOwn(PROMPT_VERSIONS,variant))throw new Error('Unknown conversation prompt.');
-  const system=variant==='v3'?v3System(FEELING[emotion]):v4System(emotion,variant==='v4b');
+  const system=variant==='v3'?v3System(FEELING[emotion]):variant==='v4c'?DRAFT_SYSTEM:v4System(emotion,variant==='v4b');
   return [{role:'system',content:system},
     ...history.slice(-6).filter(m=>['user','assistant'].includes(m.role)).map(m=>({role:m.role,content:String(m.content).slice(0,800)})),{role:'user',content:text}];
 }

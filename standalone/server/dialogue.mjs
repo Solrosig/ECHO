@@ -1,5 +1,5 @@
 import {appendFileSync,readFileSync} from 'node:fs';
-import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply,stripActLabel,PROMPT_VERSIONS,DEFAULT_PROMPT} from './dialogue-prompt.mjs';
+import {dialogueMessages,rewriteMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply,stripActLabel,PROMPT_VERSIONS,DEFAULT_PROMPT} from './dialogue-prompt.mjs';
 import {REPLY_CHECK_VERSION,CHECK_GENERATION,CHECK_FORMAT,replyCheckMessages,parseVerdict,judgeReply,acceptedAttempt} from './reply-check.mjs';
 import {QWEN_BACKUP_ALLOWED,QWEN_BACKUP_MODEL} from './llm-backup.mjs';
 
@@ -41,6 +41,7 @@ export function dialogueConfig(env=process.env){
   // ECHO_DIALOGUE_PROMPT picks the conversation prompt: v3, or the 2026-09-13 candidates v4a and v4b.
   const prompt=String(env.ECHO_DIALOGUE_PROMPT||DEFAULT_PROMPT).trim().toLowerCase();
   if(!Object.hasOwn(PROMPT_VERSIONS,prompt))throw new Error(`ECHO_DIALOGUE_PROMPT must be one of: ${Object.keys(PROMPT_VERSIONS).join(', ')}.`);
+  if(prompt==='v4c'&&gate==='on')throw new Error('The coherence gate cannot run the two-pass prompt v4c; set ECHO_COHERENCE_GATE=off.');
   // ECHO_REPLY_CHECK=on checks each reply against the message and the chosen quadrant and generates a miss again (reply-check.mjs).
   const check=String(env.ECHO_REPLY_CHECK||DEFAULT_REPLY_CHECK).trim().toLowerCase();
   if(!['off','on'].includes(check))throw new Error('ECHO_REPLY_CHECK must be off or on.');
@@ -88,20 +89,30 @@ export async function dialogueReply(input,config,{fetchImpl=fetch,launcher=null}
     return {text,gate:'on',prompt_version,passed:data.passed===true,attempts:Array.isArray(data.attempts)?data.attempts.length:0};
   }
   const ask=payload=>send(fetchImpl,`${config.ollamaUrl}/v1/chat/completions`,{payload,apiKey:config.apiKey,wakes:config.remote||config.embedded,onUnreachable:startsOllama(config,launcher),timeoutMs:config.timeoutMs});
-  const generate=async seed=>{
-    const {response,data}=await ask({model:config.model,messages,...GENERATION,seed,stream:false});
+  const complete=async(chat,seed)=>{
+    const {response,data}=await ask({model:config.model,messages:chat,...GENERATION,seed,stream:false});
     checkRemote(config,response,data);
     // An embedded Ollama answers 404 while it is still downloading the model after a wake-up.
     if(response.status===404){if(config.embedded)throw waking();throw new DialogueError(503,'The language model is not installed in Ollama.');}
     if(!response.ok)throw new DialogueError(502,'The language model could not produce a reply. Try again.');
-    const choice=data?.choices?.[0],content=typeof choice?.message?.content==='string'?choice.message.content:'';
+    const choice=data?.choices?.[0];
+    return {content:typeof choice?.message?.content==='string'?choice.message.content:'',finish:choice?.finish_reason};
+  };
+  const incomplete=()=>new DialogueError(502,'The reply was empty or incomplete. Try a shorter message.');
+  const generate=async seed=>{
+    let {content,finish}=await complete(messages,seed),draft=null;
+    // v4c: the first pass answered the message; the second rewrites that answer into the chosen emotion, with the same seed.
+    if(variant==='v4c'){
+      draft=unwrapQuotedReply(content);if(!draft||finish==='length')throw incomplete();
+      ({content,finish}=await complete(rewriteMessages(input.text,draft,input.emotion),seed));
+    }
     // v4b replies begin with a one-word reading of the message, removed before the reply is checked or spoken.
     const {reply,act}=variant==='v4b'?stripActLabel(content):{reply:content,act:null},text=unwrapQuotedReply(reply);
-    if(!text||choice.finish_reason==='length')throw new DialogueError(502,'The reply was empty or incomplete. Try a shorter message.');
-    return {text,act,seed};
+    if(!text||finish==='length')throw incomplete();
+    return {text,act,seed,draft};
   };
   const first=await generate(GENERATION.seed);
-  if(config.check!=='on')return {text:first.text,gate:'off',prompt_version};
+  if(config.check!=='on')return {text:first.text,gate:'off',prompt_version,...(first.draft?{details:[{seed:first.seed,text:first.text,act:null,draft:first.draft}]}:{})};
   // The reply check (reply-check.mjs): each attempt is checked; a miss is generated again with the next seed. A failure of
   // the check itself, or of a later attempt, never refuses the reply: the best attempt so far is used.
   const attempts=[first],verdicts=[],checkMs=[];
@@ -120,7 +131,7 @@ export async function dialogueReply(input,config,{fetchImpl=fetch,launcher=null}
   return {text:attempts[index].text,gate:'off',prompt_version,
     check:{version:REPLY_CHECK_VERSION,status,attempts:verdicts.length,accepted:index,
       verdicts:verdicts.map((v,i)=>v&&{seed:attempts[i].seed,responds:v.responds,feeling:v.feeling,energy:v.energy,quadrant:v.quadrant,passed:v.passed})},
-    details:attempts.map((a,i)=>({seed:a.seed,text:a.text,act:a.act,check_ms:checkMs[i]}))};
+    details:attempts.map((a,i)=>({seed:a.seed,text:a.text,act:a.act,draft:a.draft,check_ms:checkMs[i]}))};
 }
 
 // Whether the model answers. Asking a sleeping hosted model also starts it, so the page asks when Explore opens; a local
@@ -162,7 +173,8 @@ export async function handleDialogueRequest(request,env,{readBody,json}){
     // Rejected attempts' texts stay in the private metrics line; the page receives the accepted reply and the verdicts only.
     const {details,...out}=await dialogueReply(input,dialogue?.config,{fetchImpl:dialogue?.fetch||fetch,launcher:dialogue?.launcher});
     record({ok:true,chars_in:String(input.text||'').length,chars_out:out.text.length,...(out.gate==='on'?{passed:out.passed,attempts:out.attempts}:{}),
-      ...(out.check?{check:{...out.check,replies:details.map(d=>d.text),acts:details.map(d=>d.act),check_ms:details.map(d=>d.check_ms)}}:{})});
+      ...(out.check?{check:{...out.check,replies:details.map(d=>d.text),acts:details.map(d=>d.act),check_ms:details.map(d=>d.check_ms)}}:{}),
+      ...(details?.some(d=>d.draft)?{drafts:details.map(d=>d.draft)}:{})});
     return json(out);
   }catch(error){
     const status=error instanceof DialogueError?error.status:error.status;
