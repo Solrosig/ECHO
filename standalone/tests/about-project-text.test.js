@@ -15,5 +15,5 @@ test('the About project page carries the author\'s text and nothing from the old
   for (const old of ['ECHO standalone final', 'Start locally', 'Researcher password', 'Database and backup', 'thesis/ECHO_Thesis_EN.docx', 'Listener instructions']) {
     assert.ok(!page.includes(old), old);
   }
-  assert.ok(page.includes('<a href="/listener-instructions.html">Listener guide</a> · <a href="/research">Researcher access</a>'));
+  assert.ok(page.includes('<a href="/listener-instructions.html">Listener Guide</a> · <a href="/research">Researcher access</a>'));
 });
