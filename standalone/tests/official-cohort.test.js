@@ -16,7 +16,7 @@ const hex=()=>crypto.randomUUID().replaceAll('-','').toUpperCase();
 function setup(t){
  const DB=localDatabase(':memory:');t.after(()=>DB.close());const env={DB,RESEARCHER_AUTHORIZED:false};
  const call=(path,data,token)=>worker.fetch(new Request(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(data)}),env,{});
- const listening=(participant_id,extra={})=>({participant_id,nickname:'cohort_check',listener_id:L,rating_scale:RATING_SCALE,study_version:manifest.study_version,collection_version:COLLECTION_VERSION,record_type:'human_response',group:0,seed:1,eligibility:{comfortable_english:true,headphones:true,previously_used_studio:false},consent:true,consent_utc:new Date().toISOString(),...extra});
+ const listening=(participant_id,extra={})=>({participant_id,nickname:'cohort_check',listener_id:L,rating_scale:RATING_SCALE,study_version:manifest.study_version,collection_version:COLLECTION_VERSION,record_type:'human_response',group:0,seed:1,eligibility:{comfortable_english:true,headphones:true,previously_used_studio:false},consent:true,consent_utc:new Date().toISOString(),gender:'na',...extra});
  return {DB,call,listening};
 }
 
@@ -27,7 +27,7 @@ test('new official sessions use EXP1 codes; an out-of-date page cannot start a P
  assert.equal(stale.status,409);assert.match((await stale.json()).error,/out of date/);
  const technical=f.listening('TEST-'+hex(),{record_type:'technical_test',eligibility:{comfortable_english:false,headphones:false,previously_used_studio:false}});
  assert.equal((await f.call('/api/study/sessions',technical,newSessionToken())).status,200);
- const session=createInteractiveSession('line','cohort_check',null);
+ const session=createInteractiveSession('line','cohort_check',null,'na');
  assert.ok(session.session_id.startsWith(CONVERSATION_ID_PREFIX));
  const {token,turns,saved_count,...meta}=session;
  assert.equal((await f.call('/api/interactive/sessions',{...meta,listener_id:L},token)).status,200);

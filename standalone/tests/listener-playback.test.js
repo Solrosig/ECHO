@@ -90,7 +90,7 @@ test('a playback event the server rejects is dropped without blocking the saved 
 });
 
 test('sessions saved before listener codes are linked once, and a code is never replaced',async t=>{
- const f=site(t),session=createInteractiveSession('explore','legacy_listener','chatterbox');delete session.listener_id;
+ const f=site(t),session=createInteractiveSession('explore','legacy_listener','chatterbox','female');delete session.listener_id;
  const post=data=>f.fetcher('/api/interactive/sessions',{method:'POST',headers:{Authorization:`Bearer ${session.token}`,'Content-Type':'application/json'},body:JSON.stringify(data)});
  assert.equal((await post(session)).status,200);assert.equal(f.DB.sqlite.prepare('SELECT listener_id FROM interactive_sessions').get().listener_id,null);
  const first='L-'+'B'.repeat(32);assert.equal((await post({...session,listener_id:first})).status,200);assert.equal((await post({...session,listener_id:'L-'+'C'.repeat(32)})).status,200);
@@ -99,7 +99,7 @@ test('sessions saved before listener codes are linked once, and a code is never 
 });
 
 test('Test and Explore playback waits for its message, travels with saves and is deleted on withdrawal',async t=>{
- const f=site(t),session=createInteractiveSession('explore','playback_explorer','kokoro'),{buffer,turn}=await voice(),sync=new InteractiveSync(session,{fetcher:f.fetcher});
+ const f=site(t),session=createInteractiveSession('explore','playback_explorer','kokoro','male'),{buffer,turn}=await voice(),sync=new InteractiveSync(session,{fetcher:f.fetcher});
  sync.playback(event(1,'play',{autoplay:true}));await sync.add(turn,buffer);
  assert.deepEqual(session.playback,[]);
  sync.playback(event(1,'pause',{position_s:.4}));sync.playback(event(2,'play'));await sync.sync();
@@ -150,10 +150,10 @@ test('the researcher export builds listener, activity and timestamped session fo
  const s=listeningSession(listener),trials=makeTrials(manifest,s.group,s.seed),study=new StudySync({session:s,trials,fetcher:f.fetcher});
  study.playback(event(1,'play',{item_id:trials[0].item_id}));study.playback(event(1,'ended',{item_id:trials[0].item_id,position_s:2}));study.playback(event(2,'play',{item_id:trials[1].item_id}));
  s.rows.push(rated(trials,0),rated(trials,1));await study.sync();
- const chat=createInteractiveSession('explore','playback_listener','kokoro'),{buffer,sha,turn}=await voice(),explore=new InteractiveSync(chat,{fetcher:f.fetcher});
+ const chat=createInteractiveSession('explore','playback_listener','kokoro','na'),{buffer,sha,turn}=await voice(),explore=new InteractiveSync(chat,{fetcher:f.fetcher});
  await explore.add(turn,buffer);await explore.rate(1,{valence:.2,arousal:.3,naturalness:4,target_match:4,rating_scale:RATING_SCALE,version:'echo-message-rating-v1',completed_audio:true,play_count:2,elapsed_s:8,created_utc:new Date().toISOString()});
  explore.playback(event(1,'play',{autoplay:true}));explore.playback(event(1,'transcript_open',{position_s:.5}));explore.playback(event(1,'ended',{position_s:1}));explore.playback(event(1,'play'));await explore.sync();
- const legacy=createInteractiveSession('line','earlier_visitor',null);delete legacy.listener_id;
+ const legacy=createInteractiveSession('line','earlier_visitor',null,'female');delete legacy.listener_id;
  await new InteractiveSync(legacy,{fetcher:f.fetcher}).add({...turn,input_text:'An earlier test.',output_text:'An earlier test.'});
  const database=join(f.dir,'study.sqlite'),audio=join(f.dir,'audio'),out=join(f.dir,'export'),P=s.participant_id;
 

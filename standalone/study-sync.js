@@ -34,7 +34,7 @@ export class StudySync {
   }
   async register() {
     const s=this.session;
-    const result=await this.request('/api/study/sessions','POST',{participant_id:s.participant_id,nickname:s.nickname,rating_scale:s.rating_scale,study_version:s.study_version,collection_version:COLLECTION_VERSION,record_type:s.record_type,group:s.group,seed:s.seed,eligibility:s.eligibility,consent:true,consent_utc:s.remote.consent_utc,listener_id:s.listener_id??null});
+    const result=await this.request('/api/study/sessions','POST',{participant_id:s.participant_id,nickname:s.nickname,rating_scale:s.rating_scale,study_version:s.study_version,collection_version:COLLECTION_VERSION,record_type:s.record_type,group:s.group,seed:s.seed,eligibility:s.eligibility,consent:true,consent_utc:s.remote.consent_utc,listener_id:s.listener_id??null,gender:s.gender??null});
     this.registered=true;return result;
   }
   // Playback events wait in the session and travel with the next save, so listening adds no requests of its own.

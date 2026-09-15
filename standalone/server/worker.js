@@ -1,4 +1,4 @@
-import {validateNickname} from '../participant.js';
+import {validateNickname,validateGender} from '../participant.js';
 import {audioDownload} from './audio.js';
 import {interactiveApi,explorationCSV} from './interactive.js';
 import {handleDialogueRequest,handleDialogueStatus} from './dialogue.mjs';
@@ -57,6 +57,7 @@ function sessionMetadata(input) {
   if (!e || !['comfortable_english','headphones','previously_used_studio'].every(k=>typeof e[k]==='boolean')) fail(400,'Complete the listening eligibility questions.');
   if (input.record_type==='human_response' && (!e.comfortable_english || !e.headphones)) fail(400,'Confirm English comprehension and headphone use.');
   try{input.nickname=validateNickname(input.nickname);}catch(e){fail(400,e.message);}
+  if(input.gender!=null)try{input.gender=validateGender(input.gender);}catch(e){fail(400,e.message);}
   if(input.rating_scale!==RATING_SCALE)fail(409,'Reload the current rating scale.');
   if(input.listener_id!=null&&!LISTENER_PATTERN.test(input.listener_id))fail(400,'Invalid listener code.');
   return input;
@@ -135,22 +136,26 @@ async function api(request,env,url) {
     if(!existing && input.study_version!==manifest.study_version) fail(409,'This study version changed. Reload the page.');
     // Official testing (EXP1) began with this release: a new session with the earlier P- code comes from an out-of-date page.
     if(!existing && input.participant_id.startsWith('P-')) fail(409,'This page is out of date. Reload the page to start a new session.');
+    // Gender became a required answer with this release: a new study session without it comes from an out-of-date page.
+    if(!existing && input.record_type==='human_response' && input.gender==null) fail(409,'This page is out of date. Reload the page to start a new session.');
     if(!existing && input.record_type==='human_response' && await nicknameTaken(db,input.nickname,input.listener_id)) fail(409,NICKNAME_TAKEN);
     if(!existing && env.NEW_SESSION_ALLOWED?.()===false) fail(429,'Too many new sessions from this network. Wait an hour and try again.');
-    await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale,listener_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(participant_id) DO NOTHING`).bind(input.participant_id,hash,input.study_version,input.collection_version,input.record_type,input.group+1,input.seed,Number(input.eligibility.comfortable_english),Number(input.eligibility.headphones),Number(input.eligibility.previously_used_studio),input.consent_utc,timestamp,timestamp,input.nickname,input.rating_scale,input.listener_id??null).run();
+    await db.prepare(`INSERT INTO study_sessions (participant_id,token_hash,study_version,collection_version,record_type,group_number,seed,comfortable_english,headphones,previously_used_studio,consent_utc,received_utc,updated_utc,nickname,rating_scale,listener_id,gender)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(participant_id) DO NOTHING`).bind(input.participant_id,hash,input.study_version,input.collection_version,input.record_type,input.group+1,input.seed,Number(input.eligibility.comfortable_english),Number(input.eligibility.headphones),Number(input.eligibility.previously_used_studio),input.consent_utc,timestamp,timestamp,input.nickname,input.rating_scale,input.listener_id??null,input.gender??null).run();
     const s=await owned(request,db,input.participant_id);
     if(s.withdrawn_utc)fail(410,'This contribution was deleted.');
     if(!sameSession(s,input)) fail(409,'Session metadata cannot be changed.');
     // A session started before listener codes existed is linked the first time its browser sends one; a code is never replaced.
     if(input.listener_id&&!s.listener_id)await db.prepare('UPDATE study_sessions SET listener_id=? WHERE participant_id=? AND listener_id IS NULL').bind(input.listener_id,s.participant_id).run();
+    // A session saved before gender was asked takes the first gender its browser sends; a stored gender is never replaced.
+    if(input.gender)await db.prepare('UPDATE study_sessions SET gender=? WHERE participant_id=? AND gender IS NULL').bind(input.gender,s.participant_id).run();
     return json(await snapshot(db,s));
   }
   const match=path.match(/^\/api\/study\/sessions\/([^/]+)(\/responses|\/playback)?$/);
   if(match) {
     let s=await owned(request,db,match[1]);
     if(method==='DELETE' && !match[2]) {
-      await db.batch([db.prepare('UPDATE study_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?), nickname=?, updated_utc=? WHERE participant_id=?').bind(now(),'',now(),s.participant_id), db.prepare('DELETE FROM study_responses WHERE participant_id=?').bind(s.participant_id), deletePlayback(db,'study',s.participant_id)]);
+      await db.batch([db.prepare('UPDATE study_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?), nickname=?, gender=NULL, updated_utc=? WHERE participant_id=?').bind(now(),'',now(),s.participant_id), db.prepare('DELETE FROM study_responses WHERE participant_id=?').bind(s.participant_id), deletePlayback(db,'study',s.participant_id)]);
       return json({withdrawn:true});
     }
     if(s.withdrawn_utc) fail(410,'This contribution was deleted.');
@@ -183,13 +188,13 @@ async function api(request,env,url) {
         SUM(CASE WHEN s.completed_utc IS NOT NULL AND s.previously_used_studio=0 AND s.comfortable_english=1 AND s.headphones=1 THEN 1 ELSE 0 END) AS eligible,
         SUM((SELECT COUNT(*) FROM study_responses r WHERE r.participant_id=s.participant_id AND r.target_match IS NOT NULL)) AS responses
         FROM study_sessions s WHERE s.withdrawn_utc IS NULL AND s.collection_version=? AND s.study_version=? GROUP BY s.record_type,s.group_number ORDER BY s.record_type,s.group_number`).bind(COLLECTION_VERSION,manifest.study_version).all()).results;
-      const sessions=(await db.prepare(`SELECT s.participant_id,s.study_version,s.nickname,s.collection_version,s.rating_scale,s.record_type,s.group_number,s.received_utc,s.updated_utc,s.completed_utc,s.previously_used_studio,
+      const sessions=(await db.prepare(`SELECT s.participant_id,s.study_version,s.nickname,s.gender,s.collection_version,s.rating_scale,s.record_type,s.group_number,s.received_utc,s.updated_utc,s.completed_utc,s.previously_used_studio,
         (SELECT COUNT(*) FROM study_responses r WHERE r.participant_id=s.participant_id AND r.target_match IS NOT NULL) AS saved_count
         FROM study_sessions s WHERE s.withdrawn_utc IS NULL ORDER BY s.received_utc DESC LIMIT 200`).all()).results;
       return json({study_version:manifest.study_version,collection_version:COLLECTION_VERSION,trials_per_session:manifest.trials_per_session,groups:counts,sessions:sessions.map(s=>({...s,trials_per_session:trialCount(s.study_version)})),session_list_limit:200});
     }
     if(path==='/api/research/interactive') {
-      const sessions=(await db.prepare(`SELECT s.session_id,s.nickname,s.mode,s.engine,s.record_type,s.updated_utc,(SELECT COUNT(*) FROM interactive_turns t WHERE t.session_id=s.session_id) AS saved_count,(SELECT COUNT(*) FROM interactive_ratings r WHERE r.session_id=s.session_id) AS rated_count,(SELECT COUNT(*) FROM interactive_audio a WHERE a.session_id=s.session_id) AS archived_count FROM interactive_sessions s WHERE s.withdrawn_utc IS NULL ORDER BY s.updated_utc DESC LIMIT 200`).all()).results;
+      const sessions=(await db.prepare(`SELECT s.session_id,s.nickname,s.gender,s.mode,s.engine,s.record_type,s.updated_utc,(SELECT COUNT(*) FROM interactive_turns t WHERE t.session_id=s.session_id) AS saved_count,(SELECT COUNT(*) FROM interactive_ratings r WHERE r.session_id=s.session_id) AS rated_count,(SELECT COUNT(*) FROM interactive_audio a WHERE a.session_id=s.session_id) AS archived_count FROM interactive_sessions s WHERE s.withdrawn_utc IS NULL ORDER BY s.updated_utc DESC LIMIT 200`).all()).results;
       return json({sessions});
     }
     if(path==='/api/research/diagnostics.json'){const rows=(await db.prepare('SELECT a.session_id,s.mode,s.record_type,a.event_json,a.received_utc FROM generation_attempts a JOIN interactive_sessions s ON s.session_id=a.session_id WHERE s.withdrawn_utc IS NULL ORDER BY a.received_utc').all()).results;return json({scope:'Generation attempts sent by the browser: voice requests (stage tts) and, from echo-generation-v2, conversation replies (stage dialogue). Excludes disconnected unsynchronised clients and infrastructure-wide monitoring. Voice times include connection, queue, download and processing; reply times include waiting for the conversation model to start.',attempts:rows.map(r=>({...r,event_json:undefined,...JSON.parse(r.event_json)}))});}

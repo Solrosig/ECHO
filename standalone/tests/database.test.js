@@ -56,7 +56,7 @@ test('server rejects forged allocation, missing consent, invalid scales and skip
  assert.equal((await f.DB.prepare('SELECT COUNT(*) AS n FROM study_responses').first()).n,0);
 });
 test('human sessions require eligibility and completed playback; technical test identifiers cannot become human',async t=>{
- const f=fixture(t);f.s.participant_id=f.s.participant_id.replace('TEST-','EXP1-');f.s.record_type='human_response';
+ const f=fixture(t);f.s.participant_id=f.s.participant_id.replace('TEST-','EXP1-');f.s.record_type='human_response';f.s.gender='female';
  assert.equal((await f.register()).status,400);f.s.eligibility.comfortable_english=true;f.s.eligibility.headphones=true;
  assert.equal((await f.register()).status,200);assert.equal((await f.save([f.row(0,{play_count:0,completed_audio:false})])).status,400);
  assert.equal((await f.save([f.row(0)])).status,200);

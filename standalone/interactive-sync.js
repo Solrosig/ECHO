@@ -1,12 +1,12 @@
 import {savePendingAudio,loadPendingAudio,deletePendingAudio} from './audio-outbox.js';
 import {newSessionToken} from './study-sync.js';
-import {validateNickname,validateConversationTurn} from './participant.js';
+import {validateNickname,validateGender,validateConversationTurn} from './participant.js';
 import {validateMessageRating,interactivePending} from './message-rating.js';
 import {listenerId} from './listener.js';
 import {CONVERSATION_ID_PREFIX} from './study-cohort.js';
 export const INTERACTIVE_VERSION='echo-interactive-20260907-v3';
 const OUTBOX='echo-interactive-outbox-v1';
-export function createInteractiveSession(mode,nickname,engine){const technical=typeof location!=='undefined'&&new URLSearchParams(location.search).get('test')==='1';return {session_id:(technical?'X-':CONVERSATION_ID_PREFIX)+crypto.randomUUID().replaceAll('-','').toUpperCase(),listener_id:listenerId(),nickname:validateNickname(nickname),mode,engine,record_type:technical?'technical_test':'interactive_exploration',version:INTERACTIVE_VERSION,consent:true,consent_utc:new Date().toISOString(),token:newSessionToken(),turns:[],saved_count:0};}
+export function createInteractiveSession(mode,nickname,engine,gender=null){const technical=typeof location!=='undefined'&&new URLSearchParams(location.search).get('test')==='1';return {session_id:(technical?'X-':CONVERSATION_ID_PREFIX)+crypto.randomUUID().replaceAll('-','').toUpperCase(),listener_id:listenerId(),nickname:validateNickname(nickname),gender:gender==null?null:validateGender(gender),mode,engine,record_type:technical?'technical_test':'interactive_exploration',version:INTERACTIVE_VERSION,consent:true,consent_utc:new Date().toISOString(),token:newSessionToken(),turns:[],saved_count:0};}
 export function loadOutbox(){try{const data=JSON.parse(localStorage.getItem(OUTBOX)||'[]');return Array.isArray(data)?data:[];}catch{return [];}}
 function persist(session){
  const queued=loadOutbox().filter(s=>s.session_id!==session.session_id);

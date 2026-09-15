@@ -1,6 +1,6 @@
 import {makeTrials,validateRating,rowsCSV} from './study-session.js';
 import {StudySync,newSessionToken,COLLECTION_VERSION} from './study-sync.js';
-import {readNickname,rememberNickname,validateNickname,nicknameAvailable,NICKNAME_TAKEN} from './participant.js';
+import {readNickname,rememberNickname,validateNickname,nicknameAvailable,NICKNAME_TAKEN,rememberGender,fillGender} from './participant.js';
 import {listenerId} from './listener.js';
 import {LISTENING_ID_PREFIX} from './study-cohort.js';
 import {trackPlayback} from './playback-log.js';
@@ -75,7 +75,8 @@ $('start-form').addEventListener('submit',async e=>{
   if(test){/* Technical sessions remain marked even when exercising the ordinary form. */}
   // Another browser's nickname is refused before the session starts; the server refuses it again when the session is saved.
   else if(!await nicknameAvailable(validateNickname($('study-nickname').value),listenerId())){nicknameError(NICKNAME_TAKEN);return;}
-  session={nickname:rememberNickname($('study-nickname').value),listener_id:listenerId(),collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,study_version:manifest.study_version,participant_id:(test?'TEST-':LISTENING_ID_PREFIX)+crypto.randomUUID().replaceAll('-','').toUpperCase(),seed:random[1],group,rows:[],eligibility:{comfortable_english:$('english').checked,headphones:$('headphones').checked,previously_used_studio:$('previous-studio').checked||wasExposed()},consent_utc:new Date().toISOString(),record_type:test?'technical_test':'human_response',remote:{token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0}};
+  // Gender is required for a study session; a technical test may leave it empty.
+  const gender=$('start-form').elements.gender.value;session={nickname:rememberNickname($('study-nickname').value),gender:test&&!gender?null:rememberGender(gender),listener_id:listenerId(),collection_version:COLLECTION_VERSION,rating_scale:RATING_SCALE,study_version:manifest.study_version,participant_id:(test?'TEST-':LISTENING_ID_PREFIX)+crypto.randomUUID().replaceAll('-','').toUpperCase(),seed:random[1],group,rows:[],eligibility:{comfortable_english:$('english').checked,headphones:$('headphones').checked,previously_used_studio:$('previous-studio').checked||wasExposed()},consent_utc:new Date().toISOString(),record_type:test?'technical_test':'human_response',remote:{token:newSessionToken(),consent_utc:new Date().toISOString(),saved_count:0}};
   trials=makeTrials(manifest,group,session.seed);connectSync();save();showTrial();
  }catch(e){error(e.message);}finally{starting=false;}
 });
@@ -99,7 +100,7 @@ $('restart-yes').addEventListener('click',async()=>{
   if(!confirmed&&session.rows.length)download();
   syncClient=null;try{localStorage.removeItem(storageKey);}catch{}
   session=null;trials=null;manifest=currentManifest;$('study-status').textContent=`${manifest.trials_per_session} clips · 9 synthesis systems · ${manifest.study_version}`;
-  $('start-form').reset();$('study-nickname').value=readNickname();clearEntryChecks();
+  $('start-form').reset();$('study-nickname').value=readNickname();fillGender($('start-form'));clearEntryChecks();
   $('session-actions').hidden=true;$('sync-panel').hidden=true;$('restart-confirm').hidden=true;panels('setup');
  }catch(e){error(e.message);}finally{$('restart-yes').disabled=false;}
 });
@@ -123,8 +124,8 @@ async function init(){try{
  if(session?.study_version==='echo-user-voice-20260907-nine-v4'&&session.collection_version===COLLECTION_VERSION&&session.record_type===(test?'technical_test':'human_response')){const previous=await fetch('/study/manifest-v4.json');if(!previous.ok)throw new Error('The saved study version could not load. Keep this browser data and retry.');manifest=await previous.json();$('study-status').textContent='Resuming your earlier 27-clip study. Its allocation and ratings are preserved.';}
  if(session?.study_version===manifest.study_version&&session.collection_version===COLLECTION_VERSION&&session.record_type===(test?'technical_test':'human_response')){panels('resume');$('resume-description').textContent=`${session.rows.length} of ${manifest?.trials_per_session||45} responses saved in this browser. Continue with participant code ${session.participant_id}.`;$('transfer-notice').hidden=Boolean(session.remote);}
  else panels('setup');
- $('study-nickname').value=readNickname();clearEntryChecks();
- if(test&&!session){$('study-nickname').value=readNickname()||'technical_demo';$('consent').parentElement.hidden=true;$('english').parentElement.hidden=true;$('headphones').parentElement.hidden=true;$('consent').required=false;$('english').required=false;$('headphones').required=false;$('start-form').querySelector('button').textContent='Begin technical test';}
+ $('study-nickname').value=readNickname();fillGender($('start-form'));clearEntryChecks();
+ if(test&&!session){$('study-nickname').value=readNickname()||'technical_demo';for(const g of $('start-form').querySelectorAll('input[name=gender]'))g.required=false;$('consent').parentElement.hidden=true;$('english').parentElement.hidden=true;$('headphones').parentElement.hidden=true;$('consent').required=false;$('english').required=false;$('headphones').required=false;$('start-form').querySelector('button').textContent='Begin technical test';}
  if(!storageAvailable)$('study-status').textContent+=' · local saving unavailable';
 }catch(e){error(e.message);$('study-status').textContent='Study unavailable.';}}
 if(!document.getElementById('studio')){const u=new URL(location.href);u.pathname='/';u.searchParams.set('mode','listening');location.replace(u);}else init();
