@@ -33,3 +33,5 @@
 span.brand{cursor:default}.brand:has(.brand-expansion){column-gap:.3em}.brand .brand-expansion~span{margin-left:12px}
 /* Guide links at the right of every page header: About project, Listener guide (author, 2026-09-14). */
 .topbar:has(.page-links){flex-wrap:wrap;height:auto;min-height:88px;row-gap:8px;padding-top:12px;padding-bottom:12px}.topbar .page-links{margin-left:auto;gap:28px;white-space:nowrap}.topbar .page-links a{color:var(--muted)}.topbar .page-links a:hover{color:var(--ink)}.voice-studio-page .topbar:has(.page-links){display:flex;flex-wrap:wrap;align-items:center}@media(max-width:760px){.topbar:has(.page-links){min-height:72px}.topbar .page-links{gap:16px}.topbar .page-links a{display:inline-block;padding:6px 0}}
+/* Activity links and guide links sit together at the right of the header (author, 2026-09-15). */
+.topbar .header-links{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 28px}.topbar .header-links .page-links{margin-left:0}@media(max-width:760px){.topbar .header-links{margin-left:0;justify-content:flex-start;gap:6px 16px}}

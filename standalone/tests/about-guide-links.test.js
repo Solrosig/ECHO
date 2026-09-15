@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const read = path => readFileSync(new URL('../'+path, import.meta.url), 'utf8');
-const LINKS = '<nav class="page-links" aria-label="Guides"><a href="/README.html">About project</a><a href="/listener-instructions.html">Listener guide</a></nav>';
+const LINKS = '<nav class="page-links" aria-label="Guides"><a href="/README.html">About Project</a><a href="/listener-instructions.html">Listener Guide</a></nav>';
 
 test('every page header ends with the About project and Listener guide links (author, 2026-09-14)', () => {
   for (const page of ['index.html', 'studio.html', 'listen.html', 'research.html']) {
     const header = read(page).match(/<header class="topbar">[\s\S]*?<\/header>/)?.[0];
     assert.ok(header, page);
-    assert.ok(header.endsWith(LINKS + '</header>'), page);
+    // Pages with activity links keep them beside the guide links, at the right of the header (author, 2026-09-15).
+    assert.ok(header.endsWith(LINKS + (page === 'index.html' ? '</header>' : '</div></header>')), page);
+    if (page !== 'index.html') assert.ok(header.includes('<div class="header-links"><nav class="activity-nav"'), page);
   }
   assert.match(read('style.css'), /\.topbar \.page-links\{margin-left:auto;/);
 });
