@@ -99,7 +99,7 @@ $('restart-yes').addEventListener('click',async()=>{
   if(!confirmed&&session.rows.length)download();
   syncClient=null;try{localStorage.removeItem(storageKey);}catch{}
   session=null;trials=null;manifest=currentManifest;$('study-status').textContent=`${manifest.trials_per_session} clips · 9 synthesis systems · ${manifest.study_version}`;
-  $('start-form').reset();$('study-nickname').value=readNickname();$('previous-studio').checked=wasExposed();
+  $('start-form').reset();$('study-nickname').value=readNickname();clearEntryChecks();
   $('session-actions').hidden=true;$('sync-panel').hidden=true;$('restart-confirm').hidden=true;panels('setup');
  }catch(e){error(e.message);}finally{$('restart-yes').disabled=false;}
 });
@@ -113,6 +113,9 @@ $('withdraw-show').addEventListener('click',()=>{$('withdraw-confirm').hidden=fa
 $('withdraw-cancel').addEventListener('click',()=>{$('withdraw-confirm').hidden=true;});
 $('withdraw-delete').addEventListener('click',async()=>{try{$('withdraw-delete').disabled=true;await syncClient.withdraw();try{localStorage.removeItem(storageKey);}catch{}syncClient=null;session=null;trials=null;manifest=currentManifest;$('study-status').textContent='45 clips · 9 synthesis systems';$('session-actions').hidden=true;$('sync-panel').hidden=true;$('withdraw-confirm').hidden=true;panels('setup');$('start-form').reset();$('study-status').textContent='Your ratings have been deleted. Thank you for your time.';}catch(e){error('Deletion was not confirmed. Keep this page and retry. '+e.message);}finally{$('withdraw-delete').disabled=false;}});
 $('technical-fill').addEventListener('click',()=>{if(!test)return;$('perceived').disabled=false;touched=new Set(['valence','arousal']);$('valence').value='0';$('arousal').value='0';document.querySelector('input[name=naturalness][value="3"]').checked=true;reveal();$('target-match').value='3';touched.add('target-match');record();});
+// No entry checkbox is ticked when the page opens; the saved record still notes earlier Test/Explore use (author, 2026-09-15).
+function clearEntryChecks(){for(const id of ['consent','english','headphones','previous-studio'])$(id).checked=false;}
+window.addEventListener('pageshow',event=>{if(event.persisted&&!$('setup').hidden)clearEntryChecks();});
 async function init(){try{
  const response=await fetch('/study/manifest.json');if(!response.ok)throw new Error('The study audio is not available yet. Please return when the researcher opens recruitment.');manifest=await response.json();currentManifest=manifest;
  $('study-status').textContent=`${manifest.trials_per_session} clips · 9 synthesis systems · ${manifest.study_version}`;
@@ -120,7 +123,7 @@ async function init(){try{
  if(session?.study_version==='echo-user-voice-20260907-nine-v4'&&session.collection_version===COLLECTION_VERSION&&session.record_type===(test?'technical_test':'human_response')){const previous=await fetch('/study/manifest-v4.json');if(!previous.ok)throw new Error('The saved study version could not load. Keep this browser data and retry.');manifest=await previous.json();$('study-status').textContent='Resuming your earlier 27-clip study. Its allocation and ratings are preserved.';}
  if(session?.study_version===manifest.study_version&&session.collection_version===COLLECTION_VERSION&&session.record_type===(test?'technical_test':'human_response')){panels('resume');$('resume-description').textContent=`${session.rows.length} of ${manifest?.trials_per_session||45} responses saved in this browser. Continue with participant code ${session.participant_id}.`;$('transfer-notice').hidden=Boolean(session.remote);}
  else panels('setup');
- $('study-nickname').value=readNickname();$('previous-studio').checked=wasExposed();
+ $('study-nickname').value=readNickname();clearEntryChecks();
  if(test&&!session){$('study-nickname').value=readNickname()||'technical_demo';$('consent').parentElement.hidden=true;$('english').parentElement.hidden=true;$('headphones').parentElement.hidden=true;$('consent').required=false;$('english').required=false;$('headphones').required=false;$('start-form').querySelector('button').textContent='Begin technical test';}
  if(!storageAvailable)$('study-status').textContent+=' · local saving unavailable';
 }catch(e){error(e.message);$('study-status').textContent='Study unavailable.';}}
