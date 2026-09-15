@@ -20,6 +20,7 @@ export const sessions = sqliteTable('study_sessions', {
   completedUtc: text('completed_utc'),
   withdrawnUtc: text('withdrawn_utc'),
   listenerId: text('listener_id'),
+  gender: text('gender'),
 }, t => [
   index('idx_sessions_type_group').on(t.recordType, t.groupNumber),
   index('idx_study_sessions_listener').on(t.listenerId),
@@ -54,7 +55,7 @@ export const responses = sqliteTable('study_responses', {
 ]);
 
 export const interactiveSessions = sqliteTable('interactive_sessions', {
- sessionId:text('session_id').primaryKey(), tokenHash:text('token_hash').notNull(), nickname:text('nickname').notNull(), mode:text('mode').notNull(), engine:text('engine'), recordType:text('record_type').notNull(), version:text('version').notNull(), consentUtc:text('consent_utc').notNull(), receivedUtc:text('received_utc').notNull(), updatedUtc:text('updated_utc').notNull(), withdrawnUtc:text('withdrawn_utc'), listenerId:text('listener_id')
+ sessionId:text('session_id').primaryKey(), tokenHash:text('token_hash').notNull(), nickname:text('nickname').notNull(), mode:text('mode').notNull(), engine:text('engine'), recordType:text('record_type').notNull(), version:text('version').notNull(), consentUtc:text('consent_utc').notNull(), receivedUtc:text('received_utc').notNull(), updatedUtc:text('updated_utc').notNull(), withdrawnUtc:text('withdrawn_utc'), listenerId:text('listener_id'), gender:text('gender')
 }, t=>[index('idx_interactive_sessions_updated').on(t.updatedUtc),index('idx_interactive_sessions_listener').on(t.listenerId),check('interactive_mode',sql`${t.mode} IN ('line','explore')`),check('interactive_engine',sql`${t.engine} IS NULL OR ${t.engine} IN ('pyttsx3','sapi5xml','espeak','kokoro','chatterbox','zipvoice','styletts2','cosyvoice2','parlertts','piper')`),check('interactive_type',sql`${t.recordType} IN ('interactive_exploration','technical_test')`),check('interactive_engine_mode',sql`(${t.mode}='explore' AND ${t.engine} IS NOT NULL) OR (${t.mode}='line' AND ${t.engine} IS NULL)`)]);
 export const interactiveTurns = sqliteTable('interactive_turns', {
  sessionId:text('session_id').notNull().references(()=>interactiveSessions.sessionId,{onDelete:'cascade'}), turnOrder:integer('turn_order').notNull(), engine:text('engine').notNull(), emotion:text('emotion').notNull(), inputText:text('input_text').notNull(), outputText:text('output_text').notNull(), turnJson:text('turn_json').notNull(), createdUtc:text('created_utc').notNull(), receivedUtc:text('received_utc').notNull()

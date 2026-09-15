@@ -2,7 +2,7 @@ import {audioUpload,deleteSessionAudio} from './audio.js';
 import {validatePlayback,savePlayback,deletePlayback} from './playback.js';
 import {LISTENER_PATTERN} from '../listener.js';
 import {nicknameTaken,NICKNAME_TAKEN} from './nicknames.js';
-import {validateNickname,validateConversationTurn} from '../participant.js';
+import {validateNickname,validateGender,validateConversationTurn} from '../participant.js';
 import {INTERACTIVE_VERSION} from '../interactive-sync.js';
 import {controlsFor} from '../voice-controls.js';
 import {TEST_ENGINES,EXPLORE_ENGINES} from '../engine-catalog.js';
@@ -22,24 +22,29 @@ export async function interactiveApi(request,url,h){
   if(input.mode==='explore'?!EXPLORE_ENGINES.includes(input.engine):input.engine!==null)fail(400,'Choose one engine for an Explore conversation.');
   if(input.consent!==true||typeof input.consent_utc!=='string'||!Number.isFinite(Date.parse(input.consent_utc)))fail(400,'Agree to storage before continuing.');
   if(input.listener_id!=null&&!LISTENER_PATTERN.test(input.listener_id))fail(400,'Invalid listener code.');
+  let gender=null;if(input.gender!=null)try{gender=validateGender(input.gender);}catch(e){fail(400,e.message);}
   const timestamp=now(),hash=await tokenHash(request);
   const known=await db.prepare('SELECT 1 AS n FROM interactive_sessions WHERE session_id=?').bind(input.session_id).first();
   // Official testing (EXP1) began with this release: a new non-technical X- conversation comes from an out-of-date page.
   if(!known&&input.record_type!=='technical_test'&&input.session_id.startsWith('X-'))fail(409,'This page is out of date. Reload the page to start a new session.');
+  // Gender became a required answer with this release: a new conversation without it comes from an out-of-date page.
+  if(!known&&input.record_type!=='technical_test'&&gender===null)fail(409,'This page is out of date. Reload the page to start a new session.');
   if(!known&&input.record_type!=='technical_test'&&await nicknameTaken(db,nickname,input.listener_id))fail(409,NICKNAME_TAKEN);
   if(!known&&h.allowNewSession?.()===false)fail(429,'Too many new conversations from this network. Wait an hour and try again.');
-  await db.prepare('INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc,listener_id) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO NOTHING').bind(input.session_id,hash,nickname,input.mode,input.engine,input.record_type,input.version,input.consent_utc,timestamp,timestamp,input.listener_id??null).run();
+  await db.prepare('INSERT INTO interactive_sessions (session_id,token_hash,nickname,mode,engine,record_type,version,consent_utc,received_utc,updated_utc,listener_id,gender) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO NOTHING').bind(input.session_id,hash,nickname,input.mode,input.engine,input.record_type,input.version,input.consent_utc,timestamp,timestamp,input.listener_id??null,gender).run();
   const s=await owned(input.session_id);if(s.withdrawn_utc)fail(410,'This conversation was deleted.');
   if(s.nickname!==nickname||s.mode!==input.mode||s.engine!==input.engine||s.version!==input.version||s.record_type!==input.record_type)fail(409,'Nickname and TTS engine are fixed for this conversation. Start a new one to change them.');
   // A conversation saved before listener codes existed is linked the first time its browser sends one; a code is never replaced.
   if(input.listener_id&&!s.listener_id)await db.prepare('UPDATE interactive_sessions SET listener_id=? WHERE session_id=? AND listener_id IS NULL').bind(input.listener_id,s.session_id).run();
+  // A conversation saved before gender was asked takes the first gender its browser sends; a stored gender is never replaced.
+  if(gender)await db.prepare('UPDATE interactive_sessions SET gender=? WHERE session_id=? AND gender IS NULL').bind(gender,s.session_id).run();
   return json({session_id:s.session_id});
  }
  const audioRoute=path.match(/^\/api\/interactive\/sessions\/([^/]+)\/audio\/([1-9][0-9]?)$/);
  if(audioRoute){const session=await owned(audioRoute[1]);if(session.withdrawn_utc)fail(410,'This conversation was deleted.');if(request.method!=='PUT')fail(405,'Method not allowed.');return audioUpload(request,h,session,Number(audioRoute[2]));}
  const match=path.match(/^\/api\/interactive\/sessions\/([^/]+)(\/turns|\/ratings|\/attempts|\/playback)?$/);
  if(!match)fail(404,'Endpoint not found.');const s=await owned(match[1]);
- if(request.method==='DELETE'&&!match[2]){await db.prepare('UPDATE interactive_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?),nickname=\'\' WHERE session_id=?').bind(now(),s.session_id).run();await deleteSessionAudio(db,h.audioBucket,s.session_id);await db.prepare('DELETE FROM generation_attempts WHERE session_id=?').bind(s.session_id).run();await deletePlayback(db,'interactive',s.session_id).run();await db.prepare('DELETE FROM interactive_turns WHERE session_id=?').bind(s.session_id).run();return json({withdrawn:true});}
+ if(request.method==='DELETE'&&!match[2]){await db.prepare('UPDATE interactive_sessions SET withdrawn_utc=COALESCE(withdrawn_utc,?),nickname=\'\',gender=NULL WHERE session_id=?').bind(now(),s.session_id).run();await deleteSessionAudio(db,h.audioBucket,s.session_id);await db.prepare('DELETE FROM generation_attempts WHERE session_id=?').bind(s.session_id).run();await deletePlayback(db,'interactive',s.session_id).run();await db.prepare('DELETE FROM interactive_turns WHERE session_id=?').bind(s.session_id).run();return json({withdrawn:true});}
  if(s.withdrawn_utc)fail(410,'This conversation was deleted.');
  const read=async()=> (await db.prepare('SELECT * FROM interactive_turns WHERE session_id=? ORDER BY turn_order').bind(s.session_id).all()).results;
  if(request.method==='GET'&&!match[2]){const turns=await read(),ratings=(await db.prepare('SELECT turn_order,rating_json FROM interactive_ratings WHERE session_id=? ORDER BY turn_order').bind(s.session_id).all()).results;return json({session_id:s.session_id,nickname:s.nickname,mode:s.mode,engine:s.engine,saved_count:turns.length,turns:turns.map(t=>JSON.parse(t.turn_json)),ratings:ratings.map(r=>({order:r.turn_order,rating:JSON.parse(r.rating_json)}))});}

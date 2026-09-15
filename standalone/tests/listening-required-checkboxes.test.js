@@ -10,7 +10,8 @@ test('the consent and English checkboxes are mandatory and carry a red asterisk 
   assert.ok(listen.includes('<input id="consent" type="checkbox" required> I am 18 or older'));
   assert.ok(listen.includes('and responses stored for the thesis study.' + MARK + '</label>'));
   assert.ok(listen.includes('<input id="english" type="checkbox" required> I can comfortably understand spoken English.' + MARK + '</label>'));
-  assert.equal(listen.split(MARK).length - 1, 2);
+  // Exactly two checkboxes carry the asterisk; the gender answer has its own (participant-gender.test.js).
+  assert.equal((listen.match(/<label class="check">[\s\S]*?<\/label>/g) || []).filter(label => label.includes(MARK)).length, 2);
   assert.match(read('listen.css'), /\.required-mark\{color:#c62828;/);
 });
 

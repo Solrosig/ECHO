@@ -9,6 +9,15 @@ export function validateNickname(value){
 export function readNickname(){try{return validateNickname(localStorage.getItem(PROFILE_KEY));}catch{return '';}}
 export function rememberNickname(value){const name=validateNickname(value);try{localStorage.setItem(PROFILE_KEY,name);}catch{}return name;}
 export const NICKNAME_TAKEN='This nickname already exists. Change the nickname.';
+// Gender is asked beside the nickname in every entry form and is required for a new session (author, 2026-09-15).
+// Stored codes: female, male, na (shown as N/A). The choice is remembered in this browser like the nickname.
+export const GENDER_KEY='echo-gender-v1';
+export const GENDERS=Object.freeze({female:'Female',male:'Male',na:'N/A'});
+export function validateGender(value){if(typeof value!=='string'||!Object.hasOwn(GENDERS,value))throw new Error('Choose your gender: Female, Male or N/A.');return value;}
+export function readGender(){try{return validateGender(localStorage.getItem(GENDER_KEY));}catch{return '';}}
+export function rememberGender(value){const gender=validateGender(value);try{localStorage.setItem(GENDER_KEY,gender);}catch{}return gender;}
+// Ticks the remembered choice in a form's gender field; nothing is ticked when no valid choice is remembered.
+export function fillGender(form,value=readGender()){for(const input of form.querySelectorAll('input[name=gender]'))input.checked=input.value===value;}
 // Asks the server whether another browser already uses this nickname. When the check cannot run, the page continues and
 // the server still refuses a duplicate when the new session is saved.
 export async function nicknameAvailable(nickname,listener,fetcher=globalThis.fetch){

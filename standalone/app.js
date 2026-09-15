@@ -7,7 +7,7 @@ import {QUADRANTS} from './circumplex.js';
 import {requestReplyWhenReady,checkDialogue} from './dialogue-client.js';
 import {NeuralClient} from './neural-client.js';
 import {hashAudio} from './audio-utils.js';
-import {readNickname,rememberNickname,validateNickname,nicknameAvailable,NICKNAME_TAKEN,MAX_EXCHANGES} from './participant.js';
+import {readNickname,rememberNickname,validateNickname,nicknameAvailable,NICKNAME_TAKEN,MAX_EXCHANGES,rememberGender,fillGender} from './participant.js';
 import {createInteractiveSession,InteractiveSync,loadOutbox} from './interactive-sync.js';
 import {listenerId} from './listener.js';
 import {trackPlayback,trackTranscript} from './playback-log.js';
@@ -36,7 +36,7 @@ function update(){
  $('voice-readout').textContent=p.voice;$('mechanism-name').textContent=engine.mechanism;$('engine-detail').textContent=engine.detail;
  $('custom-controls').hidden=s.condition!=='custom';$('custom-rate-value').textContent=`${s.custom.rate.toFixed(2)}×`;$('custom-gain-value').textContent=s.custom.gain.toFixed(2);$('custom-pitch-value').textContent=engine.pitch?s.custom.pitch:'Unavailable';
  $('char-count').textContent=`${$('message').value.length} / 800`;
- $('chat-engine').disabled=busy||Boolean(chat);$('nickname').disabled=busy||Boolean(mode==='explore'&&chat);
+ $('chat-engine').disabled=busy||Boolean(chat);$('nickname').disabled=busy||Boolean(mode==='explore'&&chat);for(const g of document.querySelectorAll('#identity-form input[name=gender]'))g.disabled=busy||Boolean(mode==='explore'&&chat);
  $('chat-engine-label').textContent=chat?`${ENGINES[chat.engine].name} · ${chat.nickname}`:'Choose a voice for this conversation';
  const count=chat?.turns.length||0;$('chat-count').textContent=`${count} / ${MAX_EXCHANGES}`;$('chat-send').disabled=busy||count>=MAX_EXCHANGES;$('chat-message').disabled=busy||count>=MAX_EXCHANGES;
  $('engine-lock-note').textContent=chat?'Voice locked for this conversation. Start a new conversation to change it.':'The voice is locked after your first message. Start a new conversation to change it.';
@@ -54,14 +54,14 @@ function setMode(next,{url=true}={}){
  if(mode==='explore')void checkDialogue();
  document.querySelectorAll('audio').forEach(a=>a.pause());
  if(mode!=='listening'){try{localStorage.setItem('echo-studio-exposed','1');}catch{}}
- if(mode==='explore'&&chat)$('nickname').value=chat.nickname;
+ if(mode==='explore'&&chat){$('nickname').value=chat.nickname;fillGender($('identity-form'),chat.gender);}
  if(url){const u=new URL('/studio',location.origin);u.searchParams.set('mode',mode);history.pushState(null,'',u);}
  update();
 }
 function status(text){phase=text;$(mode==='explore'?'chat-status':'status').textContent=text;}
 function lock(value){busy=value;document.querySelectorAll('#studio input,#studio select,#studio textarea,#studio button').forEach(el=>{if(!el.closest('#listening-content')&&!['cancel','chat-cancel'].includes(el.id))el.disabled=value;});$('cancel').hidden=!value||mode==='explore';$('chat-cancel').hidden=!value||mode!=='explore';if(!value){clearInterval(ticker);update();refreshMessageRatings();document.querySelectorAll('[data-compare-engine]').forEach(b=>{b.disabled=b.dataset.unsupported==='true';});}}
 function eventFor(id){return event=>{if(id===job&&event.type==='progress')status(event.text);};}
-function identity(){if(!$('identity-form').reportValidity())throw new Error('Enter your nickname and agree to storage before continuing.');return validateNickname($('nickname').value);}
+function identity(){if(!$('identity-form').reportValidity())throw new Error('Enter your nickname, choose your gender and agree to storage before continuing.');return {nickname:validateNickname($('nickname').value),gender:rememberGender($('identity-form').elements.gender.value)};}
 // Another browser's nickname is refused before a new session starts; the server refuses it again when the session is saved.
 const confirmedNicknames=new Set();
 function nicknameError(message){$('nickname-error').textContent=message;$('nickname-error').hidden=!message;$('nickname').setCustomValidity(message);if(message)$('nickname').reportValidity();}
@@ -88,21 +88,21 @@ function addRecord(record,session,order){
  if(records.length>12){const old=records.shift();URL.revokeObjectURL(old.url);$('results').lastElementChild.remove();}
 }
 async function runLine({reuse=false,engine,condition}={}){
- if(busy)return;let nickname;try{nickname=identity();}catch(e){$('error').textContent=e.message;$('error').hidden=false;return;}
+ if(busy)return;let nickname,gender;try{({nickname,gender}=identity());}catch(e){$('error').textContent=e.message;$('error').hidden=false;return;}
  const id=++job;let s=selection();if(engine)s.engine=engine;if(condition)s.condition=condition;
  $('error').hidden=true;started=Date.now();lock(true);status('Preparing your voice…');ticker=setInterval(()=>{$('status').textContent=`${phase} · ${Math.floor((Date.now()-started)/1000)}s`;},1000);
  try{
   if(!await claimNickname(nickname)){status('Change the nickname to continue.');return;}
   let text;if(reuse){if(!lastLine)throw new Error('Generate a line first.');text=lastLine.text;s={...lastLine.selection,engine:engine||lastLine.selection.engine,condition:condition||lastLine.selection.condition};}else{text=validateText($('message').value);lastLine={text,selection:{...s}};}
-  if(!lineSession||lineSession.nickname!==nickname||lineSession.turns.length>=12||(lineSession.attempts?.length||0)>=100)lineSession=createInteractiveSession('line',nickname,null);
+  if(!lineSession||lineSession.nickname!==nickname||lineSession.gender!==gender||lineSession.turns.length>=12||(lineSession.attempts?.length||0)>=100)lineSession=createInteractiveSession('line',nickname,null,gender);
   const record=await speech(text,s,id,lineSession);if(!record)return;
   const turn=turnMetadata(lineSession,record,text);void syncFor(lineSession).add(turn,record.buffer);addRecord({...record,nickname},lineSession,turn.order);$('compare-actions').hidden=false;status('Voice ready. Listen and compare the expression.');
  }catch(e){if(id!==job)return;$('error').textContent=e.message||String(e);$('error').hidden=false;status('Operation stopped. Adjust the settings and retry.');}finally{if(id===job)lock(false);}
 }
 function bubble(role,text){const el=document.createElement('article');el.className='chat-bubble '+role;if(text){const p=document.createElement('p');p.textContent=text;el.append(p);}return el;}
 async function runChat(){
- if(busy||(chat?.turns.length||0)>=MAX_EXCHANGES)return;let nickname,input;try{nickname=identity();input=validateText($('chat-message').value);}catch(e){$('chat-error').textContent=e.message;$('chat-error').hidden=false;return;}
- if(!chat){lock(true);const free=await claimNickname(nickname);lock(false);if(!free){status('Change the nickname to continue.');return;}chat=createInteractiveSession('explore',nickname,$('chat-engine').value);chat.audioUrls=[];}
+ if(busy||(chat?.turns.length||0)>=MAX_EXCHANGES)return;let nickname,gender,input;try{({nickname,gender}=identity());input=validateText($('chat-message').value);}catch(e){$('chat-error').textContent=e.message;$('chat-error').hidden=false;return;}
+ if(!chat){lock(true);const free=await claimNickname(nickname);lock(false);if(!free){status('Change the nickname to continue.');return;}chat=createInteractiveSession('explore',nickname,$('chat-engine').value,gender);chat.audioUrls=[];}
  const s=selection(),id=++job;started=Date.now();$('chat-error').hidden=true;lock(true);status('Preparing your voice reply…');
  if(!$('chat-messages').querySelector('.chat-bubble'))$('chat-messages').replaceChildren();
  const userBubble=bubble('user',input),pending=bubble('assistant','Preparing a voice message…');$('chat-messages').append(userBubble,pending);$('chat-message').value='';$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
@@ -140,7 +140,7 @@ $('cancel').addEventListener('click',cancel);$('chat-cancel').addEventListener('
 $('mode-listening').addEventListener('click',()=>setMode('listening'));$('mode-test').addEventListener('click',()=>setMode('line'));$('mode-explore').addEventListener('click',()=>setMode('explore'));
 window.addEventListener('popstate',()=>setMode(new URLSearchParams(location.search).get('mode')||'line',{url:false}));
 $('new-conversation').addEventListener('click',()=>{if(busy)return;chat?.audioUrls?.forEach(url=>URL.revokeObjectURL(url));chat=null;$('chat-messages').replaceChildren();$('chat-error').hidden=true;$('chat-message').value='';$('chat-status').textContent='New conversation. Choose one TTS engine, then send your first message.';update();});
-$('nickname').value=readNickname();$('nickname').addEventListener('change',()=>{let name;try{name=validateNickname($('nickname').value);}catch(e){$('nickname').setCustomValidity(e.message);return;}void claimNickname(name);});$('nickname').addEventListener('input',()=>nicknameError(''));
+$('nickname').value=readNickname();fillGender($('identity-form'));document.querySelectorAll('#identity-form input[name=gender]').forEach(g=>g.addEventListener('change',()=>rememberGender(g.value)));$('nickname').addEventListener('change',()=>{let name;try{name=validateNickname($('nickname').value);}catch(e){$('nickname').setCustomValidity(e.message);return;}void claimNickname(name);});$('nickname').addEventListener('input',()=>nicknameError(''));
 for(const id of ['engine','condition','custom-rate','custom-gain','custom-pitch','message','chat-engine'])$(id).addEventListener('input',update);document.querySelectorAll('input[name=emotion]').forEach(el=>el.addEventListener('change',update));
 document.querySelectorAll('[data-compare-engine]').forEach(button=>button.addEventListener('click',()=>void runLine({reuse:true,engine:button.dataset.compareEngine})));
 $('baseline').addEventListener('click',()=>void runLine({reuse:true,engine:lastComparedEngine,condition:'neutral'}));
