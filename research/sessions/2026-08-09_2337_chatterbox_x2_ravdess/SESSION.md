@@ -3,6 +3,8 @@
 - **Created (UTC):** 2026-08-09T23:00:44.972080+00:00
 - **Purpose / objective:** X2 condition C: professional RAVDESS references
 - **Engine:** `chatterbox`
+- **Engine settings:** `refs=refs_ravdess`, `device=cpu`
+- **Settings provenance:** BACKFILLED 2026-09-01 — NOT recorded at render time. `synth_stimuli.py` began writing the engine-settings line on 2026-08-31, so sessions before that date carry none, and `build_scorecard.py` could not show the engine x reference-level contrast for them. Basis: Purpose line states "condition C: professional RAVDESS references"; folder name is `refs_ravdess`. Reconstructed, never observed — read it as such.
 - **Parameter sets:** rate_volume_pitch
 - **Git commit:** `74bd32c`   **nearest tag:** `v0.4-naturalness2`
 - **Stimuli:** 5 fixed neutral sentences (S01, S02, S03, S04, S05)

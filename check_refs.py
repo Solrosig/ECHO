@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import math
 import wave
 from pathlib import Path
 
