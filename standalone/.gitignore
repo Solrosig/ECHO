@@ -1,0 +1,11 @@
+node_modules/
+.local/
+data/
+backups/
+.env
+.env.*
+!.env.example
+!.env.hosting.example
+.DS_Store
+research-bundle/responses/*.csv
+research-bundle/analysis/

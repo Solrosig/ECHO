@@ -1,8 +1,16 @@
 """LLM adapter — PROTECTED SEAM #2.
 
-`generate(prompt)` returns a parsed result. The local OllamaAdapter and a future
-commercial OpenAIAdapter share this interface, so the pipeline never changes when
-the model does.
+`generate(prompt)` returns a parsed result. Every backend implements the same
+interface, so the pipeline never changes when the model does.
+
+ECHO RUNS ONE MODEL: `llama3.2:3b`, served locally by Ollama. `OllamaAdapter`
+reaches it through Ollama's *OpenAI-compatible* HTTP endpoint
+(`http://localhost:11434/v1`), which is the only reason the `openai` package is a
+dependency: it is used as a client for that wire protocol, nothing more. No
+OpenAI service is contacted, no account or key exists (`api_key="ollama"` is a
+required-but-ignored placeholder), and no text leaves the machine. The seam means
+a hosted backend *could* be added as a new class; none is implemented and none is
+planned, because Chapter 1's aim is a locally deployed system.
 """
 
 from __future__ import annotations
@@ -105,7 +113,7 @@ class MockLLMAdapter(LLMAdapter):
 
 
 class OllamaAdapter(LLMAdapter):
-    """Local Ollama via its OpenAI-compatible endpoint."""
+    """Local Ollama via its OpenAI-compatible endpoint. The ONLY live backend."""
 
     def __init__(
         self,
@@ -115,9 +123,12 @@ class OllamaAdapter(LLMAdapter):
         temperature: float = 0.7,
         timeout_s: float = 60.0,
     ) -> None:
-        # Imported here so tests/offline runs never need the openai package.
+        # `openai` here is a CLIENT for Ollama's OpenAI-compatible wire protocol, not a
+        # connection to OpenAI. Imported inside __init__ so tests and offline runs never
+        # need the package at all.
         from openai import OpenAI
 
+        # api_key: Ollama requires the Authorization header and ignores its value.
         self._client = OpenAI(base_url=host, api_key="ollama", timeout=timeout_s)
         self.model_id = model
         self._temperature = temperature

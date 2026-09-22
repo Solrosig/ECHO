@@ -1,0 +1,10 @@
+{
+  "study_version": "echo-user-voice-20260907-nine-v4",
+  "clips": 45,
+  "engines": 9,
+  "unique_waveforms": 45,
+  "all_non_silent": true,
+  "clipped_samples": 0,
+  "f0_method": "Praat autocorrelation via parselmouth; 10 ms step; 60\u2013600 Hz; median and IQR of voiced frames; no claim of manual pitch-track verification",
+  "human_results": false
+}

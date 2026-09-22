@@ -1,0 +1,18 @@
+{
+  "release": "echo-standalone-final-1.5.0",
+  "date": "2026-09-10",
+  "based_on_hugging_face_commit": "54c21bb971c69aa120f35ef66e99a87b40d345fe",
+  "study_version": "echo-user-voice-20260910-nine-v5",
+  "trials_per_new_listener": 45,
+  "audio_corpus_unchanged": true,
+  "source_adaptations": [
+    "Chromium fetch receiver fix moved from HF startup patch to source",
+    "local defaults and browser models bundled",
+    "independent hosting instructions and source",
+    "current thesis and acoustic evidence included",
+    "version-aware full-45 and current application-stage analysis"
+  ],
+  "private_participant_data_included": false,
+  "python_weights_included": false,
+  "thesis_file": "thesis/ECHO_Thesis_EN.docx"
+}

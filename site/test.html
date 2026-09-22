@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listening study</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+
+<div class="progress">
+  <div class="bar"><i id="fill"></i></div>
+  <span class="count" id="count">—</span>
+</div>
+
+<h1 id="phase">Practice</h1>
+<p class="muted" id="blurb">These four do not count. They are here so the task is familiar
+before the real recordings start.</p>
+
+<div class="panel">
+  <div class="player">
+    <button id="play">Play</button>
+    <span class="muted small" id="plays">you may play each recording twice</span>
+  </div>
+</div>
+
+<h2>How natural did the voice sound?</h2>
+<div class="scale" id="mos">
+  <button data-v="1" aria-pressed="false">1</button>
+  <button data-v="2" aria-pressed="false">2</button>
+  <button data-v="3" aria-pressed="false">3</button>
+  <button data-v="4" aria-pressed="false">4</button>
+  <button data-v="5" aria-pressed="false">5</button>
+</div>
+<div class="ends"><span class="small muted">bad</span><span class="small muted">excellent</span></div>
+
+<h2>What emotion was the speaker expressing?</h2>
+<p class="small muted">Click one point. Left–right is pleasant vs unpleasant; up–down is energetic vs
+calm. <strong>Judge the speaker's emotion, not how the recording made you feel.</strong></p>
+
+<div class="gridwrap">
+  <svg id="grid" width="260" height="260" viewBox="0 0 260 260" tabindex="0"
+       role="application" aria-label="Emotion grid: click to place the speaker's emotion">
+    <rect class="frame" x="18" y="18" width="224" height="224" rx="10"/>
+    <line class="axis" x1="18" y1="130" x2="242" y2="130"/>
+    <line class="axis" x1="130" y1="18" x2="130" y2="242"/>
+    <text class="lab" x="186" y="52"  text-anchor="middle">happy</text>
+    <text class="lab" x="74"  y="52"  text-anchor="middle">upset</text>
+    <text class="lab" x="74"  y="216" text-anchor="middle">sad</text>
+    <text class="lab" x="186" y="216" text-anchor="middle">calm</text>
+    <text class="axlab" x="130" y="12"  text-anchor="middle">energetic</text>
+    <text class="axlab" x="130" y="254" text-anchor="middle">low energy</text>
+    <text class="axlab" x="14"  y="134" text-anchor="end">unpleasant</text>
+    <text class="axlab" x="246" y="134" text-anchor="start">pleasant</text>
+    <circle class="halo" cx="-99" cy="-99" r="0"/>
+    <circle class="dot"  cx="-99" cy="-99" r="0"/>
+  </svg>
+  <div>
+    <p class="readout" id="readout">nothing marked yet</p>
+    <p class="small muted">Keyboard: press <strong>1</strong> happy, <strong>2</strong> upset,
+    <strong>3</strong> sad, <strong>4</strong> calm to place a point at that corner.</p>
+  </div>
+</div>
+
+<div class="nav">
+  <span class="small muted" id="hint">Play the recording, then answer both questions.</span>
+  <span class="spacer"></span>
+  <button class="primary" id="next" disabled>Next</button>
+</div>
+
+<audio id="a" preload="auto"></audio>
+
+<script src="echo.js"></script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var code = params.get("p") || "";
+  if (!code) { location.replace("index.html"); return; }
+  var isPractice = params.get("practice") === "1";
+
+  var audio = document.getElementById("a");
+  var state = null, list = [], i = 0, plays = 0, mos = null, va = null, t0 = 0;
+
+  function fresh(manifest) {
+    var s = ECHO.load();
+    if (s && s.code === code && !isPractice && s.answers) { return s; }
+    return {
+      code: code,
+      started: new Date().toISOString(),
+      order_seed: ECHO.seedFrom(code),
+      user_agent: navigator.userAgent,
+      answers: []
+    };
+  }
+
+  fetch("manifest.json").then(function (r) { return r.json(); }).then(function (m) {
+    // Practice runs in the manifest's own order; the test is shuffled from the participant code,
+    // so the order is reproducible from the responses file alone.
+    list = isPractice ? m.practice.slice() : ECHO.shuffled(m.test, code);
+    state = fresh(m);
+    if (!isPractice && state.answers.length) { i = state.answers.length; }
+    if (!list.length) { location.href = "test.html?p=" + encodeURIComponent(code); return; }
+    render();
+  }).catch(function () {
+    document.getElementById("hint").textContent =
+      "Could not load the recordings. Reload the page; if it persists, tell the organiser.";
+  });
+
+  function render() {
+    if (i >= list.length) {
+      if (isPractice) {
+        location.href = "test.html?p=" + encodeURIComponent(code);
+      } else {
+        state.finished = new Date().toISOString();
+        ECHO.save(state);
+        location.href = "done.html?p=" + encodeURIComponent(code);
+      }
+      return;
+    }
+    document.getElementById("phase").textContent = isPractice ? "Practice" : "Listening study";
+    document.getElementById("blurb").hidden = !isPractice;
+    document.getElementById("count").textContent = (i + 1) + " / " + list.length;
+    document.getElementById("fill").style.width = ((i / list.length) * 100) + "%";
+
+    audio.src = "audio/" + list[i].token + ".wav";
+    plays = 0; mos = null; va = null; t0 = Date.now();
+    document.getElementById("plays").textContent = "you may play each recording twice";
+    document.getElementById("play").disabled = false;
+    document.getElementById("readout").textContent = "nothing marked yet";
+    document.querySelector("#grid .dot").setAttribute("r", 0);
+    document.querySelector("#grid .halo").setAttribute("r", 0);
+    Array.prototype.forEach.call(document.querySelectorAll("#mos button"), function (b) {
+      b.setAttribute("aria-pressed", "false");
+    });
+    update();
+  }
+
+  function update() {
+    var ready = mos !== null && va !== null && plays > 0;
+    document.getElementById("next").disabled = !ready;
+    document.getElementById("hint").textContent = ready
+      ? "" : (plays === 0 ? "Play the recording first."
+                          : "Answer both questions to continue.");
+  }
+
+  document.getElementById("play").addEventListener("click", function () {
+    if (plays >= 2) { return; }
+    plays += 1;
+    audio.currentTime = 0;
+    audio.play();
+    document.getElementById("plays").textContent =
+      plays >= 2 ? "no plays left for this recording" : "one more play available";
+    if (plays >= 2) { document.getElementById("play").disabled = true; }
+    update();
+  });
+
+  document.querySelectorAll("#mos button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      mos = parseInt(b.dataset.v, 10);
+      document.querySelectorAll("#mos button").forEach(function (x) {
+        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      });
+      update();
+    });
+  });
+
+  var grid = document.getElementById("grid");
+  ECHO.attachGrid(grid, function (v, a) {
+    va = { valence: v, arousal: a, quadrant: ECHO.quadrantOf(v, a) };
+    ECHO.drawDot(grid, v, a);
+    document.getElementById("readout").textContent =
+      "valence " + v.toFixed(2) + " · arousal " + a.toFixed(2);
+    update();
+  });
+
+  document.getElementById("next").addEventListener("click", function () {
+    if (!isPractice) {
+      state.answers.push({
+        trial: i + 1,
+        token: list[i].token,
+        mos: mos,
+        valence: va.valence,
+        arousal: va.arousal,
+        quadrant: va.quadrant,
+        plays: plays,
+        seconds: Math.round((Date.now() - t0) / 100) / 10
+      });
+      ECHO.save(state);   // after EVERY trial: a crash at trial 47 must not cost the session
+    }
+    i += 1;
+    render();
+  });
+})();
+</script>
+
+</main>
+</body>
+</html>

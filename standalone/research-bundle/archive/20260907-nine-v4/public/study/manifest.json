@@ -1,0 +1,567 @@
+{
+  "study_version": "echo-user-voice-20260907-nine-v4",
+  "status": "frozen_stimuli_awaiting_human_validation",
+  "calibration_version": "echo-acoustic-calibration-20260907-v3",
+  "trials_per_session": 27,
+  "items": [
+    {
+      "item_id": "291f113992428215ec",
+      "text_id": "S01",
+      "audio": "/study/audio/291f113992428215ec.wav",
+      "sha256": "7c9b53aac750e83dfaed18bcdf3827ab125a7118ccbfadffaba99157057a5f62",
+      "duration_s": 5.38
+    },
+    {
+      "item_id": "53ee759fa9d79a6e16",
+      "text_id": "S01",
+      "audio": "/study/audio/53ee759fa9d79a6e16.wav",
+      "sha256": "a2c29cee8c3933edd7d3891df04e95a47075f839f49bf1ab6cb837a2445b02fc",
+      "duration_s": 4.01827664399093
+    },
+    {
+      "item_id": "3880eb8c1541cb01b5",
+      "text_id": "S01",
+      "audio": "/study/audio/3880eb8c1541cb01b5.wav",
+      "sha256": "7ff5d495ef7ef267dc9b81be265680690f1c162ab346a981cb6fcf96b18a0574",
+      "duration_s": 4.6761451247165535
+    },
+    {
+      "item_id": "516ab48a72b5ab260f",
+      "text_id": "S01",
+      "audio": "/study/audio/516ab48a72b5ab260f.wav",
+      "sha256": "075f930a90aebe64bc91db22bbcd73db2229e896c8dd29ca49addb3ef3c360d4",
+      "duration_s": 6.637913832199547
+    },
+    {
+      "item_id": "d059f63aa95110c42d",
+      "text_id": "S01",
+      "audio": "/study/audio/d059f63aa95110c42d.wav",
+      "sha256": "009c5f6fede5fff7d89c816491f378140e0318ba0280a8349949a9a14c51b611",
+      "duration_s": 5.81827664399093
+    },
+    {
+      "item_id": "9e26cadc4eb110ab26",
+      "text_id": "S01",
+      "audio": "/study/audio/9e26cadc4eb110ab26.wav",
+      "sha256": "a5ec1bb6db1bcc3f205df601dea73279762fd0503d804e39489277fed6ff772d",
+      "duration_s": 7.213242630385488
+    },
+    {
+      "item_id": "c04a15e55e03807e63",
+      "text_id": "S01",
+      "audio": "/study/audio/c04a15e55e03807e63.wav",
+      "sha256": "1addda84f4f649b6ed3e160a64d0fd2c9e1b12bc3f06979b0547495de179919f",
+      "duration_s": 4.997596371882087
+    },
+    {
+      "item_id": "14b24a81b81b8da222",
+      "text_id": "S01",
+      "audio": "/study/audio/14b24a81b81b8da222.wav",
+      "sha256": "3d7aaf7155778ee0db2c334fe4149f7c5887dc4e451a634c44a67e9f48bea60d",
+      "duration_s": 6.264897959183673
+    },
+    {
+      "item_id": "eeece30866564cdfdb",
+      "text_id": "S01",
+      "audio": "/study/audio/eeece30866564cdfdb.wav",
+      "sha256": "3d9833f5fc5b903ff7826d370b4375820518a7e9efde8bf155b53b5a103d1304",
+      "duration_s": 9.843083900226757
+    },
+    {
+      "item_id": "8a30c7098cb6634d9c",
+      "text_id": "S01",
+      "audio": "/study/audio/8a30c7098cb6634d9c.wav",
+      "sha256": "ecfc3c430b8b72ab1dc32ca0a462f0501fa12cb6194e1dba1552d89481bd9d80",
+      "duration_s": 7.848163265306122
+    },
+    {
+      "item_id": "b41b9ba1b5ae13d537",
+      "text_id": "S01",
+      "audio": "/study/audio/b41b9ba1b5ae13d537.wav",
+      "sha256": "88db42484203fdc319df3381cd05cacb838fbcd25ab8545fe7177fdc1dd63c5a",
+      "duration_s": 6.332199546485261
+    },
+    {
+      "item_id": "521e5c9bd807c1b545",
+      "text_id": "S01",
+      "audio": "/study/audio/521e5c9bd807c1b545.wav",
+      "sha256": "809fddf0f920dbf36c8f7b0ecba0a88620beb74eb0ac3a48d66d70717d430472",
+      "duration_s": 5.403401360544217
+    },
+    {
+      "item_id": "4d816938caf5b95b45",
+      "text_id": "S01",
+      "audio": "/study/audio/4d816938caf5b95b45.wav",
+      "sha256": "69736af3f6b635de1118161e2bb90d967f1fbae0293ee8d44341111c5e411f5b",
+      "duration_s": 5.876825396825397
+    },
+    {
+      "item_id": "722f380d330520344d",
+      "text_id": "S01",
+      "audio": "/study/audio/722f380d330520344d.wav",
+      "sha256": "38f3b70bc47a9552619749819aa50fdc77a3f7bb632d2c980dece3aa6c6033d6",
+      "duration_s": 7.5619954648526075
+    },
+    {
+      "item_id": "9910783e35f8f00d69",
+      "text_id": "S01",
+      "audio": "/study/audio/9910783e35f8f00d69.wav",
+      "sha256": "ada9826add2763f56eca3e5de8fa07cf711e7713d3612ef97335758cc1b7fe20",
+      "duration_s": 6.813560090702948
+    },
+    {
+      "item_id": "037249171040bc5a9b",
+      "text_id": "S01",
+      "audio": "/study/audio/037249171040bc5a9b.wav",
+      "sha256": "320148c0696c8dacadb608403679761ded6a26c17df400548b1bf82434c0304a",
+      "duration_s": 7.225
+    },
+    {
+      "item_id": "b656c48213e07612f9",
+      "text_id": "S01",
+      "audio": "/study/audio/b656c48213e07612f9.wav",
+      "sha256": "cad573a1b798f135e671aab2698cc0c35de5eff7fd7fcd85c6ed34770716c9e9",
+      "duration_s": 6.75
+    },
+    {
+      "item_id": "e89bf984544f00bb0a",
+      "text_id": "S01",
+      "audio": "/study/audio/e89bf984544f00bb0a.wav",
+      "sha256": "332b5e83b7452545c190354a749eb8f6ae288fde57604d409fe5985a34768418",
+      "duration_s": 7
+    },
+    {
+      "item_id": "620080afb7d602332e",
+      "text_id": "S01",
+      "audio": "/study/audio/620080afb7d602332e.wav",
+      "sha256": "699dede625528848a9aa798563a155a9bf2af330d96ef15fab60dc100ea1a9ca",
+      "duration_s": 9.7
+    },
+    {
+      "item_id": "669259e7fe157cd650",
+      "text_id": "S01",
+      "audio": "/study/audio/669259e7fe157cd650.wav",
+      "sha256": "29b6cc99a425345d5f1854bc78b0f0210f277b3711154f324030acbb73f0e986",
+      "duration_s": 7.525
+    },
+    {
+      "item_id": "950cedd16598869f09",
+      "text_id": "S01",
+      "audio": "/study/audio/950cedd16598869f09.wav",
+      "sha256": "ff878f283ecb112c6c0bb26b1bd6d09a5a610f3528ac234b95b966b11fc47171",
+      "duration_s": 5.46
+    },
+    {
+      "item_id": "5edacc98e5683c5ecb",
+      "text_id": "S01",
+      "audio": "/study/audio/5edacc98e5683c5ecb.wav",
+      "sha256": "ae904a0c17c22ef56f36ef8327e7bfcc4191ff50c0309d0388f8ec9217483198",
+      "duration_s": 5.72
+    },
+    {
+      "item_id": "1a923a3168f05f8ad2",
+      "text_id": "S01",
+      "audio": "/study/audio/1a923a3168f05f8ad2.wav",
+      "sha256": "44edde4d881d472a97aa23aec49f4dc4f3ca488d592382c8111a57d530c036be",
+      "duration_s": 5.32
+    },
+    {
+      "item_id": "70f3f250db17be861b",
+      "text_id": "S01",
+      "audio": "/study/audio/70f3f250db17be861b.wav",
+      "sha256": "74645fe19c91c938f463ecbd62a3462dfccae950a05607961e3026a096934387",
+      "duration_s": 6.56
+    },
+    {
+      "item_id": "42e1473388d0770cd4",
+      "text_id": "S01",
+      "audio": "/study/audio/42e1473388d0770cd4.wav",
+      "sha256": "23f13fd99360f30b07607843672ff9fe3af7b6f7dfdc20f655d3742c572584e8",
+      "duration_s": 7.1
+    },
+    {
+      "item_id": "10b80782c4ecaf6c7e",
+      "text_id": "S01",
+      "audio": "/study/audio/10b80782c4ecaf6c7e.wav",
+      "sha256": "b6c6017770cc87938f981dc438335e535285dadb33d2a043dc0d68f3ffc3b620",
+      "duration_s": 7.383
+    },
+    {
+      "item_id": "f7df98c7190b459c8f",
+      "text_id": "S01",
+      "audio": "/study/audio/f7df98c7190b459c8f.wav",
+      "sha256": "d27a7021cbb785ba947d2f34ffd68d43d4bd3ebb76f32ce3f9e9e9920e296131",
+      "duration_s": 8.913
+    },
+    {
+      "item_id": "1f3faed45355184941",
+      "text_id": "S01",
+      "audio": "/study/audio/1f3faed45355184941.wav",
+      "sha256": "b23b4346265fd9ff046ec3ba6904c8b9278019bc83d9fbba36eb93cbf4c47c25",
+      "duration_s": 12.163
+    },
+    {
+      "item_id": "edabba7dc7032f5a6d",
+      "text_id": "S01",
+      "audio": "/study/audio/edabba7dc7032f5a6d.wav",
+      "sha256": "c63df7b437d208d4f8a24565231a655fb38a77738bbc3f976911f09d6c6cfa17",
+      "duration_s": 8.429
+    },
+    {
+      "item_id": "1c3f6be429d3524340",
+      "text_id": "S01",
+      "audio": "/study/audio/1c3f6be429d3524340.wav",
+      "sha256": "cb1fd22759f58455e90df7689427bff4acdc15c97fff5e06789db45963268be8",
+      "duration_s": 9.126
+    },
+    {
+      "item_id": "69ed11ef88738687ef",
+      "text_id": "S01",
+      "audio": "/study/audio/69ed11ef88738687ef.wav",
+      "sha256": "b5791de8eb06435fd0f0dc748411c1dc2e096adb6d863c0e17570f8dc78e3bbd",
+      "duration_s": 6.422916666666667
+    },
+    {
+      "item_id": "c6869b2b49729e1e15",
+      "text_id": "S01",
+      "audio": "/study/audio/c6869b2b49729e1e15.wav",
+      "sha256": "7de3f3fb7749b6d54ae92a8e97b25251829bae6c750b3d73cffac347e33a3407",
+      "duration_s": 6.497916666666667
+    },
+    {
+      "item_id": "82244a5691688551a2",
+      "text_id": "S01",
+      "audio": "/study/audio/82244a5691688551a2.wav",
+      "sha256": "b7ab4a61a2ca5f61f06d3aea9280a57742865eaf0299f16647d5332a270e5c25",
+      "duration_s": 6.622916666666667
+    },
+    {
+      "item_id": "90d1b11f4b37265d3c",
+      "text_id": "S01",
+      "audio": "/study/audio/90d1b11f4b37265d3c.wav",
+      "sha256": "b0ddcdbe19e78832c197710767bc56944c2ec9ffb4e9b2a61a2d28b94c8eee95",
+      "duration_s": 6.672916666666667
+    },
+    {
+      "item_id": "7dcfae81f976911a27",
+      "text_id": "S01",
+      "audio": "/study/audio/7dcfae81f976911a27.wav",
+      "sha256": "af7348b297953e9bb374835db8e2c1a019a62dd91a67607076144e72d0dd8598",
+      "duration_s": 6.747916666666667
+    },
+    {
+      "item_id": "cd9e60676e00ab6a54",
+      "text_id": "S01",
+      "audio": "/study/audio/cd9e60676e00ab6a54.wav",
+      "sha256": "35f9f880bfd2d9f270bee5ab05f9d6e4c06dcb1a0723e09fded74c52839a0396",
+      "duration_s": 9.48
+    },
+    {
+      "item_id": "9a9920bf34ff7de690",
+      "text_id": "S01",
+      "audio": "/study/audio/9a9920bf34ff7de690.wav",
+      "sha256": "d6155afe2aa3291b46a17f82a3b19b724c25c6cf53b43456147573deb49b3302",
+      "duration_s": 6.56
+    },
+    {
+      "item_id": "c2607ba834caffe9a1",
+      "text_id": "S01",
+      "audio": "/study/audio/c2607ba834caffe9a1.wav",
+      "sha256": "d110a1b9a7a2bef15848eaf43eb46917ff2c83a80b5b8eb8bd76df52b51c4015",
+      "duration_s": 7.64
+    },
+    {
+      "item_id": "45235100a02bc3b60b",
+      "text_id": "S01",
+      "audio": "/study/audio/45235100a02bc3b60b.wav",
+      "sha256": "a120addf700169c201a1953e19621006e245aba3f4dab83607f47a36e4fbbf9c",
+      "duration_s": 7.92
+    },
+    {
+      "item_id": "19079d7d5db601d2d2",
+      "text_id": "S01",
+      "audio": "/study/audio/19079d7d5db601d2d2.wav",
+      "sha256": "d50173876c5cc6d0940c44a705a2fed8a1b6b01e6aebb9840488a0c403a19b65",
+      "duration_s": 6.2
+    },
+    {
+      "item_id": "a0f712bc4df4817c9d",
+      "text_id": "S01",
+      "audio": "/study/audio/a0f712bc4df4817c9d.wav",
+      "sha256": "3b752248d31d6174a0ac5a0dd581cb4481a6482240b57aed105b033522a0cca5",
+      "duration_s": 6.025578231292517
+    },
+    {
+      "item_id": "667588808e84a95891",
+      "text_id": "S01",
+      "audio": "/study/audio/667588808e84a95891.wav",
+      "sha256": "07539daf136f2354251e4247d658a740c200ad9a68ef2b41e64a8a3b46e2db31",
+      "duration_s": 5.38702947845805
+    },
+    {
+      "item_id": "171d534130dd71c5eb",
+      "text_id": "S01",
+      "audio": "/study/audio/171d534130dd71c5eb.wav",
+      "sha256": "299e410e1e1e29eef414283ade20810fa5ad74767293a2631241b8ccbbf2c35f",
+      "duration_s": 5.712108843537415
+    },
+    {
+      "item_id": "82dca3969a9d3ba7f1",
+      "text_id": "S01",
+      "audio": "/study/audio/82dca3969a9d3ba7f1.wav",
+      "sha256": "b3f60cd2ca005d9b3defa92e4b90a7a2130acbe590e05ef146c70f7bad90130b",
+      "duration_s": 5.7004988662131515
+    },
+    {
+      "item_id": "0793d9e965bf7b04f8",
+      "text_id": "S01",
+      "audio": "/study/audio/0793d9e965bf7b04f8.wav",
+      "sha256": "abb13caefc5d86eb96ce7c2cfdb8c884167c7bee8d11a2e348ae58e613946ece",
+      "duration_s": 5.77015873015873
+    }
+  ],
+  "blocks": [
+    {
+      "block_id": "preset-happy",
+      "text_id": "S01",
+      "target": {
+        "name": "Happy",
+        "valence": 0.6,
+        "arousal": 0.6
+      },
+      "item_ids": [
+        "53ee759fa9d79a6e16",
+        "c04a15e55e03807e63",
+        "521e5c9bd807c1b545",
+        "b656c48213e07612f9",
+        "5edacc98e5683c5ecb",
+        "f7df98c7190b459c8f",
+        "c6869b2b49729e1e15",
+        "9a9920bf34ff7de690",
+        "667588808e84a95891"
+      ]
+    },
+    {
+      "block_id": "neutral-happy",
+      "text_id": "S01",
+      "target": {
+        "name": "Happy",
+        "valence": 0.6,
+        "arousal": 0.6
+      },
+      "item_ids": [
+        "291f113992428215ec",
+        "9e26cadc4eb110ab26",
+        "b41b9ba1b5ae13d537",
+        "037249171040bc5a9b",
+        "950cedd16598869f09",
+        "10b80782c4ecaf6c7e",
+        "69ed11ef88738687ef",
+        "cd9e60676e00ab6a54",
+        "a0f712bc4df4817c9d"
+      ]
+    },
+    {
+      "block_id": "preset-upset",
+      "text_id": "S01",
+      "target": {
+        "name": "Upset",
+        "valence": -0.6,
+        "arousal": 0.6
+      },
+      "item_ids": [
+        "3880eb8c1541cb01b5",
+        "14b24a81b81b8da222",
+        "4d816938caf5b95b45",
+        "e89bf984544f00bb0a",
+        "1a923a3168f05f8ad2",
+        "1f3faed45355184941",
+        "82244a5691688551a2",
+        "c2607ba834caffe9a1",
+        "171d534130dd71c5eb"
+      ]
+    },
+    {
+      "block_id": "neutral-upset",
+      "text_id": "S01",
+      "target": {
+        "name": "Upset",
+        "valence": -0.6,
+        "arousal": 0.6
+      },
+      "item_ids": [
+        "291f113992428215ec",
+        "9e26cadc4eb110ab26",
+        "b41b9ba1b5ae13d537",
+        "037249171040bc5a9b",
+        "950cedd16598869f09",
+        "10b80782c4ecaf6c7e",
+        "69ed11ef88738687ef",
+        "cd9e60676e00ab6a54",
+        "a0f712bc4df4817c9d"
+      ]
+    },
+    {
+      "block_id": "preset-sad",
+      "text_id": "S01",
+      "target": {
+        "name": "Sad",
+        "valence": -0.6,
+        "arousal": -0.6
+      },
+      "item_ids": [
+        "516ab48a72b5ab260f",
+        "eeece30866564cdfdb",
+        "722f380d330520344d",
+        "620080afb7d602332e",
+        "70f3f250db17be861b",
+        "edabba7dc7032f5a6d",
+        "90d1b11f4b37265d3c",
+        "45235100a02bc3b60b",
+        "82dca3969a9d3ba7f1"
+      ]
+    },
+    {
+      "block_id": "neutral-sad",
+      "text_id": "S01",
+      "target": {
+        "name": "Sad",
+        "valence": -0.6,
+        "arousal": -0.6
+      },
+      "item_ids": [
+        "291f113992428215ec",
+        "9e26cadc4eb110ab26",
+        "b41b9ba1b5ae13d537",
+        "037249171040bc5a9b",
+        "950cedd16598869f09",
+        "10b80782c4ecaf6c7e",
+        "69ed11ef88738687ef",
+        "cd9e60676e00ab6a54",
+        "a0f712bc4df4817c9d"
+      ]
+    },
+    {
+      "block_id": "preset-calm",
+      "text_id": "S01",
+      "target": {
+        "name": "Calm",
+        "valence": 0.6,
+        "arousal": -0.6
+      },
+      "item_ids": [
+        "d059f63aa95110c42d",
+        "8a30c7098cb6634d9c",
+        "9910783e35f8f00d69",
+        "669259e7fe157cd650",
+        "42e1473388d0770cd4",
+        "1c3f6be429d3524340",
+        "7dcfae81f976911a27",
+        "19079d7d5db601d2d2",
+        "0793d9e965bf7b04f8"
+      ]
+    },
+    {
+      "block_id": "neutral-calm",
+      "text_id": "S01",
+      "target": {
+        "name": "Calm",
+        "valence": 0.6,
+        "arousal": -0.6
+      },
+      "item_ids": [
+        "291f113992428215ec",
+        "9e26cadc4eb110ab26",
+        "b41b9ba1b5ae13d537",
+        "037249171040bc5a9b",
+        "950cedd16598869f09",
+        "10b80782c4ecaf6c7e",
+        "69ed11ef88738687ef",
+        "cd9e60676e00ab6a54",
+        "a0f712bc4df4817c9d"
+      ]
+    }
+  ],
+  "groups": [
+    [
+      "preset-happy",
+      "preset-sad",
+      "neutral-happy"
+    ],
+    [
+      "preset-upset",
+      "preset-calm",
+      "neutral-upset"
+    ],
+    [
+      "preset-happy",
+      "preset-calm",
+      "neutral-happy"
+    ],
+    [
+      "preset-upset",
+      "preset-sad",
+      "neutral-upset"
+    ],
+    [
+      "preset-happy",
+      "preset-sad",
+      "neutral-sad"
+    ],
+    [
+      "preset-upset",
+      "preset-calm",
+      "neutral-calm"
+    ],
+    [
+      "preset-happy",
+      "preset-calm",
+      "neutral-calm"
+    ],
+    [
+      "preset-upset",
+      "preset-sad",
+      "neutral-sad"
+    ],
+    [
+      "preset-happy",
+      "preset-sad",
+      "neutral-happy"
+    ],
+    [
+      "preset-upset",
+      "preset-calm",
+      "neutral-upset"
+    ],
+    [
+      "preset-happy",
+      "preset-calm",
+      "neutral-happy"
+    ],
+    [
+      "preset-upset",
+      "preset-sad",
+      "neutral-upset"
+    ],
+    [
+      "preset-happy",
+      "preset-sad",
+      "neutral-sad"
+    ],
+    [
+      "preset-upset",
+      "preset-calm",
+      "neutral-calm"
+    ],
+    [
+      "preset-happy",
+      "preset-calm",
+      "neutral-calm"
+    ],
+    [
+      "preset-upset",
+      "preset-sad",
+      "neutral-sad"
+    ]
+  ]
+}

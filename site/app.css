@@ -1,0 +1,110 @@
+/* ECHO listening test — hand-written, ~150 lines, no build step, no CDN.
+   Tailwind was dropped for this site because the standalone binary cannot load DaisyUI without
+   node_modules, which the C2 one-command reproducibility argument rejects. */
+
+:root {
+  --ink: #16181d;
+  --muted: #5f6470;
+  --line: #d9dce3;
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --accent: #2f5bd0;
+  --accent-soft: #e7edfb;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+main { max-width: 720px; margin: 0 auto; padding: 40px 24px 80px; }
+
+h1 { font-size: 26px; font-weight: 600; margin: 0 0 8px; }
+h2 { font-size: 18px; font-weight: 600; margin: 32px 0 8px; }
+p  { margin: 0 0 14px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+
+ul { margin: 0 0 16px; padding-left: 22px; }
+li { margin-bottom: 6px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin: 0 0 20px;
+}
+
+button, .btn {
+  font: inherit;
+  padding: 10px 20px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+  display: inline-block;
+}
+button:hover:not(:disabled), .btn:hover { border-color: var(--ink); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary, .btn.primary {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+button:focus-visible, .btn:focus-visible, input:focus-visible {
+  outline: 3px solid var(--accent-soft); outline-offset: 2px;
+}
+
+input[type=text] {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: var(--radius); width: 220px;
+}
+
+/* --- trial page ------------------------------------------------------- */
+
+.progress { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.bar { flex: 1; height: 4px; background: var(--line); border-radius: 2px; }
+.bar > i { display: block; height: 4px; background: var(--ink); border-radius: 2px; width: 0; }
+.count { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+
+.player { display: flex; align-items: center; gap: 14px; }
+.player button { min-width: 130px; }
+
+.scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.scale button { padding: 12px 0; text-align: center; }
+.scale button[aria-pressed="true"] {
+  background: var(--accent-soft); border-color: var(--accent); color: #16305f; font-weight: 600;
+}
+.ends { display: flex; justify-content: space-between; margin-top: 6px; }
+
+/* --- affect grid ------------------------------------------------------ */
+
+.gridwrap { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+#grid { cursor: crosshair; touch-action: none; border-radius: var(--radius); }
+#grid .frame { fill: var(--panel); stroke: var(--line); }
+#grid .axis  { stroke: var(--line); }
+#grid .lab   { fill: var(--muted); font-size: 11px; }
+#grid .axlab { fill: var(--ink); font-size: 11px; }
+#grid .dot   { fill: var(--accent); }
+#grid .halo  { fill: none; stroke: var(--accent); opacity: .45; }
+.readout { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+
+.nav { display: flex; align-items: center; gap: 14px; margin-top: 28px;
+       padding-top: 18px; border-top: 1px solid var(--line); }
+.nav .spacer { flex: 1; }
+
+textarea {
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  width: 100%; height: 180px; padding: 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); resize: vertical;
+}
+
+.err { color: #a3252a; font-size: 14px; margin-top: 8px; }
+.ok  { color: #1d6b3f; font-size: 14px; margin-top: 8px; }
