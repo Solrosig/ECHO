@@ -1,25 +1,20 @@
-"""Layer 1 — automatic emotion classification of the GENERATED TEXT.
+"""Layer 1: automatic emotion classification of the generated text.
 
-Chapter 4 §4.5 defines a four-layer evaluation protocol. Layer 2 (speech side, via a
-dimensional SER) is implemented in `emotion_conveyance.py`; this is Layer 1, its text-side
-counterpart, and together with Layer 3 (`cross_modal.py`) it closes Gap 3.
+Chapter 4 §4.5 defines a four-layer evaluation protocol. This is Layer 1, the text-side
+counterpart of Layer 2 (speech, dimensional SER, `emotion_conveyance.py`); with Layer 3
+(`cross_modal.py`) it closes Gap 3.
 
     "A pre-trained text-emotion classifier (j-hartmann/emotion-english-distilroberta-base,
      predicting Ekman's six emotions plus neutral) is applied to the LLM output; its label
      is mapped to a Russell quadrant via the same lookup used for the input."   -- §4.5
 
-Two things are worth stating about the design.
+The label-to-quadrant step follows the categorical-dimensional mapping protocol: positions
+come from published human norms (Warriner et al., 2013), not the author's judgement, and
+the map is printed with every run for inspection. `neutral` gets no quadrant: "no emotion
+detected" is not "calm", and mapping it would turn an abstention into a Q4 prediction.
 
-**The label-to-quadrant step is the categorical-dimensional mapping problem**, so the
-protocol recorded for it applies: positions come from PUBLISHED HUMAN NORMS (Warriner et
-al., 2013) rather than from the author's judgement, and the resulting map is printed with
-every run so it can be inspected rather than trusted. `neutral` is deliberately NOT given a
-quadrant -- it means "no emotion detected", which is not the same claim as "calm", and
-collapsing the two would silently convert an abstention into a Q4 prediction.
-
-**The lexicon is scored on the same texts**, because the comparison is free and it
-quantifies what word-level aggregation costs against a trained classifier on identical
-material.
+The lexicon scores the same texts, measuring what word-level aggregation costs against a
+trained classifier on identical material.
 
 Usage:
     python text_emotion.py                          # reads echo.db, writes research/
@@ -45,8 +40,8 @@ MODEL_ID = "j-hartmann/emotion-english-distilroberta-base"
 #: Ekman's six plus neutral, as emitted by the classifier.
 LABELS = ("anger", "disgust", "fear", "joy", "neutral", "sadness", "surprise")
 
-#: Fallback positions on the 1-9 rating scale, used only when the norms file is missing.
-#: Approximate and NOT citable -- the run prints a warning when these are used.
+#: Fallback 1-9 positions for labels absent from the norms (e.g. no norms file).
+#: Approximate and not citable; the run prints a warning when they are used.
 _FALLBACK_POSITIONS = {
     "anger": (2.5, 7.2), "disgust": (2.4, 5.5), "fear": (2.8, 6.9),
     "joy": (8.2, 6.6), "sadness": (2.1, 3.5), "surprise": (7.0, 7.4),
@@ -63,13 +58,12 @@ def _rescale(x: float) -> float:
 
 
 def label_positions(norms: dict) -> tuple[dict, bool]:
-    """Position each emotion label on the valence-arousal plane FROM PUBLISHED NORMS.
+    """Place each emotion label on the valence-arousal plane from published norms.
 
-    This is the 'map' step of the categorical-dimensional protocol: the coordinates are
-    human ratings of the emotion words themselves, not the author's assignment, so the
-    mapping is externally grounded and can be cited.
-
-    `neutral` is returned as None on purpose -- see the module docstring.
+    The 'map' step of the categorical-dimensional protocol: coordinates are human ratings
+    of the emotion words, not the author's assignment, so the mapping can be cited.
+    `neutral` maps to None (see the module docstring). Returns (positions, grounded);
+    grounded is False when any label used a fallback position.
     """
     grounded = True
     out: dict[str, tuple[float, float, Quadrant] | None] = {"neutral": None}
@@ -103,20 +97,18 @@ def read_replies(db_path: str, prompt_version: str | None = None) -> list[dict]:
         conn.close()
 
 
-#: Files `pipeline(model=<dir>)` expects when the weights are fetched in a browser
-#: because the network intercepts TLS and blocks the Hugging Face download.
+#: Files besides the weights that `pipeline(model=<dir>)` needs when the model is
+#: downloaded in a browser because TLS interception blocks Hugging Face.
 MODEL_FILES = ("config.json", "merges.txt", "vocab.json", "tokenizer_config.json",
                "special_tokens_map.json")
 
 
 def _classifier(model: str):
-    """Lazy load. Returns None (with an explanation) rather than raising.
+    """Lazy-load the classifier; on failure print why and return None instead of raising.
 
-    The classifier is the SECOND text-side instrument, not the only one: the lexicon
-    judge already turns text into quadrants and rests on peer-reviewed norms. A blocked
-    download must therefore degrade the run to lexicon-only rather than abort it — this
-    network has intercepted TLS and blocked Hugging Face twice already on this project
-    (see the ser_model/ and cb_model/ workarounds).
+    The lexicon judge (peer-reviewed norms) is already a text-side instrument, so a blocked
+    download degrades the run to lexicon-only rather than aborting it. TLS interception has
+    blocked Hugging Face twice on this project (see the ser_model/ and cb_model/ workarounds).
     """
     try:
         from transformers import pipeline
@@ -152,7 +144,7 @@ def classify(texts: list[str], model: str) -> list[tuple[str, float] | None]:
 
 
 def _resolve_out(path: Path) -> Path:
-    """Never overwrite a previous run — results are evidence."""
+    """Never overwrite a previous run: results are evidence."""
     if not path.exists():
         return path
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -162,11 +154,10 @@ def _resolve_out(path: Path) -> Path:
 def macro_f1(rows: list[dict], key: str) -> tuple[float, dict[str, float]]:
     """Macro-averaged F1 over the four quadrants, as Chapter 4 §4.5 requires.
 
-    Macro rather than micro because the quadrants are the classes of interest and each
-    should count equally: micro-averaging would let a quadrant the system happens to
-    produce more often dominate the score. Predictions of `-` (the classifier said
-    `neutral`, which is not a quadrant) count as false negatives for the true class and
-    are never credited.
+    Macro so each quadrant counts equally; micro-averaging would let a quadrant the system
+    produces more often dominate. Abstentions (shown as `-`, e.g. `neutral`, which is not a
+    quadrant) count as false negatives for the true class and are never credited.
+    Returns (macro F1, per-quadrant F1).
     """
     per: dict[str, float] = {}
     for q in (x.value for x in Quadrant):
@@ -180,7 +171,7 @@ def macro_f1(rows: list[dict], key: str) -> tuple[float, dict[str, float]]:
 
 
 def _matrix(rows: list[dict], key: str) -> None:
-    """Print the full 4x4 confusion matrix; an accuracy figure alone hides the diagnosis."""
+    """Print the confusion matrix with abstentions (`-`); accuracy alone hides the diagnosis."""
     quads = [q.value for q in Quadrant]
     counts = Counter((r["target_quadrant"], r[key] or "-") for r in rows)
     cols = quads + ["-"]
@@ -202,11 +193,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="research/text_emotion.csv")
     args = ap.parse_args(argv)
 
-    # Resolve the norms through the CONFIG, not just the environment variable.
-    # load_norms(None) only consults ECHO_AFFECT_NORMS, so a run without that variable
-    # set silently used the 30-word placeholder — observed 2026-08-30, where the printed
-    # label positions were the approximate fallbacks and the lexicon column was therefore
-    # not comparable. The config default (BRM-emot-submit.csv) is the intended source.
+    # Resolve the norms through the config: load_norms(None) reads only ECHO_AFFECT_NORMS, so
+    # a run without it silently used the 30-word placeholder (observed 2026-08-30: fallback
+    # label positions, lexicon column not comparable). The config default
+    # (BRM-emot-submit.csv) is the intended source.
     norms = load_norms(args.norms or load_config().affect_norms or None)
     positions, grounded = label_positions(norms)
 

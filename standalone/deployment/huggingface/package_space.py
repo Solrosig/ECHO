@@ -1,8 +1,8 @@
 """Prepare a self-contained upload folder for the ECHO Hugging Face Space.
 
-backend.zip is rebuilt from ../../tts-service, the reviewed code. The RAVDESS reference WAVs are not in git, so they
+backend.zip is rebuilt from the reviewed code in ../../tts-service. The RAVDESS reference WAVs are not in git, so they
 are copied from an earlier backend.zip: keep the release's backend.zip beside this script or pass --refs-from.
-Run pnpm build first, because the website is packaged from dist.
+Run pnpm build first; the website is packaged from dist.
 """
 import argparse
 import shutil
@@ -12,11 +12,11 @@ from pathlib import Path
 here = Path(__file__).resolve().parent
 root = here.parents[1]
 REF_WAVS = ['refs/Q1.wav', 'refs/Q2.wav', 'refs/Q3.wav', 'refs/Q4.wav', 'refs/neutral.wav']
-# Kokoro runs in the listener's browser, so its weights and its ONNX Runtime WebAssembly ship inside webapp.zip. They
-# are release assets, not in git; without the runtime the browser voice fails with "no available backend found".
+# Kokoro runs in the listener's browser, so its weights and ONNX Runtime WebAssembly ship inside webapp.zip. They are
+# release assets, not in git; without the runtime the browser voice fails with "no available backend found".
 KOKORO_FILES = ['public/models/kokoro/onnx/model_quantized.onnx', 'public/models/kokoro/voices/af_heart.bin',
                 'public/vendor/kokoro-ort/ort-wasm-simd-threaded.jsep.wasm', 'public/vendor/kokoro-ort/ort-wasm-simd-threaded.wasm']
-# Never shipped to the page: the locked Qwen backup and the Piper voice, which is on hold.
+# Never shipped: the locked Qwen backup and the on-hold Piper voice.
 EXCLUDED_MODELS = ('public/models/qwen/', 'public/models/piper/')
 
 
@@ -66,7 +66,7 @@ def main():
             if path.name == 'downloads.json':
                 continue
             z.write(path, path.relative_to(root).as_posix())
-        # Browser models are already bundled; no author's model host is needed.
+        # Browser models are bundled, so no author-hosted downloads are needed.
         z.writestr('downloads.json', '[]\n')
     print('Upload the contents of ' + str(out) + ' to the ECHO Space. Mount a PRIVATE bucket at /data first.')
     print('Then choose the conversation model with configure_space.py (dry run by default).')

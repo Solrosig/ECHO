@@ -1,20 +1,14 @@
-"""Coherence gate.
+"""Coherence gate: generate a reply, ask a judge what emotion it expresses, retry on mismatch.
 
-Generate a reply, ask a JUDGE what emotion it expresses, retry on mismatch.
-
-CHANGED 2026-08-23 (story G6). The gate previously used the generating model's
-own `self_quadrant` field, but the prompt templates pre-filled the expected value
-(`{"reply": ..., "self_quadrant": "Q2"}`), so the model was copying an answer key
-rather than judging. `echo.db` showed the consequence: 5 turns, 5 first-attempt
-passes, 0 retries — the gate had never rejected anything.
-
+Changed 2026-08-23 (story G6). Until then the gate used the generating model's own
+`self_quadrant`, but the prompt templates pre-filled it
+(`{"reply": ..., "self_quadrant": "Q2"}`), so the model copied an answer key. `echo.db`
+showed 5 turns, 5 first-attempt passes, 0 retries: the gate had never rejected anything.
 The judgement now comes from an `EmotionJudge` (protected seam #5) that sees the
-generated TEXT and not the target. The independence level actually used is
-recorded per turn, so every result declares how much independence it had.
+generated text, not the target, and the independence level used is recorded per turn.
 
-The pure decision (`coheres`) stays separated from the retry loop (`run_gated`)
-so both remain easy to test. Every attempt is still recorded — pre-gate, each
-retry, and the accepted one — for later analysis.
+The pure decision (`coheres`) is separate from the retry loop (`run_gated`) so both are
+easy to test. Every attempt (first, retries, accepted) is kept for later analysis.
 """
 
 from __future__ import annotations
@@ -36,7 +30,7 @@ def coheres(target: Quadrant, detected: Quadrant | None) -> bool:
 class Attempt:
     index: int
     reply: str
-    self_quadrant: Quadrant | None   # what the JUDGE returned (name kept for schema compat)
+    self_quadrant: Quadrant | None   # the judge's verdict (name kept for schema compat)
     passed: bool
     accepted: bool = False
     raw: str = ""
@@ -51,14 +45,13 @@ def run_gated(
     max_retries: int = 2,
     judge: EmotionJudge | None = None,
 ) -> list[Attempt]:
-    """Generate, judge, retry on mismatch (bounded).
+    """Generate, judge, retry on mismatch (at most `max_retries` times).
 
-    Returns every attempt in order. Exactly one attempt is flagged `accepted`:
-    the first that passes, or - if none pass - the last one, so a turn always
-    yields a usable reply for the demo.
+    Returns every attempt in order. Exactly one is flagged `accepted`: the first
+    that passes, or the last if none pass, so a turn always yields a usable reply.
 
-    `judge` defaults to `SelfReportJudge` (L0) purely so existing callers keep
-    working unchanged; it is NOT a defensible setting for a reported result.
+    `judge` defaults to `SelfReportJudge` (L0) only so existing callers keep
+    working; it is not defensible for a reported result.
     """
     judge = judge or SelfReportJudge()
     attempts: list[Attempt] = []

@@ -1,4 +1,4 @@
-"""Serve the standalone ECHO application beside its existing Gradio TTS service."""
+"""Serve the standalone ECHO application beside the Gradio TTS service."""
 import asyncio,hashlib,json,os,re,secrets,shutil,subprocess,tarfile,threading,time,urllib.request,zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -19,8 +19,8 @@ OLLAMA_MODEL='llama3.2:3b'
 # The llama3.2:3b build (Q4_K_M) the 2026-09-11 prompt screen used; any other build is refused.
 OLLAMA_MODEL_DIGEST='a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72'
 OLLAMA_PROCESS=None
-# With the owner's token on Hugging Face, the website's server calls the voices at this public path, and relay_gate hands
-# those requests, and only those, to Gradio at /api/tts.
+# With the owner's token on Hugging Face, the website's server calls the voices at this public path; relay_gate passes
+# only these requests to Gradio at /api/tts.
 GPU_SPEECH_PATH='/api/tts-gpu'
 # Visitors' /api/tts requests are routed under this prefix to the website's server.
 RELAY_PREFIX='/_echo_voice_relay'
@@ -43,8 +43,8 @@ def researcher_credentials(directory,password):
     write_closed(Path(directory)/'researcher.json',json.dumps({'version':1,'salt':salt.hex(),'hash':digest.hex()}).encode())
 
 def llm_mode():
-    """ECHO_LLM_MODE: off (no conversation replies), embedded (Ollama inside this Space, on paid GPU hardware)
-    or remote (a private Ollama Space at ECHO_OLLAMA_URL, called with the secret ECHO_OLLAMA_TOKEN)."""
+    """ECHO_LLM_MODE: off (no conversation replies), embedded (Ollama inside this Space) or remote (a private Ollama
+    Space at ECHO_OLLAMA_URL, called with the secret ECHO_OLLAMA_TOKEN)."""
     mode=os.environ.get('ECHO_LLM_MODE','off').strip().lower()
     if mode not in ('off','embedded','remote'):raise RuntimeError('ECHO_LLM_MODE must be off, embedded or remote.')
     return mode
@@ -65,9 +65,9 @@ def cpu_limit(root='/sys/fs/cgroup'):
     except (OSError,ValueError):return None
 
 def ollama_threads(env=os.environ,root='/sys/fs/cgroup',cores=None):
-    """Threads for the conversation model. Unless told, llama-server starts one per physical core of the host (96 on the
-    ZeroGPU host of 2026-09-12), and under the container's CPU quota that many threads can stall it. ECHO_OLLAMA_THREADS
-    sets the count; otherwise it follows the quota, and None leaves llama.cpp's own count where there is no quota."""
+    """Threads for the conversation model. llama-server defaults to one per physical host core (96 on the ZeroGPU host,
+    2026-09-12), which can stall it under the container's CPU quota. ECHO_OLLAMA_THREADS sets the count; otherwise it
+    follows the quota, and None (no quota) keeps llama.cpp's default."""
     chosen=str(env.get('ECHO_OLLAMA_THREADS','')).strip()
     if chosen:
         if not chosen.isdigit() or int(chosen)<1:raise RuntimeError('ECHO_OLLAMA_THREADS must be a whole number of at least 1.')
@@ -78,13 +78,13 @@ def ollama_threads(env=os.environ,root='/sys/fs/cgroup',cores=None):
 
 def ollama_environment(cache):
     cache=Path(cache)
-    # The voices are loaded first. Ollama sizes itself to the GPU memory left, so it is told to keep a margin (default
-    # 2 GiB) for the voices' working memory during synthesis; on a small GPU it moves some model layers to the CPU instead.
+    # The voices load first, and Ollama sizes itself to the GPU memory left. OLLAMA_GPU_OVERHEAD reserves a margin
+    # (default 2 GiB) for their working memory during synthesis; on a small GPU Ollama moves some layers to the CPU.
     env={**os.environ,'OLLAMA_HOST':'127.0.0.1:11434','OLLAMA_MODELS':str(cache/'models'),'OLLAMA_KEEP_ALIVE':'-1','HOME':str(cache/'home'),
          'OLLAMA_GPU_OVERHEAD':os.environ.get('ECHO_OLLAMA_GPU_OVERHEAD',str(2*1024**3))}
     env.pop('ECHO_ZEROGPU_TOKEN',None)
     # On the ZeroGPU host (Xeon 8559C) llama.cpp put the weights in AMX buffers and its first computation never finished,
-    # with 96 threads and with 16 (2026-09-12). Without weight repacking (llama.cpp's extra buffer types) the weights stay in plain CPU buffers.
+    # with 96 threads and with 16 (2026-09-12). Without weight repacking (extra buffer types) they stay in plain CPU buffers.
     env.setdefault('LLAMA_ARG_REPACK','0')
     return env
 
@@ -93,14 +93,14 @@ def ollama_model(threads):
     parameter: Ollama passes -t to llama-server for that parameter alone, and a per-request option would reload the model."""
     return f'{OLLAMA_MODEL}-t{threads}' if threads else OLLAMA_MODEL
 
-# A failed start of the conversation model is tried again after these waits in seconds; the last one repeats. On 2026-09-14
-# a single HTTP 504 from GitHub while downloading Ollama left Explore without replies for the whole container run.
+# Waits in seconds before retrying a failed start of the conversation model; the last one repeats. On 2026-09-14 one
+# HTTP 504 from GitHub during the Ollama download left Explore without replies for the whole container run.
 START_RETRY_S=(15,30,60,120,300)
-# An Ollama that ran at least this long before it stopped is started again after the shortest wait.
+# An Ollama that ran at least this long before stopping restarts after the shortest wait.
 STABLE_RUN_S=600
 
 class StartRefused(RuntimeError):
-    """A start that trying again cannot fix: a changed Ollama download or a model build other than the tested one."""
+    """A start that retrying cannot fix, such as a changed Ollama download or an untested model build."""
 
 def start_embedded_ollama(cache,threads):
     """Run the pinned Ollama and model inside this Space and return the Ollama process. They download to local disk again
@@ -110,7 +110,7 @@ def start_embedded_ollama(cache,threads):
     print(f"Starting Ollama on {os.environ.get('ACCELERATOR','unknown hardware')}; without a GPU it runs on the CPU. "
           f"Container CPU limit: {cpu_limit() or 'none'}; model threads: {threads or 'llama.cpp default'}.",flush=True)
     if not binary.exists():
-        # Unpacked beside the runtime folder and moved into place whole, so an interrupted attempt leaves no half runtime.
+        # Unpack beside the runtime folder, then rename into place, so an interrupted attempt leaves no partial runtime.
         archive=cache/'ollama-linux-amd64.tar.zst';unpacking=cache/'runtime-unpacking'
         shutil.rmtree(runtime,ignore_errors=True);shutil.rmtree(unpacking,ignore_errors=True);unpacking.mkdir(parents=True)
         try:
@@ -149,9 +149,9 @@ def stop_embedded_ollama(wait_s=10):
     except subprocess.TimeoutExpired:process.kill();process.wait()
 
 def run_embedded_ollama(threads,start=start_embedded_ollama,sleep=time.sleep,clock=time.monotonic,waits=START_RETRY_S):
-    """Start the conversation model beside the website and keep it running. A failed start is tried again after a growing
-    wait and an Ollama that stops is started again, while Explore tells participants the model is starting. Only a refused
-    download or model build ends the attempts until the Space restarts."""
+    """Start the conversation model beside the website and keep it running. Failed starts retry after growing waits and
+    a stopped Ollama restarts, while Explore tells participants the model is starting. Only StartRefused ends the
+    attempts until the Space restarts."""
     failures=0
     while True:
         try:process=start(os.environ.get('ECHO_OLLAMA_CACHE','/tmp/echo-ollama'),threads)
@@ -173,8 +173,8 @@ def voice_gpu_seconds(text,*_):
     return min(60,25+len(text or '')//10)
 
 def owner_token(env=os.environ):
-    """The Space secret ECHO_ZEROGPU_TOKEN. With it the website's server calls the voices as the Space owner, so ZeroGPU
-    counts them against the owner's quota (PRO: 40 minutes a day, then credits) instead of each anonymous visitor's."""
+    """The Space secret ECHO_ZEROGPU_TOKEN. With it the website's server calls the voices as the owner, so ZeroGPU counts
+    them against the owner's quota (PRO: 40 minutes a day, then credits), not each anonymous visitor's."""
     token=str(env.get('ECHO_ZEROGPU_TOKEN','')).strip()
     return token if token and env.get('SPACE_ID') else None
 
@@ -184,8 +184,8 @@ def node_environment(origin,mode,threads,local,env=os.environ,relay_key=None):
     if mode!='remote':
         child['ECHO_OLLAMA_URL']='http://127.0.0.1:11434';child.pop('ECHO_OLLAMA_TOKEN',None)
         if mode=='embedded' and threads:child['ECHO_OLLAMA_MODEL']=ollama_model(threads)
-    # Hugging Face turns the token into the ZeroGPU identity only on requests that reach the Space through its public
-    # address, so the server relays each voice there, with the start's key that lets relay_gate hand it to Gradio.
+    # Hugging Face uses the token as the ZeroGPU identity only on requests via the Space's public address, so the server
+    # relays each voice there with this start's key, which lets relay_gate pass it to Gradio.
     if token and relay_key:child.update({'ECHO_TTS_URL':origin+GPU_SPEECH_PATH,'ECHO_TTS_TOKEN':token,'ECHO_TTS_RELAY_KEY':relay_key})
     return child
 
@@ -193,10 +193,10 @@ def is_voice_path(path):
     return path=='/api/tts' or path.startswith('/api/tts/')
 
 def relay_gate(app,key=None):
-    """With the owner's token, Gradio stays at /api/tts, but visitors must not reach it directly or ZeroGPU bills them.
-    Their /api/tts requests go to the website's server (under RELAY_PREFIX), which relays them to GPU_SPEECH_PATH through
-    the public address with the owner's token and this start's key. Only requests carrying the key reach Gradio, under
-    their /api/tts path, so Gradio's own links keep pointing at /api/tts. (A full-URL root_path broke Gradio's routing.)"""
+    """With the owner's token, keep visitors from calling Gradio at /api/tts directly, or ZeroGPU bills them. Their
+    /api/tts requests go to the website's server (under RELAY_PREFIX), which relays them to GPU_SPEECH_PATH through the
+    public address with the owner's token and this start's key. Only requests with the key reach Gradio, rewritten to
+    /api/tts, so Gradio's own links keep pointing at /api/tts. (A full-URL root_path broke Gradio's routing.)"""
     key=RELAY_KEY if key is None else key
     if not key:return app
     expected=key.encode()
@@ -226,9 +226,8 @@ def prepare():
     global RELAY_KEY
     mode=llm_mode()
     if not WEB.exists():unpack(ROOT/'webapp.zip',WEB)
-    # Preserve Window as the receiver of native fetch in Chromium. The bundled
-    # standalone sync classes previously called fetch as their own method.
-    # Patch both editable sources and prebuilt assets; no experiment settings change.
+    # Chromium's native fetch needs Window as its receiver; the bundled sync classes called it as their own method.
+    # Patch both the editable sources and the prebuilt assets; no experiment setting changes.
     targets=list((WEB/'dist/client').rglob('*.js'))+[WEB/'study-sync.js',WEB/'interactive-sync.js']
     for target in targets:
         if target.is_file():
@@ -239,12 +238,11 @@ def prepare():
         content=target.read_text()
         patched=content.replace('all 30 final ratings','all 45 final ratings')
         patched=patched.replace('Speech and conversation generation run on your device.', 'Kokoro and conversation text generation run on your device; other neural voices use the ECHO speech service.')
-        # The historical auxiliary calibration gallery is not part of this release.
+        # Drop links to the historical calibration gallery; it is not part of this release.
         import re
         patched=re.sub(r'<a[^>]+href="/calibration/"[^>]*>.*?</a>', '', patched)
         if patched!=content:target.write_text(patched)
-    # Version the complete asset graph so browsers cannot reuse immutable
-    # pre-fix JavaScript from an earlier visit to this same domain.
+    # Version the complete asset graph so browsers cannot reuse immutable pre-fix JavaScript from an earlier visit.
     assets=WEB/'dist/client/assets'
     rename={p.name:p.stem+'-hf2.js' for p in assets.glob('*.js') if not p.stem.endswith('-hf2')}
     if rename:
@@ -253,8 +251,7 @@ def prepare():
             for old,new in rename.items():content=content.replace(old,new)
             target.write_text(content)
         for old,new in rename.items():(assets/old).rename(assets/new)
-    # /data must be an explicitly mounted bucket in the Space. A bare ephemeral
-    # directory must never be presented as persistent research storage.
+    # On the Space, /data must be a mounted bucket; an ephemeral directory must never pass for persistent research storage.
     if os.environ.get('SPACE_ID') and not os.path.ismount('/data'):
         if not any(' /data ' in line for line in Path('/proc/mounts').read_text().splitlines()):raise RuntimeError('Mount the private research bucket at /data before launching ECHO')
     LOCAL.mkdir(parents=True,exist_ok=True);DURABLE.mkdir(parents=True,exist_ok=True)
@@ -325,8 +322,7 @@ def add_web_routes(app,store,origin):
         # Relayed voice requests pass through the website's server; their event streams must neither wait for nor hold the lock.
         path,speech=routed
         if path=='/health':return Response(json.dumps({'app':'ECHO','storage':'private-bucket-snapshots','ready':True}),media_type='application/json')
-        # Only the Node server's explicit public directories and API are exposed.
-        # No static mount of ROOT, /tmp or /data is created here.
+        # Only the Node server's public directories and API are exposed; ROOT, /tmp and /data get no static mount.
         headers={k:v for k,v in request.headers.items() if k.lower() not in ['host','connection','transfer-encoding','content-length','accept-encoding']}
         headers['host']=origin.split('//',1)[1]
         headers['accept-encoding']='identity'

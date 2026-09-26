@@ -1,4 +1,4 @@
-"""Local SQLite, immutable completed snapshots on a private HF bucket mount.
+"""Local SQLite with immutable completed snapshots on a private HF bucket mount.
 
 Never run SQLite WAL on object storage. A successful write response is released
 only after a verified snapshot and all referenced audio have been written.
@@ -32,7 +32,7 @@ class Store:
         self.durable.mkdir(parents=True,exist_ok=True)
         self.snapshots=self.durable/'snapshots';self.snapshots.mkdir(exist_ok=True)
         self.metrics=self.durable/'metrics';self.metrics.mkdir(exist_ok=True)
-        # The pieces, in name order, are the first bytes of the local metrics file; this many are already kept.
+        # Pieces in name order hold the first bytes of the local metrics file; this counts the bytes already kept.
         self.metrics_saved=sum(p.stat().st_size for p in self.metric_pieces())
         self.last=None
     def metric_pieces(self):
@@ -40,8 +40,8 @@ class Store:
     def restore(self):
         markers=sorted(self.snapshots.glob('*.json'),reverse=True)
         if not markers:return False
-        # Fail closed on a corrupt latest completed snapshot; do not silently
-        # resurrect an older participant state or lose acknowledged responses.
+        # Fail closed on a corrupt latest completed snapshot: silently restoring an older
+        # one would lose acknowledged responses.
         m=json.loads(markers[0].read_text());source=self.snapshots/m['database']
         if Path(m['database']).name!=m['database'] or sha(source)!=m['sha256']:raise RuntimeError('Invalid latest persistent database snapshot')
         shutil.copyfile(source,self.local/'study.sqlite')

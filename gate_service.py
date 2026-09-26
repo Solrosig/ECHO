@@ -1,14 +1,14 @@
-"""Coherence-gate service for the standalone conversation: option A, OFF by default.
+"""Coherence-gate service for the standalone conversation: option A, off by default.
 
 Since 2026-09-11 the standalone web server asks local Ollama (`llama3.2:3b`) for each conversation
-reply directly: that is option B, `ECHO_COHERENCE_GATE=off`. Setting `ECHO_COHERENCE_GATE=on` on
-the web server sends the same request here instead, and this service wraps it in ECHO's coherence
-gate: `gate.run_gated` with the configured `EmotionJudge` (`ECHO_JUDGE`, default `cascade`). The
-judge never sees the target; a mismatch is regenerated, at most twice, and the last attempt is
+reply directly: that is option B, `ECHO_COHERENCE_GATE=off`. With `ECHO_COHERENCE_GATE=on` the web
+server sends the same request here instead, and this service wraps it in ECHO's coherence gate:
+`gate.run_gated` with the configured `EmotionJudge` (`ECHO_JUDGE`, default `cascade`). The judge
+never sees the target. A mismatch is regenerated at most twice; if no attempt passes, the last is
 accepted as best effort. Every attempt is returned.
 
-Each attempt uses its own seed. The standalone fixes seed 666, and a fixed seed would return the
-same reply on every retry, so attempt i uses seed + i and reports it.
+The standalone fixes seed 666, and a fixed seed would return the same reply on every retry, so
+attempt i uses seed + i and reports it.
 
 Run:  python gate_service.py    (listens on ECHO_GATE_HOST:ECHO_GATE_PORT, default 127.0.0.1:8790)
 """
@@ -155,8 +155,8 @@ def make_handler(service: Callable[[object], dict]) -> type[BaseHTTPRequestHandl
 def build_judge(cfg) -> EmotionJudge:
     """The configured judge with the configured affect norms, built as demo.py builds it.
 
-    Without `norms_path` the lexicon silently falls back to its 30-word placeholder table, and most replies are
-    then decided by the blind-LLM fallback while the provenance still says cascade.
+    Without `norms_path` the lexicon silently falls back to its 30-word placeholder table, so the blind-LLM
+    fallback decides most replies (level 1, not the lexicon's level 2).
     """
     from judge import make_judge
     from llm import OllamaAdapter

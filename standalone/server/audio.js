@@ -1,6 +1,6 @@
 // Exact generated WAVs are private research assets. The caller has already authenticated.
 const MAX_BYTES=12*1024*1024;
-// Total archived WAV bytes across all sessions; the Node server sets it from ECHO_AUDIO_QUOTA_MB.
+// Default cap on archived WAV bytes across all sessions; the Node server sets it from ECHO_AUDIO_QUOTA_MB.
 const DEFAULT_QUOTA_BYTES=2048*1024*1024;
 export const audioKey=(session,order,sha)=>`interactive/${session}/${order}-${sha}.wav`;
 export function wavInfo(buffer){

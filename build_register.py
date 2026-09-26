@@ -5,13 +5,13 @@
 
   python build_register.py --build [--ingest-db echo.db]
       Consolidate every session register into one master research/register.csv (dedup by
-      SESSION + clip_id), optionally folding in full-system (LLM) turns from the provenance DB.
-      The previous master is ARCHIVED as register_superseded-<stamp>.csv before rewriting —
+      session + clip_id), optionally folding in full-system (LLM) turns from the provenance DB.
+      The previous master is archived as register_superseded-<stamp>.csv before rewriting:
       the index keeps its canonical name so downstream tools still find it, and no version
-      of it is ever lost.
+      of it is lost.
 
-The controlled corpus is written by synth_stimuli.py (one register.csv per session);
-this tool keeps them honest (integrity) and builds a single master register for analysis.
+synth_stimuli.py writes the controlled corpus (one register.csv per session); this tool
+checks their integrity and builds the single master register used for analysis.
 """
 
 from __future__ import annotations
@@ -32,13 +32,12 @@ MASTER_FIELDS = ["source", "session"] + SESSION_FIELDS
 
 
 def resolve_audio_path(raw: str) -> Path:
-    """Resolve an `audio_path` from a register in a CROSS-PLATFORM way.
+    """Resolve a register `audio_path` on any OS.
 
     Registers written on Windows store backslash paths (`research\\sessions\\...`), which are
-    not path separators on Linux/macOS — so a corpus produced on one OS appeared 100 % 'missing'
-    on another (discovered by the M4 integrity check). Normalising separators here makes the
-    stored corpus portable without rewriting existing registers, which the reproducibility
-    package (C2) requires.
+    not separators on Linux/macOS, so a corpus produced on one OS appeared 100 % 'missing' on
+    another (found by the M4 integrity check). Normalising here keeps the stored corpus
+    portable without rewriting existing registers, as the reproducibility package (C2) requires.
     """
     return Path(str(raw).replace("\\", "/"))
 
@@ -77,23 +76,19 @@ def verify(root: str) -> int:
 
 
 def _archive_existing(out: Path) -> "Path | None":
-    """Move an existing master register aside before rewriting it. Returns the archive path.
+    """Copy an existing master register aside before it is rewritten; return the copy's path.
 
-    **Why an archive rather than a timestamped output.** The other result writers
-    (`naturalness.py`, `emotion_conveyance.py`) never overwrite: they write to a timestamped
-    sibling and leave the original alone. That is right for a *result* — each run is its own
-    finding and both are kept.
-
-    The master register is not a result; it is an **index**, and downstream tools default to
-    its canonical path. Writing a timestamped index would leave every consumer reading a
-    stale file, so the non-overwrite rule is honoured the other way round: **the previous
-    index is archived, and the canonical name is rewritten.** Nothing is lost, and
+    Why an archive rather than a timestamped output: the result writers (`naturalness.py`,
+    `emotion_conveyance.py`) never overwrite; they write a timestamped sibling, which suits a
+    result because each run is its own finding. The master register is an index, not a result,
+    and downstream tools default to its canonical path, so a timestamped index would leave
+    every consumer reading a stale file. The non-overwrite rule is kept the other way round:
+    the previous index is archived and the canonical name rewritten. Nothing is lost, and
     `research/register.csv` still means "the current index".
 
-    This was added on 2026-08-31 after the function was found to call `open(out, "w")`
-    unconditionally. It had been rewriting a 300-row register with no copy taken — recoverable
-    only because the session folders it is derived from still existed, which is luck rather
-    than design.
+    Added 2026-08-31 after the writer was found calling `open(out, "w")` unconditionally. It
+    had been rewriting a 300-row register with no copy taken, recoverable only because the
+    session folders it is derived from still existed.
     """
     if not out.exists():
         return None
@@ -126,13 +121,12 @@ def build(root: str, out: str, db: str | None = None) -> int:
         for r in csv.DictReader(open(reg, encoding="utf-8")):
             row = {"source": "controlled", "session": session}
             row.update({k: r.get(k, "") for k in SESSION_FIELDS})
-            # Dedup key includes the SESSION. clip_id is sha256(engine|param_set|stimulus|quadrant),
-            # so two renders of the same design — e.g. an A/B experiment where only an engine
-            # SETTING differs (Chatterbox condition A: arousal only, vs B: + reference style) —
-            # collide on clip_id and the later session would silently overwrite the earlier one,
-            # destroying the comparison at consolidation. Sessions are immutable and uniquely
-            # named, so keying on (session, clip_id) preserves every rendered clip while still
-            # removing genuine duplicates within a session.
+            # Dedup key includes the session. clip_id is sha256(engine|param_set|stimulus|quadrant),
+            # so two renders of one design (e.g. an A/B experiment where only an engine setting
+            # differs: Chatterbox condition A, arousal only, vs B, + reference style) collide on
+            # clip_id, and the later session would silently overwrite the earlier one. Sessions
+            # are immutable and uniquely named, so (session, clip_id) keeps every rendered clip
+            # and still removes genuine duplicates within a session.
             rows[(session, r["clip_id"])] = row
     n_ctrl = len(rows)
 

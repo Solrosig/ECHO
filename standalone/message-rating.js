@@ -1,6 +1,6 @@
 import {validateRating,RATING_SCALE} from './study-session.js';
 // v2 (2026-09-14): Test Mode and Explore rate valence and arousal in nine steps (-1 to 1 by 0.25) and naturalness in half
-// steps, like the match. Listening keeps its frozen scale. A rating an earlier page queued (v1) is still accepted on its own scale.
+// steps, like the match. Listening keeps its frozen scale. A v1 rating queued by an earlier page is still accepted on its own scale.
 export const MESSAGE_RATING_VERSION='echo-message-rating-v2';
 export const MESSAGE_RATING_SCALE='va-0.25_match-0.5_naturalness-0.5_v3';
 const PREVIOUS_VERSION='echo-message-rating-v1';

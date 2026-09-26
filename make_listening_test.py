@@ -1,23 +1,23 @@
-"""Blinded listening test — pilot kit (Story S1.0), and the seed of the full S1 study.
+"""Blinded listening test: pilot kit (Story S1.0) and the seed of the full S1 study.
 
-Human ears are the ground truth for naturalness and emotion; this builds a small, BLINDED,
-randomised listening set so even a single-listener pass is evidence rather than impression
-(blinding removes experimenter-expectancy bias), and scores it with the same two measures the
-machine used, so human and machine are directly comparable:
+Human ears are the ground truth for naturalness and emotion. This builds a small, blinded,
+randomised listening set, so even a single-listener pass is evidence rather than impression
+(blinding removes experimenter-expectancy bias). It scores the answers with the same two
+measures the machine used, so human and machine are directly comparable:
   * naturalness MOS 1-5   (ITU-T P.800 absolute category rating)  <-> UTMOS (N4)
   * 4-AFC emotion identification (which quadrant?) + confusion     <-> dimensional SER (N5)
 
     python make_listening_test.py --build --per-engine 8
         -> research/listening/<stamp>_pilot/clips/001.wav ...   (opaque IDs, random order)
         -> answers.csv   (blank: you fill naturalness + emotion)
-        -> key.csv       (unblinding key — do NOT open before listening)
+        -> key.csv       (unblinding key: do not open before listening)
 
     python make_listening_test.py --score --session research/listening/<stamp>_pilot
         -> mean MOS per engine, 4-AFC accuracy, and the confusion matrix
 
-Design mirrors S1 at small scale so the protocol and code carry forward: balanced across
-engines x quadrants, full-dial param-set (where all three dials are active), fixed carrier
-text (so only the voice varies).
+The design mirrors S1 at small scale so the protocol and code carry forward: balanced across
+engines x quadrants, the full-dial param-set (all three dials active), and fixed carrier text
+(only the voice varies).
 """
 
 from __future__ import annotations
@@ -122,10 +122,12 @@ so only the VOICE differs. Do not open `key.csv` until you have finished.
 
 
 def _norm_id(bid: str) -> str:
-    """Normalise a blind id. Excel silently strips leading zeros when it saves a CSV, turning
-    '001' into '1' — which would break the join with key.csv and yield an empty (misleading)
-    result table. Zero-pad numeric ids on BOTH sides so listener sheets round-trip through
-    Excel, Sheets or a text editor alike."""
+    """Normalise a blind id: zero-pad numeric ids to three digits.
+
+    Excel strips leading zeros when it saves a CSV ('001' -> '1'), which breaks the join with
+    key.csv and yields an empty, misleading result table. Ids are normalised on both sides, so
+    listener sheets round-trip through Excel, Sheets or a text editor alike.
+    """
     b = (bid or "").strip()
     return b.zfill(3) if b.isdigit() else b
 

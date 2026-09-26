@@ -11,7 +11,7 @@ export async function requestReply({text,emotion,history=[],link},{signal,fetchI
   return data;
 }
 
-// Asks whether the conversation model is ready. On a hosted copy this also starts a model that is asleep.
+// Asks whether the conversation model is ready; on a hosted copy this also wakes a sleeping model.
 export async function checkDialogue({fetchImpl=fetch}={}){
   try{const response=await fetchImpl('/api/dialogue/status',{cache:'no-store'});return await response.json();}
   catch{return {ready:false,waking:false};}

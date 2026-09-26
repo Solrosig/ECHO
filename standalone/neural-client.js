@@ -16,7 +16,7 @@ export class NeuralClient{
             if(worker!==this.worker||data.id!==this.pending?.id)return;
             idle();if(data.type==='result'||data.type==='error'){
               const p=this.pending;clearTimeout(p.total);clearTimeout(p.idle);this.pending=null;
-              // A worker started for this request also loaded its scripts, which the request's time includes.
+              // worker_created marks a request whose time includes starting the worker and loading its scripts.
               if(data.type==='result'){if(data.result?.timing)data.result.timing.worker_created=p.created;p.resolve(data.result);}else p.reject(new Error(data.message));
             }else this.pending.onEvent(data);
           };

@@ -1,14 +1,14 @@
-"""Parler-TTS runner — emotion as a natural-language DESCRIPTION (mechanism 5).
+"""Parler-TTS runner: emotion as a natural-language description (mechanism 5).
 
-Parler-TTS has no CLI; it is a Python API (README, huggingface/parler-tts). This script is
+Parler-TTS has no CLI, only a Python API (README, huggingface/parler-tts). This script is
 the CLI, run inside Parler's own environment.
 
 The description is the entire emotional channel. Parler was trained on synthetic annotations
-describing speaker, pace, pitch and recording quality, so an instruction that mentions only
-the emotion under-specifies the request and lets the model fill the rest arbitrarily. The
-runner therefore appends a fixed **recording-quality and speaker clause** to ECHO's emotion
-instruction: the emotional content varies across conditions, everything else is held
-constant, and the constant part is stated here rather than buried in a prompt.
+of speaker, pace, pitch and recording quality, so an emotion-only instruction under-specifies
+the request and the model fills in the rest arbitrarily. The runner appends a fixed
+recording-quality and speaker clause to ECHO's emotion instruction: the emotional content
+varies across conditions, everything else is held constant, and the constant part is stated
+here rather than buried in a prompt.
 """
 
 from __future__ import annotations
@@ -16,16 +16,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-#: The style clause is part of the MANIPULATION, not a constant, so it is a parameter.
+#: The style clause is part of the manipulation, not a constant, so it is a parameter.
 #:
-#: The first version — "Jon speaks at a moderate speed. The recording is very clear audio,
-#: close up, with no background noise." — was written to hold everything but the emotion
-#: constant. It did the opposite: **"moderate speed" contradicts "agitated and tense"**, and
+#: The first version (STYLE_SUFFIX_V1) was written to hold everything but the emotion
+#: constant and did the opposite: "moderate speed" contradicts "agitated and tense", and
 #: "very clear, close up" is the upstream README's recipe for clean read speech. A listener
 #: check on 2026-08-31 confirmed the output was calm and fully intelligible. A control clause
 #: that neutralises the variable under study is not a control.
 #:
-#: The default now names the speaker and the recording quality ONLY — no speed, no delivery —
+#: The default names only the speaker and the recording quality (no speed, no delivery),
 #: leaving prosody entirely to the emotion clause.
 STYLE_SUFFIX = " Jon is speaking. The recording is very clear audio, close up."
 

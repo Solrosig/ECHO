@@ -1,10 +1,8 @@
-"""Provenance store — PROTECTED SEAM #3.
+"""Provenance store (protected seam #3).
 
-One row per turn + one row per attempt. The whole turn is written in a single
-transaction, so a failure leaves zero orphan rows. Later evaluation reads only
-from this log; it never inspects live model state.
-
-Records the full voice control: rate, volume, and pitch.
+One row per turn plus one per attempt, written in a single transaction so a failure
+leaves no orphan rows. Evaluation reads only this log, never live model state.
+Records the full voice control: rate, volume and pitch.
 """
 
 from __future__ import annotations
@@ -83,8 +81,8 @@ class TurnRecord:
     voice_params: VoiceParams
     engine: str
     audio_path: str
-    # G6: which judge decided the emotion, how independent it was, and the sampling
-    # temperature. Defaults keep every existing caller working unchanged.
+    # G6: the deciding judge, its independence level and the sampling temperature.
+    # Defaults keep existing callers working.
     judge_id: str = ""
     judge_level: int = -1
     llm_temperature: float | None = None
@@ -108,7 +106,7 @@ class ProvenanceStore:
         self._conn.commit()
 
     def _migrate(self) -> None:
-        """Add newer columns to a pre-existing turns table (no-op if already present)."""
+        """Add newer columns to pre-existing turns and attempts tables (no-op if present)."""
         existing = {row[1] for row in self._conn.execute("PRAGMA table_info(turns)")}
         for col in ("volume", "pitch", "llm_temperature"):
             if col not in existing:

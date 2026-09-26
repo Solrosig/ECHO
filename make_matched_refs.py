@@ -1,37 +1,32 @@
-"""Build a LEVEL-MATCHED reference set, for engines that delete quiet audio.
+"""Build a level-matched reference set, for engines that delete quiet audio.
 
-Why this exists
----------------
-ZipVoice preprocesses its prompt with `remove_silence(..., silence_thresh=-50)`, a pydub
-gate with an ABSOLUTE threshold, and it does so BEFORE any normalisation. The RAVDESS
-reference set spans roughly a 35x loudness range across quadrants because loudness is an
-arousal cue, and the Q4 "calm" clip sits at about -52 dBFS RMS — under the gate. The engine
-therefore classified almost the whole reference as silence, conditioned on the fragment that
-survived, and emitted 0.10-0.21 s of audio for every Q4 stimulus in both conditions rendered
-on 2026-08-31. Not a degraded clip: no clip.
+Why: ZipVoice preprocesses its prompt with `remove_silence(..., silence_thresh=-50)`, a pydub
+gate with an absolute threshold, applied before any normalisation. The RAVDESS reference set
+spans roughly a 35x loudness range across quadrants because loudness is an arousal cue, and
+the Q4 "calm" clip sits at about -52 dBFS RMS, under the gate. The engine classified almost
+the whole reference as silence, conditioned on the surviving fragment, and emitted 0.10-0.21 s
+of audio for every Q4 stimulus in both conditions rendered on 2026-08-31. Not a degraded
+clip: no clip.
 
-This is the same misjudgement `check_refs.py` once made when it failed the RAVDESS set as
-"too quiet", and which was overridden on the grounds that the dynamic range IS the signal.
-The difference is that a validator refusing to certify data is recoverable, whereas an engine
-deleting it is not.
+`check_refs.py` once made the same misjudgement, failing the RAVDESS set as "too quiet"; that
+was overridden because the dynamic range is the signal. A validator refusing to certify data
+is recoverable; an engine deleting it is not.
 
-What this produces, and what it costs
--------------------------------------
-A new reference folder in which every clip is peak-normalised to a common target, so all four
-sit far above the gate. The transformation is applied UNIFORMLY to all four quadrants and to
-the whole clip, so within-clip dynamics, spectrum and timing are untouched; what is removed is
-the BETWEEN-quadrant loudness difference — that is, the loudness component of the arousal cue.
+Output and cost: a new reference folder with every clip peak-normalised to a common target,
+far above the gate. Each clip gets a single gain over its whole length and all four quadrants
+get the same treatment, so within-clip dynamics, spectrum and timing are untouched. What is
+removed is the between-quadrant loudness difference, i.e. the loudness component of the
+arousal cue.
 
-That cost is the point rather than a regrettable side effect. Rendering against both sets
-gives a clean contrast:
+That cost is the point. Rendering against both sets gives a clean contrast:
 
     raw refs      -> Q1-Q3 usable, Q4 destroyed        (the engine's floor)
     matched refs  -> all four usable, no loudness cue  (the mechanism without loudness)
 
-so the difference between them isolates what the loudness cue was contributing, which the
-original prediction tried and failed to isolate with `--target-rms`.
+The difference isolates what the loudness cue contributed, which the original prediction
+tried and failed to isolate with `--target-rms`.
 
-The source set is never modified; a new folder is written, per the standing rule that results
+The source set is never modified. A new folder is written, per the standing rule that results
 and inputs move forward rather than being edited in place.
 
     python make_matched_refs.py                        # refs_ravdess -> refs_ravdess_matched
@@ -47,7 +42,7 @@ from pathlib import Path
 QUADRANTS = ("Q1", "Q2", "Q3", "Q4")
 
 #: pydub's silence threshold inside ZipVoice's `remove_silence`, in dBFS. Hard-coded
-#: upstream, so it is a property of the engine rather than something ECHO can configure.
+#: upstream, so ECHO cannot configure it.
 SILENCE_THRESH_DBFS = -50.0
 
 #: Chunk length pydub uses when scanning for silence, in milliseconds.
@@ -65,10 +60,9 @@ def surviving_fraction(samples, sample_rate: int,
                        thresh_dbfs: float = SILENCE_THRESH_DBFS) -> float:
     """Share of 10 ms chunks louder than the silence threshold.
 
-    This mirrors what pydub actually does — it scans in chunks and compares each chunk's
-    dBFS — rather than judging the clip by its overall RMS, which would misestimate a clip
-    whose energy is unevenly distributed. A low value predicts that the engine will treat
-    most of the reference as silence and discard it.
+    Mirrors pydub, which compares each chunk's dBFS, rather than the clip's overall RMS,
+    which misestimates a clip whose energy is unevenly distributed. A low value predicts
+    that the engine will discard most of the reference as silence.
     """
     import numpy as np
 

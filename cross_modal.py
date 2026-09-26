@@ -1,26 +1,19 @@
-"""Layer 3 — cross-modal agreement between the TEXT and the SPEECH of the same turn.
+"""Layer 3: cross-modal agreement between the text and the speech of the same turn.
 
 Chapter 4 §4.5 calls this layer "the direct response to Gap 3": cross-modal coherence
 between generated text and synthesised speech is rarely measured directly. Layers 1 and 2
-each classify one channel; this one asks whether they agree, and reports **Cohen's kappa**
-so the agreement is chance-corrected rather than inflated by a shared bias toward one
-quadrant.
+each classify one channel; this layer reports whether they agree as Cohen's kappa, which is
+chance-corrected rather than inflated by a shared bias toward one quadrant.
 
-Three design points.
-
-**It runs per TURN, not per corpus clip.** The 280-clip evaluation corpus deliberately holds
-text constant and bypasses the LLM, so it has no text channel to compare against. Only the
-`echo.db` turns have both a generated reply and its rendered audio, so they are the only
-material on which cross-modal agreement is defined.
-
-**Kappa is reported PER TEXT INSTRUMENT.** Measured 2026-08-30, the classifier and the
-lexicon score identically (31.2%) yet agree with each other on only 6.2% of replies.
-Choosing one and calling it "the" text classification would be arbitrary, so both are
-carried through and compared with the speech side separately.
-
-**Abstentions are excluded from kappa and counted.** A `neutral` classification or a lexicon
-with no rated vocabulary is an absence of evidence, not a disagreement; folding it in as a
-mismatch would understate agreement. The excluded count is always printed.
+Design points:
+  * Per turn, not per corpus clip. The 280-clip evaluation corpus holds text constant and
+    bypasses the LLM, so only `echo.db` turns have both a generated reply and its audio.
+  * Kappa per text instrument. Measured 2026-08-30, the classifier and the lexicon score
+    identically (31.2%) yet agree with each other on only 6.2% of replies, so neither is
+    "the" text classification; each is compared with speech separately.
+  * Abstentions (a `neutral` classification, or a lexicon with no rated vocabulary) are an
+    absence of evidence, not a disagreement: they are excluded from kappa, and the excluded
+    count is always printed.
 
 Usage:
     python cross_modal.py
@@ -54,11 +47,9 @@ FIELDS = ["turn_uuid", "target_quadrant", "reply", "audio_path",
 def cohens_kappa(pairs: list[tuple[str, str]]) -> tuple[float, float, float]:
     """Chance-corrected agreement between two raters over the same items.
 
-    Returns (kappa, observed agreement, expected agreement). Kappa is used rather than raw
-    agreement because two raters that both favour one quadrant would agree often by
-    accident: with a shared bias, a high percentage means little. Landis & Koch's rough
-    bands -- <0 none, 0-.20 slight, .21-.40 fair, .41-.60 moderate, .61-.80 substantial --
-    are conventional, not authoritative.
+    Returns (kappa, observed agreement, expected agreement). Raw agreement means little when
+    both raters favour one quadrant. Landis & Koch's rough bands (<0 none, 0-.20 slight,
+    .21-.40 fair, .41-.60 moderate, .61-.80 substantial) are conventional, not authoritative.
     """
     n = len(pairs)
     if n == 0:
@@ -76,12 +67,11 @@ def displacement(v: float, a: float, target: str) -> float:
     """Euclidean distance from the recognised point to the target anchor.
 
     Chapter 4 §4.5 specifies displacement for Layer 4 ("mean displacement from the target
-    anchor ... with 95% confidence intervals"). The machine layers use the same measure so
-    that machine and human results are comparable at RQ4, and because it does not have the
-    failure mode quadrant labels do: assignment thresholds at exactly zero, while the SER's
-    recognised valence is compressed into roughly +/-0.3 against targets at +/-0.6, so a
-    sign flip near the origin turns a weak-but-real estimate into a coin toss. Distance
-    keeps the magnitude the label discards.
+    anchor ... with 95% confidence intervals"). The machine layers use it too, so machine and
+    human results are comparable at RQ4. It also keeps the magnitude a quadrant label
+    discards: labels threshold at exactly zero, and the SER's recognised valence is
+    compressed into roughly +/-0.3 against targets at +/-0.6, so a sign flip near the origin
+    turns a weak but real estimate into a coin toss.
     """
     tv, ta = anchor_for(Quadrant(target))
     return ((v - tv) ** 2 + (a - ta) ** 2) ** 0.5
@@ -141,7 +131,7 @@ def _resolve_out(path: Path) -> Path:
 
 
 def _crosstab(rows: list[dict], text_key: str) -> None:
-    """text quadrant (rows) against speech quadrant (columns)."""
+    """Print text quadrant (rows) against speech quadrant (columns)."""
     counts = Counter((r[text_key] or "-", r["ser_quadrant"] or "-") for r in rows)
     cols = QUADS + ["-"]
     print("   text\\speech" + "".join(f"{c:>6}" for c in cols))
@@ -199,9 +189,9 @@ def main(argv: list[str] | None = None) -> int:
             missing += 1
             continue
         va = predict_va(wav, args.model)
-        # emotion_conveyance.predict_va() returns rec_valence / rec_arousal / rec_dominance,
-        # ALREADY on ECHO's [-1, 1] axes — not `valence`/`arousal`, and not 0..1.
-        # Pinned by test_ser_contract_keys_are_the_ones_this_module_reads.
+        # predict_va() returns rec_valence / rec_arousal / rec_dominance, already on ECHO's
+        # [-1, 1] axes (not `valence`/`arousal`, not 0..1). Pinned by
+        # test_ser_contract_keys_are_the_ones_this_module_reads.
         v, a = float(va["rec_valence"]), float(va["rec_arousal"])
         sq = quadrant_of(v, a)
         l1 = layer1[t["turn_uuid"]]
@@ -238,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     _report(rows, "text_clf_quadrant", "classifier")
     _report(rows, "text_lex_quadrant", "lexicon")
 
-    # --- continuous comparison: the measure the quadrant label throws away ----------
+    # Continuous per-axis comparison: the measure the quadrant label throws away.
     both = [r for r in rows if r["lex_hits"]]
     if len(both) >= 3:
         sv = spearman([r["lex_valence"] for r in both], [r["ser_valence"] for r in both])

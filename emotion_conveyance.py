@@ -1,41 +1,37 @@
 """Objective emotion conveyance (Story N5): does a machine listener recover the emotion
-ECHO intended — and how does that trade off against naturalness across engines?
+ECHO intended, and how does that trade off against naturalness across engines?
 
-Closes the synthesis -> recognition loop. A pretrained *dimensional* speech-emotion
-recogniser (audeering wav2vec2-large-robust-12-ft-emotion-msp-dim; Wagner et al., 2023,
-IEEE TPAMI) predicts arousal / dominance / valence straight from each clip. We map its
-0..1 outputs to ECHO's [-1,1] axes, derive the predicted quadrant, and compare with the
-INTENDED quadrant, reporting per engine:
+A pretrained dimensional speech-emotion recogniser (audeering
+wav2vec2-large-robust-12-ft-emotion-msp-dim; Wagner et al., 2023, IEEE TPAMI) predicts
+arousal, dominance and valence for each clip. Its 0..1 outputs are mapped to ECHO's [-1,1]
+axes and a predicted quadrant, then compared with the intended quadrant. Per engine:
   * quadrant accuracy (4-class; chance = 25 %) and arousal/valence sign accuracy,
   * Spearman agreement between intended and recognised arousal and valence,
   * a confusion matrix (intended -> recognised).
 
-Read with the documented VALENCE GAP caveat: acoustic valence is intrinsically hard, so
-recognisers are far stronger on arousal than valence (Wagner et al., 2023) — low valence
-agreement is partly a property of the recogniser, not only of ECHO's rendering. This is the
-machine proxy for the human 4-AFC test (S1), which remains the ground truth.
+Valence gap: recognisers are far stronger on arousal than on valence (Wagner et al., 2023),
+so low valence agreement partly reflects the recogniser, not only ECHO's rendering. This is
+the machine proxy for the human 4-AFC test (S1), which remains the ground truth.
 
     python emotion_conveyance.py --register research/register.csv
         -> emotion.csv beside the register (never overwrites) + per-engine report
 
-torch/transformers are OPTIONAL eval-layer deps (`pip install torch transformers librosa`);
-the model downloads from Hugging Face on first use, or loads from a local folder via
+torch/transformers are optional eval-layer deps (`pip install torch transformers librosa`).
+The model downloads from Hugging Face on first use, or loads from a local folder via
 `--model` / `ECHO_SER_MODEL` (needed where TLS to huggingface.co is filtered).
 
-PORTABILITY NOTES (hard-won; see PROJECT_LOG "FIXING CHAIN" 2026-07-27). This module
-deliberately does NOT use the model card's published loading code, because it breaks on
-current libraries. Three deviations, each with a reason:
-  1. No `Wav2Vec2Processor` — it needs `processor_config.json`, absent from this (4.x-era)
-     repo, so transformers 5.x cannot build it. The processor only does zero-mean/unit-
-     variance normalisation, which `predict_va()` applies inline instead.
-  2. `EmotionModel` is a plain `nn.Module`, NOT a `Wav2Vec2PreTrainedModel` — the parent
-     class drags in `init_weights()`/`tie_weights()`, which in transformers 5.x require an
-     `all_tied_weights_keys` attribute the 4.x-era class never defined (it failed at
-     construction, even offline). Module names are unchanged, so the published checkpoint
-     still loads as-is.
-  3. Weights are read with plain `load_state_dict` (`_load_state_dict()`), not
-     `from_pretrained` — fewer moving parts, no version-specific finaliser.
-The net effect: this runs on transformers 4.x and 5.x, online or fully offline.
+Portability notes (PROJECT_LOG "FIXING CHAIN" 2026-07-27). The model card's loading code
+breaks on current libraries, so this module deviates in three ways:
+  1. No `Wav2Vec2Processor`: it needs `processor_config.json`, absent from this 4.x-era
+     repo, so transformers 5.x cannot build it. Its only step, zero-mean/unit-variance
+     normalisation, is applied inline in `predict_va()`.
+  2. `EmotionModel` is a plain `nn.Module`, not a `Wav2Vec2PreTrainedModel`. The parent's
+     `init_weights()`/`tie_weights()` need an `all_tied_weights_keys` attribute in
+     transformers 5.x that the 4.x-era class never defined, so construction failed even
+     offline. Module names are unchanged, so the published checkpoint loads as-is.
+  3. Weights load with plain `load_state_dict` (`_load_state_dict()`), not
+     `from_pretrained`: fewer moving parts, no version-specific finaliser.
+Result: runs on transformers 4.x and 5.x, online or fully offline.
 """
 
 from __future__ import annotations
@@ -57,9 +53,9 @@ SR = 16000                      # the model expects 16 kHz mono
 def _load_model(model_id: str | None = None):
     """Lazy-load the dimensional SER model (torch + transformers), with clear errors.
 
-    `model_id` may be the Hugging Face repo id OR a LOCAL directory containing the model
-    files (config.json + weights) — set via --model / ECHO_SER_MODEL. The local option
-    exists because networks that filter TLS often block the Hugging Face download.
+    `model_id` (--model / ECHO_SER_MODEL) is a Hugging Face repo id or a local directory
+    with config.json and weights; the local option is for networks whose TLS filtering
+    blocks the download.
     """
     global _MODEL
     if _MODEL is None:
@@ -87,12 +83,10 @@ def _load_model(model_id: str | None = None):
         class EmotionModel(nn.Module):
             """wav2vec2 + regression head -> (arousal, dominance, valence).
 
-            Deliberately a PLAIN `nn.Module`, not a `Wav2Vec2PreTrainedModel`: the model card's
-            4.x-era class routes through transformers' pretrained machinery (`init_weights` ->
-            `tie_weights` -> `all_tied_weights_keys`), which changed in 5.x and breaks. We only
-            need the architecture plus a state dict, and the submodule names (`wav2vec2.*`,
-            `classifier.*`) are identical, so the published checkpoint loads unchanged — and
-            this stays stable across transformers versions.
+            A plain `nn.Module`, not a `Wav2Vec2PreTrainedModel`: in transformers 5.x its
+            machinery (`init_weights` -> `tie_weights` -> `all_tied_weights_keys`) breaks this
+            4.x-era class (module docstring, note 2). Submodule names (`wav2vec2.*`,
+            `classifier.*`) match the published checkpoint, so it loads unchanged.
             """
 
             def __init__(self, config):
@@ -106,29 +100,26 @@ def _load_model(model_id: str | None = None):
                 return self.classifier(torch.mean(hidden, dim=1))
 
         src = model_id or MODEL_ID
-        # A local dir is only usable if it actually holds the model files. An EMPTY or partial
-        # folder (e.g. the weights were deleted to reclaim disk space) previously surfaced as
-        # "Unrecognized model in ser_model" — so fall back to the hub id, which resolves from the
-        # local HF cache when the model has been downloaded once.
+        # A local folder without config.json (e.g. emptied to reclaim disk space) used to fail
+        # with "Unrecognized model in ser_model". Fall back to the hub id, which resolves from
+        # the local HF cache once the model has been downloaded.
         if src != MODEL_ID and not (Path(src) / "config.json").exists():
             print(f"  (note: '{src}' has no config.json — falling back to '{MODEL_ID}' "
                   "via the Hugging Face cache)")
             src = MODEL_ID
         try:
-            # Build from config + load weights DIRECTLY, bypassing from_pretrained():
-            # transformers 5.x's loading finalizer expects attributes (all_tied_weights_keys)
-            # that this custom model class (written for 4.x) does not define.
-            # Wav2Vec2Config (explicit) rather than AutoConfig: auto-detection needs a
-            # `model_type` key and its strictness varies across transformers versions.
+            # Build from config and load weights directly, not via the model's from_pretrained():
+            # its transformers 5.x finaliser expects all_tied_weights_keys, which this 4.x-era
+            # class does not define. Wav2Vec2Config rather than AutoConfig: auto-detection needs
+            # a `model_type` key and its strictness varies across transformers versions.
             from transformers import Wav2Vec2Config as _Cfg
             cfg = _Cfg.from_pretrained(src)
             model = EmotionModel(cfg)
             state = _load_state_dict(src)
             result = model.load_state_dict(state, strict=False)
-            # SAFETY GUARD: strict=False tolerates key mismatches (needed, since the checkpoint
-            # carries training-only tensors), but that also means a WRONG checkpoint would load
-            # silently and the model would emit plausible-looking, meaningless scores — the worst
-            # failure mode for a research tool. So require the regression head explicitly.
+            # strict=False is needed because the checkpoint carries training-only tensors, but it
+            # would also load a wrong checkpoint silently and yield plausible, meaningless scores.
+            # Require the regression head.
             loaded = [k for k in state if k.startswith("classifier.")]
             if not loaded:
                 raise RuntimeError("checkpoint has no 'classifier.*' weights (wrong model?)")
@@ -150,7 +141,7 @@ def _load_model(model_id: str | None = None):
 
 
 def _load_state_dict(src: str) -> dict:
-    """Read the weights from a local folder (preferred) or fetch them from the HF hub."""
+    """Load weights from a local folder or the HF hub (model.safetensors first, then .bin)."""
     import torch
 
     local = Path(src)
@@ -173,21 +164,16 @@ def _load_state_dict(src: str) -> dict:
 
 
 def predict_va(wav_path, model_id: str | None = None) -> dict:
-    """Recognised emotion for one clip, on ECHO's axes: valence/arousal in [-1, 1].
-
-    The audeering processor only does zero-mean/unit-variance normalisation, so we apply it
-    directly — avoiding a second network fetch (and processor_config.json incompatibilities
-    across transformers versions)."""
+    """Recognised arousal, valence and dominance for one clip, on ECHO's [-1, 1] axes."""
     import librosa
     import numpy as np
     import torch
 
     model = _load_model(model_id)
     wave, _ = librosa.load(str(wav_path), sr=SR, mono=True)
-    # FIX (see docstring note 1): this line replaces Wav2Vec2Processor entirely. The audeering
-    # processor is configured with do_normalize=True and nothing else, so zero-mean/unit-variance
-    # IS its whole behaviour — reproducing it here removes a network fetch of processor_config.json
-    # (absent from that repo) and the transformers-5.x incompatibility it caused.
+    # Replaces Wav2Vec2Processor (module docstring, note 1). Its only setting is
+    # do_normalize=True, so zero-mean/unit-variance is its whole behaviour, and this avoids
+    # fetching processor_config.json (absent from that repo).
     wave = (wave - wave.mean()) / (wave.std() + 1e-7)
     x = torch.from_numpy(wave.astype("float32")).unsqueeze(0)
     with torch.no_grad():
@@ -251,11 +237,12 @@ def _resolve_out(path: Path, force: bool) -> Path:
 
 
 def _report(rows: list[dict]) -> None:
-    """Per-engine accuracy + agreement, then a confusion matrix per engine.
+    """Print per-engine accuracy and agreement, then a confusion matrix per engine.
 
-    Engines that appear in several sessions are reported per session: in an A/B experiment only
-    an engine SETTING differs (e.g. Chatterbox arousal-only vs + reference style), so both rows
-    carry engine='chatterbox' and averaging by engine alone would merge the two conditions."""
+    An engine found in several sessions is reported per session: an A/B experiment changes only
+    an engine setting (e.g. Chatterbox arousal-only vs + reference style), so both rows carry
+    engine='chatterbox' and grouping by engine alone would merge the two conditions.
+    """
     per_engine: dict[str, set] = defaultdict(set)
     for r in rows:
         per_engine[r.get("engine", "?")].add(r.get("session", ""))

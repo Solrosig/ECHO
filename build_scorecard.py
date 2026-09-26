@@ -1,35 +1,33 @@
-"""The Tier-1 scorecard — the artefact the whole selection specification points at.
+"""Build the Tier-1 scorecard, the table the engine selection specification leads to.
 
-`TTS_Engine_Selection_Criteria.docx` defines hard filters, machine metrics and a decision
-rule, and then a Table-5 scorecard with one row per engine. Every part of that existed
-except the table: UTMOS lives in `naturalness*.csv`, recognised emotion in `emotion*.csv`,
-dial response in the controllability report, and none of them are joined. **An engine
-comparison spread across four files is not a comparison.** This builds the table, applies
-the declared rule, and prints the instrument ceilings beside every figure they bound.
+`TTS_Engine_Selection_Criteria.docx` defines hard filters, machine metrics, a decision rule
+and a Table-5 scorecard with one row per engine. Only the table was missing: UTMOS lives in
+`naturalness*.csv`, recognised emotion in `emotion*.csv`, dial response in the
+controllability report, and none of them were joined. This script builds the table, applies
+the declared rule and prints the instrument ceilings beside every figure they bound.
 
-Three design decisions, each of which the project has already paid to learn
----------------------------------------------------------------------------
+Three design decisions, each learned at a cost
+----------------------------------------------
 
-**1. The unit is (engine, session), never engine alone.** Chatterbox appears in four
-conditions and ZipVoice in three; they differ by a *setting*, not by an engine. Grouping by
-engine alone would average Condition A with Condition C and report a number describing
-neither. This is the same fault as the `clip_id` collision of 2026-08-09, where the
-experimental variable was absent from the key and an entire comparison was silently
-overwritten.
+1. The unit is (engine, session), never engine alone. Chatterbox appears in four conditions
+   and ZipVoice in three; they differ by a setting, not by engine. Grouping by engine alone
+   would average Condition A with Condition C and report a number describing neither. Same
+   fault as the `clip_id` collision of 2026-08-09, where the experimental variable was
+   missing from the key and a whole comparison was silently overwritten.
 
-**2. Unscored engines appear as rows with gaps, never as omissions.** A scorecard that
-silently drops the engines nobody has scored yet would read as though they had been
-considered and rejected. Coverage is part of the result.
+2. Unscored engines appear as rows with gaps, never as omissions. Silently dropping engines
+   nobody has scored yet would read as if they had been considered and rejected. Coverage
+   is part of the result.
 
-**3. The naturalness floor is the EMOTIONAL human anchor, not an invented constant.**
-M2 measured neutral human speech at 4.057 and emotional human speech at 3.353. The engines
-are being asked to produce emotional speech, so the defensible floor is *at least as natural
-as a human being emotional*. That is a measured quantity rather than a threshold chosen by
-the author, which is exactly the objection the criteria document exists to pre-empt.
+3. The naturalness floor is the emotional human anchor, not an invented constant. M2
+   measured neutral human speech at 4.057 and emotional human speech at 3.353. The engines
+   must produce emotional speech, so the defensible floor is "at least as natural as a human
+   being emotional": a measured quantity, not a threshold the author chose, which is the
+   objection the criteria document exists to pre-empt.
 
-Valence is reported and never scored — prior measurement found it at chance across four
-engines, and M1 (2026-08-31) established why: the recogniser scores valence at 48.8 % on
-acted human speech, so the column measures the instrument rather than the engine.
+Valence is reported, never scored. Earlier measurement found it at chance across four
+engines, and M1 (2026-08-31) showed why: the recogniser scores valence at 48.8 % on acted
+human speech, so the column measures the instrument, not the engine.
 
     python build_scorecard.py
     python build_scorecard.py --floor-margin 0.2   # widen the naturalness floor
@@ -52,11 +50,11 @@ QUADRANTS = ("Q1", "Q2", "Q3", "Q4")
 
 
 def load_scored(patterns: "list[str]") -> dict:
-    """Join every scored CSV on (session, clip_id), newest file winning.
+    """Join every scored CSV on (session, clip_id); the newest file wins.
 
-    Files are read oldest-first so that a later re-scoring of the same clip overwrites an
-    earlier one. Superseded runs stay on disk by the project's storage rule, so silently
-    preferring the newest is the only reading that matches the intent of keeping them.
+    Files are read oldest-first (by mtime), so a later re-scoring of a clip overrides an earlier
+    one; blank cells never override. Superseded runs stay on disk under the project's storage
+    rule, and preferring the newest is the only reading that matches why they are kept.
     """
     out: dict = {}
     for pat in patterns:
@@ -72,7 +70,7 @@ def load_scored(patterns: "list[str]") -> dict:
 
 
 def session_settings(session_dir: Path) -> str:
-    """The engine settings line from SESSION.md, which is what distinguishes conditions."""
+    """Engine settings line from SESSION.md (what distinguishes conditions); '' if absent."""
     md = session_dir / "SESSION.md"
     if not md.exists():
         return ""
@@ -141,19 +139,18 @@ def num(x) -> str:
 def reference_families(rows: "list[dict]") -> dict:
     """Group scored rows by engine for the engine x reference-level contrast.
 
-    **Keyed by (reference set, SESSION) — never by reference set alone.** Two sessions can
-    share a reference set and differ by another setting: `zipvoice_b4_rms01` and
-    `zipvoice_b4_rms00` are both `refs=refs_ravdess` and differ only in `target_rms`. Keying
-    on the reference name alone silently dropped one of them, and the one it dropped was the
-    falsified `--target-rms 0` condition — **a comparison destroyed at display time because
-    the experimental variable was absent from the key.**
+    Keyed by (reference set, session), never by reference set alone. Two sessions can share a
+    reference set and differ in another setting: `zipvoice_b4_rms01` and `zipvoice_b4_rms00`
+    are both `refs=refs_ravdess` and differ only in `target_rms`. Keying on the reference name
+    alone silently dropped one of them, the falsified `--target-rms 0` condition: a comparison
+    destroyed at display time because the experimental variable was missing from the key.
 
-    That is the third occurrence of one fault in this project: the `clip_id` collision of
-    2026-08-09 (design without session), the `(engine, session)` grouping rule that fixed the
-    scorecard, and now this. The rule is the same each time: **whatever varies between two
-    conditions must appear in the key that separates them.**
+    Third occurrence of one fault in this project, after the `clip_id` collision of 2026-08-09
+    (design without session) and the scorecard grouping fixed by the `(engine, session)` rule.
+    The rule each time: whatever varies between two conditions must be in the key that
+    separates them.
 
-    Returns {engine: [(reference_set, row), ...]} ordered by reference set then session, so
+    Returns {engine: [(reference_set, row), ...]} ordered by reference set, then session, so
     the printed block is stable across runs.
     """
     fam: dict = {}
@@ -171,26 +168,24 @@ def reference_families(rows: "list[dict]") -> dict:
 def rank_survivors(survivors: "list[dict]") -> "list[dict]":
     """Order the engines that cleared the naturalness floor: quadrant accuracy, then UTMOS.
 
-    **The secondary key is not decoration — without it the winner was the alphabet.**
-    Ranking on quadrant accuracy alone leaves ties to Python's stable sort, which preserves
-    insertion order, and rows are inserted `sorted(groups.items())` — alphabetically by
-    engine. On 2026-09-01 `chatterbox_x2_refs` and `zipvoice_b4_matched` tied at 60.0 % and
-    Chatterbox printed first for no reason other than `c` < `z`, while carrying **0.614 less
-    UTMOS** and a confidence interval that straddles the floor. The Tier-1 winner of the whole
-    engine comparison was being decided by the alphabet.
+    Without the secondary key the alphabet picked the winner. Ties on quadrant accuracy fall to
+    Python's stable sort, which keeps insertion order, and rows are inserted from
+    `sorted(groups.items())`, i.e. alphabetically by engine. On 2026-09-01 `chatterbox_x2_refs`
+    and `zipvoice_b4_matched` tied at 60.0 % and Chatterbox printed first only because
+    `c` < `z`, despite 0.614 less UTMOS and a confidence interval straddling the floor. The
+    Tier-1 winner of the engine comparison was being decided by the alphabet.
 
-    The selection criteria specify a lexicographic rule — naturalness as a hard filter, then
-    conveyance — and name no tiebreak. The specification is incomplete; an implementation
-    that fills such a gap **silently** is worse than one that fills it visibly, which is why
-    the printed header now names the tiebreak.
+    The selection criteria specify a lexicographic rule (naturalness as a hard filter, then
+    conveyance) and name no tiebreak. The gap is filled visibly: the printed header names the
+    tiebreak.
 
     UTMOS is the tiebreak because it is the only other metric the criteria declare. Valence is
     excluded because M1 measured the recogniser at 48.8 % on human speech, so it would rank the
-    instrument rather than the engine; arousal is excluded because four conditions saturate at
-    100 % and it cannot separate them.
+    instrument, not the engine; arousal is excluded because four conditions saturate at 100 %
+    and it cannot separate them.
 
-    A missing or NaN figure sorts **last** rather than raising — coverage is part of the
-    result (design decision 2), so an unscored engine must still appear in the ranking.
+    A missing or NaN figure sorts last instead of raising: coverage is part of the result
+    (design decision 2), so an unscored engine still appears in the ranking.
     """
     def key(r):
         q, u = r.get("quadrant"), r.get("utmos")
@@ -233,8 +228,7 @@ def main(argv: "list[str] | None" = None) -> int:
 
     ceil = load_ceilings(args.ceilings)
     anchor_neutral = ceil.get("utmos_neutral")
-    # The emotional-human anchor is the floor: engines are asked to produce emotional
-    # speech, so "at least as natural as a human being emotional" is the defensible bar.
+    # M2 emotional-human UTMOS anchor is the floor (design decision 3 in the module docstring).
     anchor_emotional = 3.353
     floor = anchor_emotional - args.floor_margin
 
@@ -323,14 +317,11 @@ def main(argv: "list[str] | None" = None) -> int:
                 label = r["session"].split("_", 2)[-1]
                 print(f"    {ref:<24} UTMOS {num(r['utmos'])}  quad {pct(r['quadrant'])}%"
                       f"  aro {pct(r['arousal'])}%  n={r['n']}   [{label}]")
-            # The spread is computed among conditions that actually CARRY references.
-            # `refs=(none)` is not a reference *level* — it is the absence of the mechanism,
-            # and it holds the highest UTMOS of the family (Chatterbox 4.336) because an
-            # unconditioned voice is the most natural one. Including it turns "what does
-            # changing the reference set buy?" into "how far is matched from having none at
-            # all?" and reports +0.967 where the answer to the asked question is +0.699.
-            # A number that answers a different question than its label is how a wrong
-            # figure reaches a results chapter.
+            # Spread only across conditions that carry references. `refs=(none)` is the absence
+            # of the mechanism, not a reference level, and holds the family's highest UTMOS
+            # (Chatterbox 4.336) because an unconditioned voice is the most natural. Including
+            # it answers "how far is matched from having no references?" (+0.967) instead of
+            # the labelled question "what does changing the reference set buy?" (+0.699).
             withrefs = [r["utmos"] for ref, r in pairs
                         if ref != "(none)" and r["utmos"] == r["utmos"]]
             if len(withrefs) > 1:

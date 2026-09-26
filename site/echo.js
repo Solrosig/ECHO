@@ -1,4 +1,4 @@
-/* ECHO listening test — trial state, seeded order, affect grid, recovery.
+/* ECHO listening test: trial state, seeded order, affect grid, recovery.
    Plain JS, no framework, no CDN. The whole instrument is this file plus test.html. */
 
 (function (global) {
@@ -7,9 +7,9 @@
   var KEY = "echo-listening-v1";
 
   /* --- seeded order ---------------------------------------------------
-     The participant code IS the seed. That way the order is reproducible from the responses
-     file alone — no separate seed to record, and none to lose. An unseeded order cannot be
-     reconstructed afterwards, which makes order effects untestable rather than merely unknown. */
+     The participant code is the seed, so the order can be rebuilt from the responses file
+     alone, with no separate seed to record or lose. An unseeded order could not be
+     reconstructed, leaving order effects untestable rather than merely unknown. */
 
   function seedFrom(code) {
     var h = 2166136261 >>> 0;
@@ -57,14 +57,14 @@
   }
 
   /* --- the affect grid ------------------------------------------------
-     One click reports BOTH dimensions. Response format follows the EmojiGrid (Toet & van Erp),
-     validated for affective appraisal including of audio; ECHO adapts it from self-report of
-     FELT affect to judgement of PERCEIVED EXPRESSED affect, and that adaptation is declared —
-     it is why the instruction on the page says "the speaker's emotion, not how it made you feel".
+     One click reports both dimensions. The format follows the EmojiGrid (Toet & van Erp),
+     validated for affective appraisal (audio included). ECHO adapts it from self-report of felt
+     affect to judgement of perceived expressed affect and declares the adaptation, hence the page's
+     instruction "Judge the speaker's emotion, not how the recording made you feel".
 
-     The quadrant is DERIVED from the click rather than chosen from four buttons, because the
-     project's own Layer-3 data showed kappa = -0.017 where Spearman rho = +0.620 on the same
-     comparison: discretising destroyed the signal. Coordinates keep both analyses available. */
+     The quadrant is derived from the click, not chosen from four buttons: the project's own
+     Layer-3 data showed kappa = -0.017 where Spearman rho = +0.620 on the same comparison, so
+     discretising destroyed the signal. Coordinates keep both analyses available. */
 
   function quadrantOf(v, a) {
     if (a >= 0) { return v >= 0 ? "Q1" : "Q2"; }
@@ -87,8 +87,7 @@
     }
     svg.addEventListener("click", place);
     svg.addEventListener("keydown", function (e) {
-      // Keyboard operability: a listening test that needs a mouse excludes participants for no
-      // methodological reason.
+      // Keyboard input: a mouse-only test would exclude participants for no methodological reason.
       var map = { Q1: [0.6, 0.6], Q2: [-0.6, 0.6], Q3: [-0.6, -0.6], Q4: [0.6, -0.6] };
       var k = { 1: "Q1", 2: "Q2", 3: "Q3", 4: "Q4" }[e.key];
       if (k) { e.preventDefault(); onPick(map[k][0], map[k][1]); }

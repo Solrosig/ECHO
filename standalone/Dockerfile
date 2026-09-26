@@ -15,7 +15,7 @@ COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node drizzle ./drizzle
 COPY --chown=node:node public ./public
 COPY --chown=node:node --from=build /app/dist/client ./dist/client
-# Every root module the server imports: the import closure of server/start.mjs.
+# All root modules in the import closure of server/start.mjs.
 COPY --chown=node:node audio-outbox.js calibration-profiles.js engine-catalog.js frontend-visibility.js interactive-sync.js message-rating.js participant.js study-session.js study-sync.js voice-controls.js package.json ./
 RUN mkdir -p /data && chown node:node /data
 USER node

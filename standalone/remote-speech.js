@@ -24,7 +24,7 @@ export class RemoteSpeechClient{
    const downloaded=this.now();
    context=this.audioContext();const decoded=await context.decodeAudioData(wav);if(decoded.numberOfChannels!==1)throw new Error('The speech service must return mono audio.');
    const processed=calibratedAudio(decoded.getChannelData(0),decoded.sampleRate,data.params),finished=this.now();
-   // Where the wait went: connecting, the service's queue and its own work, the download, then decoding and level processing here.
+   // Timing split: connect, service queue and processing, download, then browser-side decoding, pitch and level processing.
    const timing={engine_location:'speech_service',connect_s:seconds(connected-start),...queue.summary(served),service_s:seconds(served-connected),download_s:seconds(downloaded-served),browser_processing_s:seconds(finished-downloaded)};
    return {...response[1],...processed,service_metadata:response[1],conditioning:data.params.conditioning,timing};
   }finally{clearTimeout(timer);app?.close();if(context)await context.close();this.job=null;}

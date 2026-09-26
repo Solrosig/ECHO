@@ -22,8 +22,8 @@ nltk.download('punkt_tab',quiet=True)
 torch.set_num_threads(2)
 # Pinned checkpoints are unpickled freely only while models.load_engine runs (models.trusted_checkpoint_loads).
 
-# The website's server voices: TEST_ENGINES and EXPLORE_ENGINES in engine-catalog.js, less the in-browser Kokoro.
-# ZipVoice is not offered on the website, so the Space loads it only when ECHO_ENGINES names it.
+# Server voices the website offers: TEST_ENGINES and EXPLORE_ENGINES in engine-catalog.js, minus in-browser Kokoro.
+# ZipVoice is not offered on the website; the Space loads it only when ECHO_ENGINES names it.
 SITE_ENGINES=['chatterbox','styletts2','cosyvoice2','parlertts']
 enabled=os.environ.get('ECHO_ENGINES',','.join(SITE_ENGINES)).split(',')
 failures={}
@@ -32,7 +32,7 @@ for engine in enabled:
     except Exception as exc:
         failures[engine]=str(exc);print(f'Could not initialise {engine}: {exc}',flush=True)
 
-# ZeroGPU refuses a call whose reservation exceeds the caller's time left, so each voice reserves time by text length.
+# ZeroGPU refuses calls that reserve more than the caller's time left, so the reservation scales with text length.
 @spaces.GPU(duration=voice_gpu_seconds)
 def gpu_synthesize(text,engine,emotion,condition):
     return models.render(text,engine,emotion,condition)
@@ -57,23 +57,21 @@ with gr.Blocks(delete_cache=(300,300)) as demo:
     speech=gr.Audio(label='Synthetic speech',type='filepath')
     metadata=gr.JSON(label='Generation metadata')
     button.click(synthesize,[text,engine,emotion,condition],[speech,metadata],api_name='synthesize',concurrency_limit=1)
-# Full ECHO website and durable private data beside the existing TTS API.
+# Run the full ECHO website, with durable private storage, beside the TTS API.
 from fastapi import FastAPI
 import uvicorn
 from web_host import prepare,add_web_routes,relay_gate,DURABLE,LOCAL
 store,web_process,public_origin=prepare()
 demo.queue(max_size=12)
-# Gradio links queued results' files from app.root_path alone (only /config also uses the mount path), and it drops the
-# request path when X-Forwarded-Host is present, as on relayed voices; so root_path names the public path. A full URL
-# there broke Gradio's routing (v0.8.25).
+# Gradio builds queued results' file links from app.root_path alone (only /config also uses the mount path) and drops
+# the request path when X-Forwarded-Host is set, as on relayed voices, so root_path is the public path. A full URL there
+# broke Gradio's routing (v0.8.25).
 app=gr.mount_gradio_app(FastAPI(docs_url=None,redoc_url=None,openapi_url=None),demo,path='/api/tts',root_path='/api/tts',blocked_paths=[str(DURABLE),str(LOCAL)],show_error=True,ssr_mode=False,server_port=7860)
-# With the owner's token, visitors' voice requests go through the website's server, which relays them with the token so
-# ZeroGPU bills the owner; relay_gate lets only those relayed requests reach Gradio.
+# With the owner's token, only voice requests relayed by the website's server reach Gradio, so ZeroGPU bills the owner.
 app=relay_gate(add_web_routes(app,store,public_origin))
 server=uvicorn.Server(uvicorn.Config(app,host='0.0.0.0',port=int(os.environ.get('ECHO_HTTP_PORT','7860'))))
 demo.server=server
-# Mounting on FastAPI bypasses Blocks.launch and its ZeroGPU startup hook.
-# Invoke the same installed Spaces hook after model loading, before serving.
+# Mounting on FastAPI skips Blocks.launch and its ZeroGPU startup hook; run that hook after model loading, before serving.
 from spaces.config import Config as SpacesConfig
 if SpacesConfig.zero_gpu:
     from spaces.zero import startup as zerogpu_startup

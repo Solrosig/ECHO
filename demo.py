@@ -1,4 +1,4 @@
-"""CLI demo — the MVP definition of done, executable.
+"""CLI demo: the MVP definition of done, executable.
 
     echo-run "I lost my keys again" --quadrant Q2
     echo-run "I lost my keys again" --all-quadrants
@@ -6,10 +6,10 @@
     echo-run "I lost my keys again" --all-quadrants --mock --engine kokoro   # mock LLM, real voice
 
 One message -> emotion-conditioned reply -> coherence check -> speech whose rate,
-loudness, and pitch reflect the emotion -> one full SQLite row -> audio plays.
+loudness and pitch reflect the emotion -> one full SQLite row -> audio plays.
 
-The voice engine is selectable at runtime: --engine overrides config (ECHO_TTS_ENGINE);
---mock uses the silent mock engine unless --engine says otherwise.
+--engine overrides config (ECHO_TTS_ENGINE); --mock uses the silent mock engine unless
+--engine says otherwise.
 """
 
 from __future__ import annotations
@@ -89,7 +89,6 @@ def main(argv: list[str] | None = None) -> int:
 
     strategy = SymmetricStrategy(voice_id=cfg.kokoro_voice)
 
-    # LLM: mock (no external tools) or the real Ollama endpoint.
     if args.mock:
         llm = MockLLMAdapter()
     else:
@@ -104,7 +103,6 @@ def main(argv: list[str] | None = None) -> int:
             print("Is `ollama serve` running and the model pulled? Or try --mock.")
             return 2
 
-    # TTS: --engine wins; else --mock implies the silent mock engine; else config default.
     engine_choice = args.engine or ("mock" if args.mock else cfg.tts_engine)
     tts = make_tts(engine_choice, kokoro_model=cfg.kokoro_model_path,
                    kokoro_voices=cfg.kokoro_voices_path,

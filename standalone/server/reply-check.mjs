@@ -1,11 +1,11 @@
 // The reply check (echo-reply-check-v1). Before a conversation reply is voiced, the same language model reads the user's
 // message and the reply, without being told the chosen emotion, and answers three closed questions about what the reply's
 // words show (observable rubric items, as Kumar et al. 2026 recommend for LLM judges). The server maps feeling and energy
-// to a quadrant and compares it with the user's chosen emotion. A reply that does not respond to the message, or misses the
-// quadrant, is generated again with the next seed, at most twice; if no attempt passes, the best-scoring attempt is used
+// to a quadrant and compares it with the chosen emotion. A reply that does not respond to the message, or misses the
+// quadrant, is regenerated with the next seed, at most twice by default; if no attempt passes, the best-scoring one is used
 // and flagged (the author's choice, 2026-09-13). The judge is the reply's own model, so it is not an independent
-// instrument. In the pre-registered 2026-09-13 screen it often disagreed with independent labels on whether a reply responds
-// to the message and did not meet its rules, so it stays off by default (dialogue.mjs).
+// instrument. In the pre-registered 2026-09-13 screen it often disagreed with independent labels on whether a reply
+// responds to the message and did not meet its rules, so it stays off by default (dialogue.mjs).
 export const REPLY_CHECK_VERSION='echo-reply-check-v1';
 export const CHECK_GENERATION={temperature:0,seed:666,max_tokens:60};
 export const CHECK_FORMAT={type:'json_object'};

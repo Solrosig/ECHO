@@ -3,28 +3,25 @@
     python build_test_site.py --out ..\\echo-listening
     python build_test_site.py --out ..\\echo-listening --stimuli 2      # shorter session
 
-What it produces
-----------------
+Output:
     <out>/index.html  check.html  test.html  done.html      the flow
     <out>/app.css  echo.js                                  vendored, no CDN
-    <out>/manifest.json                                     tokens + durations ONLY
+    <out>/manifest.json                                     tokens + durations only
     <out>/audio/<token>.wav                                 opaque names
-    <out>/.nojekyll                                         or Pages eats folders starting with _
-    research/uat/blind_key_<stamp>.csv                      THE KEY -- stays in this repo
+    <out>/.nojekyll                                         or Pages ignores folders starting with _
+    research/uat/blind_key_<stamp>.csv                      the key; stays in this repo
 
-**The key never enters the site folder.** On a static host there is no server to hide the
-token->condition mapping behind, so the only place it can be hidden is by not shipping it. The
-filenames are opaque for the same reason: `zipvoice_b4_matched_S01_Q2.wav` in a network tab tells
-a curious participant everything the blinding exists to withhold.
+The key never enters the site folder: a static host has no server to hide the
+token->condition mapping behind, so the only way to hide it is not to ship it. Filenames are
+opaque for the same reason: `zipvoice_b4_matched_S01_Q2.wav` in a network tab tells a curious
+participant everything the blinding exists to withhold.
 
-Six conditions, deliberately including two that should fail
------------------------------------------------------------
-Four survivors plus two controls at opposite ends: **parlertts** should fail on CONVEYANCE (it
-scored quadrant 25.0 %, arousal 50.0 %, four identical confusion rows) and **espeak** on
-NATURALNESS (UTMOS 2.113 against a 3.353 floor). A listener who rates both of those well is
-discriminating on neither axis, which is a stronger attention check than either control alone --
-and eSpeak is also the low anchor ITU-R BS.1534 requires so the scale is calibrated rather than
-floating.
+Six conditions, two of them expected to fail: four survivors plus two controls at opposite
+ends. parlertts should fail on conveyance (quadrant 25.0 %, arousal 50.0 %, four identical
+confusion rows) and espeak on naturalness (UTMOS 2.113 against a 3.353 floor). A listener who
+rates both well is discriminating on neither axis, a stronger attention check than either
+control alone. eSpeak is also the low anchor ITU-R BS.1534 requires, so the scale is
+calibrated rather than floating.
 """
 
 from __future__ import annotations
@@ -40,8 +37,8 @@ from pathlib import Path
 
 QUADRANTS = ("Q1", "Q2", "Q3", "Q4")
 
-#: session -> short label. Order is the reporting order, not the presentation order (which is
-#: shuffled per participant in the browser from a seed derived from the participant code).
+#: session -> short label. Order is the reporting order; the browser shuffles the presentation
+#: order per participant from a seed derived from the participant code.
 CONDITIONS = {
     "2026-08-31_1241_zipvoice_b4_matched": "zipvoice-matched",
     "2026-08-31_2302_chatterbox_x2_matched_v2": "chatterbox-matched",
@@ -51,19 +48,18 @@ CONDITIONS = {
     "2026-07-26_2340_espeak_check": "espeak",
 }
 
-#: Practice clips come from a session that is NOT in the analysed set, so the four trials a
-#: listener spends learning the task cannot contaminate a reported cell.
+#: Practice clips come from a session outside the analysed set, so the four trials a listener
+#: spends learning the task cannot contaminate a reported cell.
 PRACTICE_SESSION = "2026-07-26_1733_sapi_e6_realtest"
 
 PARAM_SET = "rate_volume_pitch"
 
 
 def token_for(session: str, clip_id: str) -> str:
-    """Opaque, stable, and not reversible without the key.
+    """Opaque, stable token for a clip; not reversible without the key.
 
-    Stable so a rebuild produces the same filenames and the site diff stays readable; opaque so
-    the network tab leaks nothing. Derived from session+clip_id rather than assigned randomly, so
-    two builds of the same selection agree without keeping state.
+    Derived from session + clip_id, not assigned randomly, so rebuilds give the same filenames
+    (a readable site diff) without keeping state. Opaque so the network tab leaks nothing.
     """
     return hashlib.sha256(f"{session}|{clip_id}".encode()).hexdigest()[:10]
 
@@ -83,8 +79,8 @@ def load_register(register: Path) -> "list[dict]":
 def select(rows: "list[dict]", stimuli: int) -> "tuple[list[dict], list[dict]]":
     """Balanced selection: every condition x every quadrant x `stimuli` stimuli.
 
-    Stimulus ids are taken in sorted order rather than sampled, so the set is reproducible without
-    carrying a seed: the same register and the same `--stimuli` always give the same trials.
+    Stimulus ids are taken in sorted order, not sampled, so the same register and `--stimuli`
+    always give the same trials without carrying a seed.
     """
     by = {}
     for r in rows:

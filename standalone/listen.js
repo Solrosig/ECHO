@@ -72,7 +72,7 @@ $('start-form').addEventListener('submit',async e=>{
  e.preventDefault();if(starting)return;const random=crypto.getRandomValues(new Uint32Array(2)),requested=query.get('g'),group=requested?Number(requested)-1:random[0]%manifest.groups.length;
  starting=true;
  try{
-  if(test){/* Technical sessions remain marked even when exercising the ordinary form. */}
+  if(test){/* Technical tests skip the nickname check; they stay marked technical even when they use the ordinary form. */}
   // Another browser's nickname is refused before the session starts; the server refuses it again when the session is saved.
   else if(!await nicknameAvailable(validateNickname($('study-nickname').value),listenerId())){nicknameError(NICKNAME_TAKEN);return;}
   // Gender is required for a study session; a technical test may leave it empty.
@@ -88,8 +88,8 @@ $('resume-button').addEventListener('click',async()=>{
   save();showTrial();
  }catch(e){error(e.message);}finally{$('resume-button').disabled=false;}
 });
-// A new session gets a new participant code. The unfinished one is never deleted: its browser copy is sent once more and stays
-// stored as an incomplete session, and a CSV backup downloads when the database has not confirmed it.
+// Restarting gives a new participant code. The unfinished session is not withdrawn: it is sent once more and stays stored
+// as incomplete, and its CSV backup downloads when the database has not confirmed it.
 $('restart-session').addEventListener('click',()=>{$('restart-code').textContent=session?.participant_id||'';$('restart-confirm').hidden=false;});
 $('restart-cancel').addEventListener('click',()=>{$('restart-confirm').hidden=true;});
 $('restart-yes').addEventListener('click',async()=>{

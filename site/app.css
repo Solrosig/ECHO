@@ -1,4 +1,4 @@
-/* ECHO listening test — hand-written, ~150 lines, no build step, no CDN.
+/* ECHO listening test: hand-written CSS, no build step, no CDN.
    Tailwind was dropped for this site because the standalone binary cannot load DaisyUI without
    node_modules, which the C2 one-command reproducibility argument rejects. */
 

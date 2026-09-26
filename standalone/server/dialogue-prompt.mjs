@@ -1,9 +1,9 @@
-// The conversation prompt, built only on this server. The 1.5.0 prompt stays untouched in voice-controls.js, whose
-// hash PROTOCOL_FREEZE_V2.json pins. v3 names each emotion with ECHO's quadrant wording (prompts/q1-q4.txt) and adds one
-// delivery cue and one example reply; the author chose it on 2026-09-11 from a screen of four prompts. v4a and v4b are the
-// 2026-09-13 candidates against replies that miss what the user said (evidence 2026-09-12-emotion-coherence-investigation):
-// an answer-first rule with four examples (a request, a question, a greeting and news), and in v4b a one-word reading of the
-// message that the server removes before the reply is checked or spoken. The pre-registered 2026-09-13 screen selected
+// The conversation prompt, built only on this server. The 1.5.0 prompt stays untouched in voice-controls.js, whose hash
+// PROTOCOL_FREEZE_V2.json pins. v3 names each emotion with ECHO's quadrant wording (prompts/q1-q4.txt) and adds one
+// delivery cue and one example reply; the author chose it on 2026-09-11 from a screen of four prompts. v4a and v4b are
+// the 2026-09-13 candidates against replies that miss what the user said (evidence 2026-09-12-emotion-coherence-investigation):
+// an answer-first rule with four examples (request, question, greeting, news); v4b also asks for a one-word reading of the
+// message, which the server removes before the reply is checked or spoken. The pre-registered 2026-09-13 screen selected
 // neither: both answered the message more often than v3 but carried the chosen emotion less often, so fewer replies did
 // both (evidence 2026-09-13-reply-check-prompt-v4-screen). v3 stays the default.
 import {EMOTIONS,validateText} from '../voice-controls.js';
@@ -74,9 +74,9 @@ export function dialogueMessages(text,emotion,history=[],{variant=DEFAULT_PROMPT
     ...history.slice(-6).filter(m=>['user','assistant'].includes(m.role)).map(m=>({role:m.role,content:String(m.content).slice(0,800)})),{role:'user',content:text}];
 }
 
-// A v4b reply begins with the model's one-word reading of the message. Removed: a first line of one word (the model may
-// pick a word outside the list, as "Joke" in the lab's plumbing check), or a listed word followed by a colon or a spaced
-// dash. A reply without either is left as it is.
+// A v4b reply begins with the model's one-word reading of the message. Removed: a one-word first line (the model may pick
+// a word outside the list, like "Joke" in the lab's plumbing check), or a listed word followed by a colon or a spaced
+// dash. Any other reply is returned unchanged.
 export function stripActLabel(text){
   const reply=String(text??'').trim();
   const found=reply.match(/^[\s"'“*_]*(?:(greeting|question|request|news|other)[\s"'”*_.]*?(?::|\s[-–—]\s)|([A-Za-z]{2,15})[\s"'”*_.:]*?\r?\n)\s*/i);

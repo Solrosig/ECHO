@@ -1,14 +1,8 @@
-"""TTS adapter — PROTECTED SEAM #2 (speech side).
+"""TTS adapter (protected seam #2, speech side).
 
-`synthesize(text, voice_params) -> Path` writes a WAV. Engines share one interface:
-  - KokoroAdapter    : high-quality open-source neural TTS (rate + volume)
-  - Sapi5XmlAdapter  : Windows SAPI5 via prosody XML — renders rate + volume + PITCH
-  - Pyttsx3Adapter   : offline OS voice (rate + volume; no pitch) — safe fallback
-  - ChatterboxAdapter: neural, NATIVE emotion conditioning (exaggeration + reference style)
-  - ZipVoiceAdapter  : neural flow-matching, emotion via reference style; out-of-process
-  - MockTTSAdapter   : dependency-free, for tests / offline integration runs
-
-Voice dials arrive pre-computed on `voice_params` (rate, volume, pitch).
+Every engine implements `synthesize(text, voice_params, out_path) -> Path`, which writes a
+WAV. Voice dials arrive pre-computed on `voice_params` (rate, volume, pitch).
+`capability_matrix()` lists the engines and what each renders.
 """
 
 from __future__ import annotations
@@ -23,9 +17,9 @@ from strategies import VoiceParams
 
 class TTSAdapter(ABC):
     engine_id: str = "abstract"
-    renders: frozenset = frozenset()   # which dials this engine actually renders (rate/volume/pitch)
+    renders: frozenset = frozenset()   # dials this engine renders (rate/volume/pitch)
     natural: bool = False              # neural/natural voice (vs formant/concatenative)
-    native_emotion: bool = False       # conditions on the EMOTION itself, not on prosody dials
+    native_emotion: bool = False       # conditions on the emotion itself, not on prosody dials
     note: str = ""
 
     @abstractmethod
@@ -36,7 +30,7 @@ class MockTTSAdapter(TTSAdapter):
     """Writes a valid silent WAV whose length shrinks as rate rises (no deps)."""
 
     engine_id = "mock"
-    renders = frozenset()                       # silent; renders no audible dial
+    renders = frozenset()
     note = "silent WAV; tests only"
     _SR = 24000
 
@@ -57,7 +51,7 @@ class Pyttsx3Adapter(TTSAdapter):
     """Offline OS voice (Windows SAPI5). Renders rate + volume (no pitch)."""
 
     engine_id = "pyttsx3"
-    renders = frozenset({"rate", "volume"})     # OS voice: no pitch control
+    renders = frozenset({"rate", "volume"})
     note = "OS voice (SAPI/espeak/nsss); no pitch; not cross-platform-consistent"
     _BASE_WPM = 175
 
@@ -74,32 +68,37 @@ class Pyttsx3Adapter(TTSAdapter):
         return out_path
 
 
-# --- SAPI dial calibration -------------------------------------------------
-# SAPI's tags run -10..+10, but those extremes are NOT linear and NOT modest:
-#   absspeed=+10 is ~3x speaking rate; absmiddle=+10 is a chipmunk-level pitch jump.
-# The intended dials are gentle (rate 0.7-1.3, pitch 0.8-1.2). The earlier code
-# stretched that gentle band across SAPI's whole extreme range, so a "1.3x" intent
-# rendered as ~2-3x actual speed (unlistenable). These helpers instead map each
-# dial onto the SMALL part of SAPI's scale that reproduces the intended factor.
+# --- SAPI dial calibration ---
+# SAPI's tags run -10..+10, and the extremes are neither linear nor modest: absspeed=+10
+# is ~3x speaking rate, absmiddle=+10 a chipmunk-level pitch jump. The intended dials are
+# gentle (rate 0.7-1.3, pitch 0.8-1.2). Earlier code stretched them over SAPI's whole
+# range, so a "1.3x" intent rendered at ~2-3x actual speed (unlistenable). These helpers
+# map each dial onto the small part of SAPI's scale that reproduces the intended factor.
 
 def _sapi_rate(rate_factor: float) -> int:
-    """Rate factor -> SAPI absspeed. Gain 17 gives a CLEAR fast/slow contrast between
-    quadrants (1.18 -> +3 ~1.4x, 0.82 -> -3 ~0.7x); the +-5 cap keeps even the extremes
-    listenable (never SAPI's +10 ~= 3x, which was unlistenable)."""
+    """Rate factor -> SAPI absspeed.
+
+    Gain 17 gives a clear fast/slow contrast between quadrants (1.18 -> +3 ~1.4x,
+    0.82 -> -3 ~0.7x); the +-5 cap keeps the extremes listenable (SAPI's +10 is ~3x).
+    """
     return max(-5, min(5, round((rate_factor - 1.0) * 17.0)))
 
 
 def _sapi_pitch(pitch_factor: float) -> int:
-    """Pitch factor -> SAPI absmiddle. This is the valence channel: gain 20 turns the
-    +-0.2 pitch range into an audible +-4 shift (Q1 high vs Q2 low), clamped +-5 so it
-    can never chipmunk."""
+    """Pitch factor -> SAPI absmiddle, the valence channel.
+
+    Gain 20 turns the +-0.2 pitch range into an audible +-4 shift (Q1 +4, Q3 -4);
+    the +-5 clamp prevents chipmunk pitch.
+    """
     return max(-5, min(5, round((pitch_factor - 1.0) * 20.0)))
 
 
 def _sapi_volume(volume: float) -> int:
-    """Loudness dial (0.6..1.0) -> SAPI volume 50..95: a WIDE dynamic range so 'loud'
-    quadrants (~86) are clearly louder than 'soft' ones (~59); floor 50 stays audible,
-    ceiling 95 avoids blasting."""
+    """Loudness dial (0.6..1.0) -> SAPI volume 50..95.
+
+    The wide range makes 'loud' quadrants (~86) clearly louder than 'soft' ones (~59);
+    the floor of 50 stays audible and the ceiling of 95 avoids blasting.
+    """
     v = max(0.6, min(1.0, volume))
     return max(0, min(100, round(50.0 + (v - 0.6) / 0.4 * 45.0)))
 
@@ -109,15 +108,14 @@ def _xml_escape(text: str) -> str:
 
 
 class Sapi5XmlAdapter(TTSAdapter):
-    """Windows SAPI5 driven with prosody XML markup, so PITCH is rendered too.
+    """Windows SAPI5 driven with prosody XML, so pitch is rendered too.
 
-    Uses pywin32 (win32com). Maps rate/volume/pitch onto SAPI's <rate>, <volume>,
-    and <pitch> tags. This is the engine that finally carries valence (via pitch)
-    into the voice.
+    Uses pywin32 (win32com) and maps rate/volume/pitch onto SAPI's <rate>, <volume> and
+    <pitch> tags. Pitch is how this engine carries valence into the voice.
     """
 
     engine_id = "sapi5xml"
-    renders = frozenset({"rate", "volume", "pitch"})   # full dial set (pitch via XML)
+    renders = frozenset({"rate", "volume", "pitch"})
     note = "Windows-only; not OSS; rough voice quality"
 
     def synthesize(self, text: str, voice_params: VoiceParams, out_path: Path) -> Path:
@@ -149,7 +147,7 @@ class KokoroAdapter(TTSAdapter):
     """High-quality open-source neural TTS via kokoro-onnx. Renders rate + volume."""
 
     engine_id = "kokoro"
-    renders = frozenset({"rate", "volume"})     # neural: speed + loudness; no explicit pitch dial
+    renders = frozenset({"rate", "volume"})
     natural = True
     note = "neural, Apache-2.0, local (ONNX); high naturalness; no explicit pitch"
 
@@ -188,21 +186,25 @@ class KokoroAdapter(TTSAdapter):
             speed=voice_params.rate,
             lang=self._lang,
         )
-        samples = samples * max(0.0, min(1.0, voice_params.volume))  # apply loudness
+        samples = samples * max(0.0, min(1.0, voice_params.volume))
         sf.write(str(out_path), samples, sample_rate)
         return out_path
 
 
 def arousal_to_exaggeration(arousal: float, lo: float = 0.30, hi: float = 0.85) -> float:
-    """Arousal (-1..1) -> Chatterbox `exaggeration` (0..1, default 0.5): the engine's NATIVE
-    expressiveness control. Low arousal -> subdued delivery, high arousal -> emphatic."""
+    """Arousal (-1..1) -> Chatterbox `exaggeration` (0..1, default 0.5).
+
+    `exaggeration` is the engine's native expressiveness control.
+    """
     return round(lo + (max(-1.0, min(1.0, arousal)) + 1.0) / 2.0 * (hi - lo), 3)
 
 
 def arousal_to_cfg_weight(arousal: float, lo: float = 0.30, hi: float = 0.60) -> float:
-    """Arousal -> Chatterbox `cfg_weight` (default 0.5). Higher exaggeration speeds speech up,
-    and LOWERING cfg_weight restores slower, more deliberate pacing — so high-arousal clips get
-    a lower cfg to stay intelligible, low-arousal clips a higher one."""
+    """Arousal -> Chatterbox `cfg_weight` (default 0.5), inversely.
+
+    Higher exaggeration speeds speech up and a lower cfg_weight restores slower pacing, so
+    high-arousal clips get a lower cfg_weight to stay intelligible.
+    """
     return round(hi - (max(-1.0, min(1.0, arousal)) + 1.0) / 2.0 * (hi - lo), 3)
 
 
@@ -214,14 +216,13 @@ class _NoWatermark:
 
 
 def _disable_perth_watermark() -> None:
-    """Disable Chatterbox's inaudible audio watermarking — for TWO reasons.
+    """Disable Chatterbox's inaudible audio watermarking, for two reasons.
 
-    1. MEASUREMENT VALIDITY (the important one): the watermarker deliberately perturbs the
-       output waveform, and ECHO *measures* that waveform (F0, jitter, shimmer, HNR, UTMOS).
-       Watermarked audio is therefore not a clean sample of what the engine synthesised, so it
-       is switched off for research use. Any published clip can be re-rendered with it enabled.
-    2. ROBUSTNESS: `resemble-perth` only imports fully when its own optional dependencies are
-       present; otherwise `perth.PerthImplicitWatermarker` is left as None and Chatterbox dies
+    1. Measurement validity (the main one): the watermarker perturbs the output waveform
+       that ECHO measures (F0, jitter, shimmer, HNR, UTMOS), so watermarked audio is not a
+       clean sample of the synthesis. Any published clip can be re-rendered with it enabled.
+    2. Robustness: `resemble-perth` imports fully only when its optional dependencies are
+       present; otherwise `perth.PerthImplicitWatermarker` is None and Chatterbox fails
        with `TypeError: 'NoneType' object is not callable` while loading the model.
     """
     try:
@@ -232,25 +233,25 @@ def _disable_perth_watermark() -> None:
 
 
 class ChatterboxAdapter(TTSAdapter):
-    """Chatterbox (Resemble AI, MIT) — neural TTS with NATIVE emotion conditioning.
+    """Chatterbox (Resemble AI, MIT): neural TTS with native emotion conditioning.
 
-    This adapter is the experiment behind Phase X: the Phase-N result showed a neutral neural
-    engine discards externally-applied prosody (flat F0, emotion collapsed), so emotion is
-    injected here through the engine's OWN interfaces instead of ECHO's dials:
-      * `exaggeration`  <- AROUSAL   (native expressiveness scalar)
-      * `cfg_weight`    <- AROUSAL   (pacing compensation; see arousal_to_cfg_weight)
-      * `audio_prompt`  <- QUADRANT  (a per-quadrant emotional reference clip -> style transfer;
-                                      this is the channel intended to carry VALENCE, the axis
-                                      that prosodic dials failed to convey)
-    Loudness is still applied as a post-scale. Rate and pitch are NOT sent — deliberately, since
-    the point is to test native conditioning rather than to re-impose external prosody.
+    The experiment behind Phase X. The Phase-N result showed a neutral neural engine
+    discards externally applied prosody (flat F0, emotion collapsed), so emotion enters
+    through the engine's own inputs instead of ECHO's dials:
+      * `exaggeration`       <- arousal   (native expressiveness scalar)
+      * `cfg_weight`         <- arousal   (pacing compensation; see arousal_to_cfg_weight)
+      * `audio_prompt_path`  <- quadrant  (per-quadrant emotional reference clip, style
+                                           transfer; the channel meant to carry valence,
+                                           which the prosodic dials failed to convey)
+    Loudness is a post-scale. Rate and pitch are deliberately not sent: the point is to
+    test native conditioning, not to re-impose external prosody.
 
-    Optional reference clips: a directory (config `chatterbox_refs`) containing Q1.wav..Q4.wav.
+    Optional reference clips Q1.wav..Q4.wav live in the `chatterbox_refs` directory.
     Without them the engine still runs (expressiveness only, no valence style transfer).
     """
 
     engine_id = "chatterbox"
-    renders = frozenset({"volume"})          # loudness only, as a post-scale
+    renders = frozenset({"volume"})
     natural = True
     native_emotion = True
     note = "neural, MIT; native emotion (exaggeration<-arousal, reference style<-quadrant)"
@@ -275,9 +276,9 @@ class ChatterboxAdapter(TTSAdapter):
                     "expressive engine; needs torch)."
                 ) from exc
             _disable_perth_watermark()
-            # Prefer a LOCAL model directory when provided: networks that intercept TLS block
-            # the Hugging Face download entirely (WinError 10054), so the files can be fetched
-            # once in a browser instead — the same workaround used for the SER model.
+            # Prefer a local model directory: networks that intercept TLS block the Hugging
+            # Face download entirely (WinError 10054), so the files can be fetched once in a
+            # browser instead, as for the SER model.
             local = Path(self._model_dir) if self._model_dir else None
             if local and local.is_dir():
                 missing = [f for f in self.MODEL_FILES if not (local / f).exists()]
@@ -336,71 +337,68 @@ class ChatterboxAdapter(TTSAdapter):
 def _zipvoice_speed(rate: float) -> float:
     """ECHO rate factor -> ZipVoice `--speed`.
 
-    The conventions already agree (1.0 = normal, >1.0 = faster), so this is a pass-through
-    with a clamp; ZipVoice accepts any float and extreme values degrade intelligibility.
-    Note there is deliberately NO arousal->speed mapping here: `voice_params.rate` is
-    already the strategy's arousal-derived dial, so deriving a second one from arousal
-    would count the same signal twice and make ZipVoice non-comparable with Kokoro and
-    eSpeak, which receive the same dial.
+    Both use 1.0 = normal and >1.0 = faster, so this is a pass-through with a clamp;
+    ZipVoice accepts any float, and extreme values degrade intelligibility. There is
+    deliberately no separate arousal->speed map: `voice_params.rate` already carries
+    arousal, so a second mapping would count it twice and make ZipVoice non-comparable
+    with Kokoro and eSpeak, which receive the same dial.
     """
     return round(max(0.5, min(2.0, rate)), 3)
 
 
 class ZipVoiceAdapter(TTSAdapter):
-    """ZipVoice (k2-fsa, Apache-2.0) — zero-shot flow-matching TTS, run OUT OF PROCESS.
+    """ZipVoice (k2-fsa, Apache-2.0): zero-shot flow-matching TTS, run out of process.
 
-    Admitted for a CONTROLLED COMPARISON. Phase X established that reference-clip
-    conditioning is what finally carried emotion (Chatterbox Condition C: arousal 100 %,
-    UTMOS 3.923), but that result came from one model, so it cannot distinguish a property
-    of *the mechanism* from a property of *Chatterbox*. ZipVoice is conditioned on the same
-    per-quadrant RAVDESS clips, over the same stimuli, with the same quadrant targets — so
-    the only thing that varies is the model. Whatever survives that swap is a property of
-    reference conditioning; whatever does not is a property of the engine.
+    Admitted as a controlled comparison. Phase X established that reference-clip
+    conditioning carried emotion (Chatterbox Condition C: arousal 100 %, UTMOS 3.923), but
+    with one model, so it cannot separate a property of the mechanism from a property of
+    Chatterbox. ZipVoice gets the same per-quadrant RAVDESS clips, stimuli and quadrant
+    targets, so only the model varies: what survives the swap belongs to reference
+    conditioning, what does not belongs to the engine.
 
-    Emotion reaches the engine ONLY through the reference clip: ZipVoice exposes no
-    expressiveness scalar and no emotion label, so `--prompt-wav` is the entire emotional
-    channel. Rate is rendered natively via `--speed`; loudness is a post-scale, as elsewhere.
+    The reference clip is the only emotional input: ZipVoice has no expressiveness scalar
+    and no emotion label, so `--prompt-wav` is the entire emotional channel. Rate is
+    rendered natively via `--speed`; loudness is a post-scale, as elsewhere.
 
-    THREE DESIGN CONSEQUENCES, each deliberate:
+    Three deliberate design decisions:
 
-    1. OUT OF PROCESS. ZipVoice ships as a CLI module (`zipvoice.bin.infer_zipvoice`) and
-       pins its own torch/k2/lhotse/vocos stack. Importing it into ECHO's interpreter would
-       repeat the irreconcilable numpy conflict that already forced separate environments
-       for Chatterbox. A subprocess with a configurable interpreter (`ECHO_ZIPVOICE_PYTHON`)
-       lets ZipVoice keep its own venv and keeps ECHO's dependency graph unchanged.
-    2. SEEDED. Flow matching samples from noise, so the engine is stochastic by nature and
-       would fail the reproducibility filter. ZipVoice calls `fix_random_seed(--seed)`, so
-       the seed is pinned explicitly here and recorded, rather than left at its default.
-    3. A TRANSCRIPT IS REQUIRED. Zero-shot cloning needs `--prompt-text` as well as
-       `--prompt-wav`; there is no default voice to fall back on. The transcript is read
-       from `<refs_dir>/Q<n>.txt`, written by `make_ravdess_refs.py`.
+    1. Out of process. ZipVoice ships as a CLI module (`zipvoice.bin.infer_zipvoice`) and
+       pins its own torch/k2/lhotse/vocos stack. Importing it would repeat the numpy
+       conflict that already forced separate environments for Chatterbox. A subprocess
+       with a configurable interpreter (`ECHO_ZIPVOICE_PYTHON`) lets ZipVoice keep its own
+       venv and leaves ECHO's dependency graph unchanged.
+    2. Seeded. Flow matching samples from noise, so the engine would fail the
+       reproducibility filter. ZipVoice calls `fix_random_seed(--seed)`, so the seed is
+       pinned here and recorded rather than left at its default.
+    3. Transcript required. Zero-shot cloning needs `--prompt-text` as well as
+       `--prompt-wav`, and there is no default voice. The transcript is read from
+       `<refs_dir>/Q<n>.txt`, written by `make_ravdess_refs.py`.
 
-    Known structural limitation, to be tested rather than assumed: ZipVoice RMS-normalises
-    the prompt (`--target-rms`, default 0.1) before conditioning on it. The RAVDESS
-    references carry a ~35x loudness range across quadrants (measured by check_refs.py), and
-    that loudness IS an arousal cue — so normalisation may erase part of the arousal channel
-    before the model ever sees it. Setting `--target-rms 0` disables it, which makes this a
-    directly testable prediction rather than a caveat.
+    Known limitation, to be tested rather than assumed: ZipVoice RMS-normalises the prompt
+    (`--target-rms`, default 0.1) before conditioning on it. The RAVDESS references span a
+    ~35x loudness range across quadrants (measured by check_refs.py), and loudness is an
+    arousal cue, so normalisation may erase part of the arousal channel before the model
+    sees it. `--target-rms 0` disables it, which makes this a testable prediction.
     """
 
     engine_id = "zipvoice"
-    renders = frozenset({"rate", "volume"})   # speed natively; loudness as a post-scale
+    renders = frozenset({"rate", "volume"})
     natural = True
-    native_emotion = True                     # emotion enters as a reference clip, not as dials
+    native_emotion = True
     note = "neural, Apache-2.0; flow matching; emotion via reference clip; out-of-process, seeded"
 
-    #: files `--model-dir` must contain when a local checkpoint is used instead of the download
+    #: files `--model-dir` must contain when a local checkpoint replaces the download
     MODEL_FILES = ("model.pt", "model.json", "tokens.txt")
-    #: files `--vocoder-path` must contain. The vocoder is a SEPARATE Hugging Face repo
-    #: (charactr/vocos-mel-24khz) fetched independently of the model, so a network that
-    #: blocks the Hub blocks both and a local model directory alone is not enough.
+    #: files `--vocoder-path` must contain. The vocoder (charactr/vocos-mel-24khz) is a
+    #: separate Hugging Face repo, so a network that blocks the Hub blocks both and a local
+    #: model directory alone is not enough.
     VOCODER_FILES = ("config.yaml", "pytorch_model.bin")
-    #: pydub silence threshold hard-coded inside ZipVoice's `remove_silence`, in dBFS.
-    #: A property of the engine, not something ECHO can configure.
+    #: pydub silence threshold (dBFS) hard-coded in ZipVoice's `remove_silence`; ECHO
+    #: cannot configure it.
     SILENCE_THRESH_DBFS = -50.0
     #: Below this share of audible 10 ms chunks, the prompt is destroyed rather than
     #: trimmed. 0.20 is well clear of the observed failure (Q4 at ~0.01) and of the
-    #: quietest reference that worked (Q3, which renders normally).
+    #: quietest reference that worked (Q3).
     MIN_SURVIVING_FRACTION = 0.20
 
     def __init__(self, refs_dir: str = "refs_ravdess", python: str = "",
@@ -422,18 +420,15 @@ class ZipVoiceAdapter(TTSAdapter):
     def _build_env(self) -> "dict[str, str] | None":
         """Environment for the subprocess, with the ZipVoice checkout on PYTHONPATH.
 
-        ZipVoice ships **no `setup.py`** and a `pyproject.toml` containing only formatting
-        configuration, so `pip install -r requirements.txt` installs its dependencies but
-        never the package itself. Upstream expects `python -m zipvoice.bin.infer_zipvoice`
-        to be run from the repository root, where the current directory is implicitly on
-        `sys.path`. ECHO runs it from ECHO's directory, so the package is invisible and the
-        module lookup fails.
+        ZipVoice has no `setup.py` (its `pyproject.toml` holds only formatting config), so
+        `pip install -r requirements.txt` installs its dependencies but never the package.
+        Upstream runs `python -m zipvoice.bin.infer_zipvoice` from the repository root,
+        where the current directory is on `sys.path`; from ECHO's directory the module
+        lookup fails.
 
-        PYTHONPATH is used rather than `cwd=<repo>` deliberately: changing the working
-        directory would silently re-base every relative path ECHO passes — the reference
-        clip and the output file — onto the ZipVoice checkout. Paths are resolved to
-        absolute as well, so neither mechanism can misfire, but only one of the two changes
-        the meaning of the caller's arguments and it is not this one.
+        PYTHONPATH rather than `cwd=<repo>`: changing the working directory would silently
+        re-base every relative path ECHO passes (the reference clip and the output file)
+        onto the ZipVoice checkout. Paths are also resolved to absolute, as a second guard.
         """
         if not self._repo:
             return None                    # rely on the interpreter finding zipvoice itself
@@ -448,7 +443,7 @@ class ZipVoiceAdapter(TTSAdapter):
     def _reference_for(self, quadrant: str) -> "tuple[str, str] | None":
         """Return (wav_path, transcript) for a quadrant, or None if the clip is absent.
 
-        Unlike Chatterbox, a missing reference is NOT a degraded mode — ZipVoice has no
+        Unlike Chatterbox, a missing reference is not a degraded mode: ZipVoice has no
         default voice, so the caller must treat None as fatal.
         """
         if not self._refs_dir or not quadrant:
@@ -467,20 +462,18 @@ class ZipVoiceAdapter(TTSAdapter):
         return str(wav), txt.read_text(encoding="utf-8").strip()
 
     def _assert_reference_is_audible(self, ref_wav: str, quadrant: str) -> None:
-        """Refuse a reference ZipVoice will delete as silence.
+        """Refuse a reference that ZipVoice would delete as silence.
 
         Measured 2026-08-31: ZipVoice preprocesses the prompt with
-        `remove_silence(..., silence_thresh=-50)` — a pydub gate with an ABSOLUTE threshold,
-        applied BEFORE any normalisation. The RAVDESS Q4 'calm' reference sits at about
+        `remove_silence(..., silence_thresh=-50)`, a pydub gate with an absolute threshold
+        applied before any normalisation. The RAVDESS Q4 'calm' reference sits at about
         -52 dBFS RMS because low arousal is quiet, so the engine discarded almost all of it
         and emitted 0.10-0.21 s for every Q4 stimulus, in both rendered conditions. The
-        register recorded that only as `duration_ok=no`, which describes the symptom and
-        hides the cause.
+        register showed only `duration_ok=no`: the symptom, not the cause.
 
-        `--target-rms 0` cannot help, because the gate runs first. The fix is a level-matched
-        reference set (`make_matched_refs.py`), and the point of failing here is that a
-        clip of 0.1 s is not a bad synthesis result — it is an absent one, and it must not
-        reach the corpus wearing the same row shape as a real measurement.
+        `--target-rms 0` cannot help because the gate runs first; the fix is a level-matched
+        reference set (`make_matched_refs.py`). A 0.1 s clip is not a bad synthesis result
+        but an absent one, and must not reach the corpus looking like a real measurement.
         """
         try:
             import numpy as np
@@ -517,8 +510,11 @@ class ZipVoiceAdapter(TTSAdapter):
 
     def _build_command(self, text: str, ref_wav: str, ref_text: str,
                        speed: float, out_path: Path) -> list[str]:
-        """Assemble the CLI invocation. Kept separate from `synthesize` so the command —
-        the part that carries every experimental parameter — is testable without a model."""
+        """Assemble the CLI invocation.
+
+        Kept separate from `synthesize` so the command, which carries every experimental
+        parameter, is testable without a model.
+        """
         if self._repo:
             repo = Path(self._repo)
             if not (repo / "zipvoice").is_dir():
@@ -527,8 +523,8 @@ class ZipVoiceAdapter(TTSAdapter):
                     "It must be the root of the cloned repository — the directory containing "
                     "the 'zipvoice' package and requirements.txt."
                 )
-        # Absolute paths: the subprocess is another process with its own notion of 'here',
-        # and ECHO passes relative paths (refs_ravdess/Q1.wav, research/...).
+        # Absolute paths: ECHO passes relative ones (refs_ravdess/Q1.wav, research/...), and
+        # the subprocess has its own notion of 'here'.
         cmd = [self._python, "-m", "zipvoice.bin.infer_zipvoice",
                "--model-name", self._model_name,
                "--prompt-wav", str(Path(ref_wav).resolve()),
@@ -612,8 +608,8 @@ class ZipVoiceAdapter(TTSAdapter):
                         "older pair whose loader is self-contained instead:\n"
                         "  pip install \"torch==2.5.1\" \"torchaudio==2.5.1\"")
             elif "LocalEntryNotFoundError" in output or "we cannot find the requested files" in output:
-                # Hugging Face is unreachable. Seen on this network for the SER model and
-                # for Chatterbox as well, so it is the environment rather than the engine.
+                # Hugging Face is unreachable. Also seen on this network for the SER model
+                # and Chatterbox, so the cause is the environment, not the engine.
                 hint = ("\n\nHugging Face could not be reached and nothing is cached, so the "
                         "model was never downloaded. Two ways round it, in order of effort:\n"
                         "  1) set HF_ENDPOINT=https://hf-mirror.com   (the mirror ZipVoice "
@@ -628,7 +624,7 @@ class ZipVoiceAdapter(TTSAdapter):
                         "   The vocoder is a SEPARATE repo, so a local model folder alone is "
                         "not enough when the Hub is blocked.")
             elif "No module named 'zipvoice'" in output or "No module named zipvoice" in output:
-                # The commonest failure, and it is not a broken install: ZipVoice ships no
+                # The commonest failure, and not a broken install: ZipVoice ships no
                 # setup.py, so its package is never placed on the interpreter's path.
                 hint = ("\n\nZipVoice's dependencies are installed but the package itself is "
                         "not on the path — it ships no setup.py, so pip never installs it. "
@@ -641,21 +637,18 @@ class ZipVoiceAdapter(TTSAdapter):
                 f"ZipVoice reported success but wrote no file at {out_path}."
             )
 
-        # Post-process, ALWAYS — two jobs in one read/write pass.
-        #
-        # 1. FORMAT NORMALISATION. `torchaudio.save` writes float32 WAV (format code 3).
-        #    Every other engine in this project ends up 16-bit PCM: espeak/SAPI/pyttsx3
-        #    natively, and Kokoro/Chatterbox because `soundfile.write` defaults float input
-        #    to PCM_16. Leaving ZipVoice as the one float32 engine would put a container
-        #    difference alongside the engine difference in a corpus whose entire purpose is
-        #    cross-engine comparison — and Python's `wave` module, which synth_stimuli.py
-        #    uses for duration, cannot read float WAV at all, so every ZipVoice clip would
-        #    be flagged duration_ok=False for a reason that has nothing to do with the audio.
-        #    This converts the CONTAINER, not the signal.
-        #
-        # 2. LOUDNESS post-scale, applied AFTER the engine's own RMS normalisation — so the
-        #    dial sets relative level between clips; it does not restore the reference's
-        #    dynamics, which ZipVoice normalised away before conditioning.
+        # Always post-process, with two jobs in one read/write pass:
+        # 1. Format. `torchaudio.save` writes float32 WAV (format code 3); every other
+        #    engine ends up 16-bit PCM (espeak/SAPI/pyttsx3 natively, Kokoro/Chatterbox
+        #    because `soundfile.write` defaults float input to PCM_16). A lone float32
+        #    engine would add a container difference to a corpus built for cross-engine
+        #    comparison, and Python's `wave` module (used by synth_stimuli.py for duration)
+        #    cannot read float WAV, so every ZipVoice clip would be flagged
+        #    duration_ok=False for a reason unrelated to the audio. This converts the
+        #    container, not the signal.
+        # 2. Loudness post-scale, after the engine's own RMS normalisation: the dial sets
+        #    relative level between clips; it does not restore the reference's dynamics,
+        #    which ZipVoice normalised away before conditioning.
         import soundfile as sf
 
         samples, sample_rate = sf.read(str(out_path), dtype="float32")
@@ -667,30 +660,28 @@ class ZipVoiceAdapter(TTSAdapter):
 class SubprocessTTSAdapter(TTSAdapter):
     """Base for research engines that ship as a repository rather than a package.
 
-    ZipVoice taught the pattern the hard way (2026-08-31): five undeclared
-    dependencies, no `setup.py`, weights split across two Hugging Face repos, and an
-    unpinned torchaudio that changed its audio backend. StyleTTS 2, CosyVoice 2 and
-    Parler-TTS are the same kind of artefact — research code published to be *cloned*,
-    not installed — so the same five defences apply to all of them:
+    ZipVoice taught the pattern the hard way (2026-08-31): five undeclared dependencies,
+    no `setup.py`, weights split across two Hugging Face repos, and an unpinned torchaudio
+    that changed its audio backend. StyleTTS 2, CosyVoice 2 and Parler-TTS are also
+    research code published to be cloned, not installed, so the same five defences apply:
 
-      1. **Own interpreter.** Each engine pins its own torch stack; running it in ECHO's
+      1. Own interpreter. Each engine pins its own torch stack; running it in ECHO's
          process would repeat the numpy conflict that already forced separate environments.
-      2. **Checkout on PYTHONPATH.** No `setup.py` means pip never installs the package,
-         and upstream expects to be run from the repo root. PYTHONPATH rather than `cwd`,
-         so relative paths ECHO passes are not silently re-based.
-      3. **Local weights.** The Hugging Face hub is blocked on this network; every engine
+      2. Checkout on PYTHONPATH. Without `setup.py` pip never installs the package, and
+         upstream expects to run from the repo root. PYTHONPATH rather than `cwd`, so
+         relative paths ECHO passes are not silently re-based.
+      3. Local weights. The Hugging Face hub is blocked on this network, so every engine
          needs a `--model-dir` escape hatch.
-      4. **Absolute paths.** A subprocess has its own notion of "here".
-      5. **PCM-16 output.** Engines write float32 or odd rates; the corpus must be one
+      4. Absolute paths. A subprocess has its own notion of "here".
+      5. PCM-16 output. Engines write float32 or odd rates; the corpus must be one
          container, or a format difference sits alongside the engine difference.
 
-    **The command is a TEMPLATE in configuration, not code.** Research CLIs change between
-    commits, and hard-coding one means a code change and a test run every time upstream
-    moves. The template uses named placeholders — {python} {text} {out} {ref_wav}
-    {ref_text} {speed} {seed} {instruction} {model_dir} — so an engine can be re-pointed
-    from `.env` without touching Python. Unknown placeholders are left untouched rather
-    than raising, so a template written for a future flag degrades to a visible literal in
-    the command instead of an exception three layers down.
+    The command is a template in configuration, not code: research CLIs change between
+    commits, and a hard-coded one needs a code change and a test run whenever upstream
+    moves. Named placeholders ({python} {text} {out} {ref_wav} {instruction} {speed}
+    {seed} {model_dir} {quadrant}) let `.env` re-point an engine without touching Python.
+    Unknown placeholders are left as visible literals in the command rather than raising
+    an exception three layers down.
     """
 
     engine_id = "subprocess-base"
@@ -709,12 +700,12 @@ class SubprocessTTSAdapter(TTSAdapter):
         self._seed = seed
         self._timeout_s = timeout_s
 
-    # -- subclass hooks ----------------------------------------------------
+    # -- subclass hooks --
     def emotion_fields(self, voice_params: VoiceParams) -> dict:
         """Engine-specific placeholders. Overridden per control mechanism."""
         return {}
 
-    # -- shared machinery --------------------------------------------------
+    # -- shared machinery --
     def _env(self) -> "dict[str, str] | None":
         if not self._repo:
             return None
@@ -738,7 +729,7 @@ class SubprocessTTSAdapter(TTSAdapter):
             )
 
     def build_command(self, text: str, voice_params: VoiceParams, out_path: Path) -> list[str]:
-        """Render the template into an argv list. Pure — testable without the engine."""
+        """Render the template into an argv list; testable without the engine."""
         import shlex
 
         if not self._template:
@@ -757,8 +748,8 @@ class SubprocessTTSAdapter(TTSAdapter):
             "speed": str(round(max(0.5, min(2.0, voice_params.rate)), 3)),
         }
         fields.update(self.emotion_fields(voice_params))
-        # shlex.split first, then substitute per token: a placeholder whose value contains
-        # spaces (reply text, an instruction sentence) must stay ONE argv element.
+        # Split first, then substitute per token, so a value containing spaces (reply text,
+        # an instruction sentence) stays one argv element.
         out = []
         for tok in shlex.split(self._template, posix=False):
             for key, val in fields.items():
@@ -808,13 +799,12 @@ class SubprocessTTSAdapter(TTSAdapter):
 
 
 class StyleTTS2Adapter(SubprocessTTSAdapter):
-    """StyleTTS 2 (MIT; Li et al., NeurIPS 2023) — emotion via an explicit STYLE VECTOR.
+    """StyleTTS 2 (MIT; Li et al., NeurIPS 2023): emotion via an explicit style vector.
 
-    Mechanism 4 of the taxonomy, and the only engine in the set with a peer-reviewed
-    venue. Its style vector may be *extracted* from reference audio or *sampled* from a
-    diffusion model — so it is the one engine that can produce a style ECHO never supplied,
-    which makes it the natural third member of the reference-conditioning family and a
-    bridge to the instruction family.
+    Mechanism 4 of the taxonomy, and the only engine in the set with a peer-reviewed venue.
+    Its style vector can be extracted from reference audio or sampled from a diffusion
+    model, so it is the one engine that can produce a style ECHO never supplied: a natural
+    third member of the reference-conditioning family and a bridge to the instruction family.
     """
 
     engine_id = "styletts2"
@@ -831,12 +821,11 @@ class StyleTTS2Adapter(SubprocessTTSAdapter):
         return {"ref_wav": ref, "quadrant": voice_params.quadrant or ""}
 
 
-#: Natural-language emotion instructions, one per quadrant. These are the ENTIRE emotional
-#: channel for instruction-conditioned engines — the wording is the experimental
-#: manipulation, so it is defined here, versioned, and reported, not typed at a prompt.
-#: Phrasing follows the circumplex definition of each quadrant rather than a bare emotion
-#: word, so that valence and arousal are both stated and the instruction cannot be read as
-#: a single categorical label.
+#: Natural-language emotion instructions, one per quadrant: the entire emotional channel for
+#: instruction-conditioned engines. The wording is the experimental manipulation, so it is
+#: defined here, versioned and reported, not typed at a prompt. Each follows the quadrant's
+#: circumplex definition rather than a bare emotion word, so it states both valence and
+#: arousal and cannot be read as a single categorical label.
 QUADRANT_INSTRUCTIONS = {
     "Q1": "Speak in a happy, upbeat and energetic tone.",
     "Q2": "Speak in an angry, agitated and tense tone.",
@@ -847,21 +836,21 @@ INSTRUCTION_VERSION = "instructions-v1"
 
 
 class InstructionTTSAdapter(SubprocessTTSAdapter):
-    """Shared base for engines whose emotional channel is a SENTENCE OF ENGLISH.
+    """Shared base for engines whose emotional channel is an English sentence.
 
     Mechanism 5, and the last untested channel for valence in this project. Every other
-    mechanism measured so far routes emotion through *acoustics*; this one routes it through
-    *semantics*, which is why it can succeed where four acoustic mechanisms failed — or, by
-    failing too, close the argument that the limit is the channel rather than the control.
+    mechanism measured so far routes emotion through acoustics; this one routes it through
+    semantics, so it can succeed where four acoustic mechanisms failed, or, by failing too,
+    close the argument that the limit is the channel rather than the control.
     """
 
     renders = frozenset({"volume"})    # loudness post-scale only; no prosodic dials
     native_emotion = True
 
     def emotion_fields(self, voice_params: VoiceParams) -> dict:
-        # A reference clip is optional here and means something different from mechanism 3:
-        # it fixes WHO speaks, so that the instruction is the only thing carrying emotion.
-        # CosyVoice 2 requires one; Parler-TTS names its speaker in the description instead.
+        # Unlike in mechanism 3, the optional reference clip fixes who speaks, so that the
+        # instruction is the only thing carrying emotion. CosyVoice 2 requires one;
+        # Parler-TTS names its speaker in the description instead.
         ref = ""
         if self._refs_dir and voice_params.quadrant:
             cand = Path(self._refs_dir) / f"{voice_params.quadrant}.wav"
@@ -880,11 +869,11 @@ class CosyVoice2Adapter(InstructionTTSAdapter):
 
 
 class ParlerTTSAdapter(InstructionTTSAdapter):
-    """Parler-TTS (Apache-2.0) — emotion via a natural-language style DESCRIPTION.
+    """Parler-TTS (Apache-2.0): emotion via a natural-language style description.
 
     Admitted alongside CosyVoice 2 rather than instead of it: one engine cannot separate
     'the mechanism works' from 'this model works', so mechanism 5 needs two engines to make
-    a claim at all — the same reasoning that admitted ZipVoice beside Chatterbox.
+    a claim at all (the same reasoning that admitted ZipVoice beside Chatterbox).
     """
 
     engine_id = "parlertts"
@@ -897,8 +886,11 @@ def _espeak_speed(rate: float) -> int:
 
 
 def _espeak_pitch(pitch: float) -> int:
-    """Pitch factor (~0.8..1.2) -> eSpeak pitch 0..99 (50 = default). eSpeak gives REAL
-    pitch control, so +-0.2 maps to a clear +-20 -- unlike SAPI's compressed absmiddle."""
+    """Pitch factor (~0.8..1.2) -> eSpeak pitch 0..99 (50 = default).
+
+    eSpeak has real pitch control, so +-0.2 maps to a clear +-20, unlike SAPI's compressed
+    absmiddle.
+    """
     return max(0, min(99, round(50 + (pitch - 1.0) * 100)))
 
 
@@ -908,8 +900,10 @@ def _espeak_amp(volume: float) -> int:
 
 
 def _find_espeak() -> "str | None":
-    """Locate the eSpeak NG binary robustly: the ECHO_ESPEAK_BIN override first, then PATH,
-    then the standard Windows install dirs (the MSI does not always add itself to PATH)."""
+    """Locate eSpeak NG: ECHO_ESPEAK_BIN, then PATH, then the standard Windows install dirs.
+
+    The Windows dirs are checked because the MSI does not always add itself to PATH.
+    """
     import os
     import shutil
 
@@ -930,10 +924,9 @@ def _find_espeak() -> "str | None":
 class EspeakNgAdapter(TTSAdapter):
     """Open-source, cross-platform formant synthesizer (eSpeak NG) via its CLI.
 
-    Full explicit control of rate, volume, AND pitch -- a controllable open-source
-    baseline that supersedes SAPI's role without the Windows lock-in. Robotic (low
-    naturalness): a controllability baseline, not a naturalness contender.
-    Needs the `espeak-ng` binary on PATH (apt / brew / choco / installer).
+    Explicit control of rate, volume and pitch: a controllability baseline that takes over
+    SAPI's role without the Windows lock-in. Robotic, so not a naturalness contender.
+    Needs the `espeak-ng` binary (apt / brew / choco / installer); see _find_espeak.
     """
 
     engine_id = "espeak"
@@ -972,7 +965,7 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
     """Select an engine.
 
     'mock' | 'pyttsx3' | 'sapi' (=sapi5xml, renders pitch) | 'espeak' | 'kokoro' |
-    'chatterbox' | 'zipvoice' | 'auto'.
+    'chatterbox' | 'zipvoice' | 'styletts2' | 'cosyvoice2' | 'parlertts' | 'auto'.
     'auto' prefers Kokoro if its model files exist, else pyttsx3 (the safe default).
     """
     choice = engine.lower()
@@ -1021,9 +1014,9 @@ def make_tts(engine: str, *, kokoro_model: str, kokoro_voices: str,
     return Pyttsx3Adapter()
 
 
-# --- per-engine capability matrix ------------------------------------------
-# Engines differ in which dials they render; this makes that explicit so cross-engine
-# comparisons stay honest (e.g. pyttsx3 has no pitch, so its "pitch dial" is not testable).
+# --- per-engine capability matrix ---
+# Engines differ in which dials they render; stating it keeps cross-engine comparisons
+# honest (e.g. pyttsx3 has no pitch, so its "pitch dial" is not testable).
 _ENGINE_CLASSES = [MockTTSAdapter, Pyttsx3Adapter, Sapi5XmlAdapter, EspeakNgAdapter,
                    KokoroAdapter, ChatterboxAdapter, ZipVoiceAdapter,
                    StyleTTS2Adapter, CosyVoice2Adapter, ParlerTTSAdapter]
@@ -1031,9 +1024,7 @@ _DIALS = ("rate", "volume", "pitch")
 
 
 def capability_matrix() -> list[dict]:
-    """One row per engine: which prosody dials it renders, whether it is a natural voice, and
-    whether it accepts NATIVE emotion conditioning (emotion as input rather than as prosody).
-    Keeps engine comparisons honest and drives the register flags."""
+    """One row per engine: rendered prosody dials, natural voice, native emotion conditioning."""
     rows = []
     for cls in _ENGINE_CLASSES:
         row = {"engine": cls.engine_id}

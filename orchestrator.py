@@ -1,7 +1,7 @@
 """The per-turn pipeline: contract -> strategy -> LLM (gated) -> TTS -> log.
 
-Plain library, callable from the CLI (and later a UI or batch runner). It never
-imports evaluation code — data flows one way, into the provenance log.
+Plain library, callable from the CLI. It never imports evaluation code: data flows one
+way, into the provenance log.
 """
 
 from __future__ import annotations
@@ -32,10 +32,9 @@ def run_turn(
 ) -> TurnRecord:
     """Run one message + emotion end-to-end and persist it. Returns the record.
 
-    `judge` decides what emotion the generated text expresses. It defaults to the
-    legacy self-report judge so existing callers keep working, but that setting is
-    L0 (no independence) and is not defensible for a reported result — pass an
-    independent judge and the level is recorded alongside the turn.
+    `judge` defaults to the legacy self-report judge so existing callers keep working,
+    but that is L0 (no independence) and not defensible for a reported result. Pass an
+    independent judge; its level is recorded with the turn.
     """
     prompt = strategy.build_prompt(contract, message)
     judge = judge or SelfReportJudge()

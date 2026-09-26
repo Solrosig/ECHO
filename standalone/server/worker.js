@@ -42,8 +42,7 @@ async function owned(request, db, id) {
   return s;
 }
 function researcher(request, env) {
-  // The Node server validates its private session cookie before calling this module.
-  // No inbound identity header is used as evidence of researcher access.
+  // The Node server checks its private session cookie and sets RESEARCHER_AUTHORIZED; no inbound identity header grants access.
   if (env.RESEARCHER_AUTHORIZED !== true) fail(401, 'Sign in with the researcher password.');
 }
 
