@@ -63,6 +63,35 @@ def test_confound_check_reports_engine_vs_dial_spread(tmp_path, monkeypatch, cap
     assert "PASS" in text          # engine spread (2.4) >> dial spread (0.05)
 
 
+def test_confound_check_gives_each_ab_condition_its_own_cells(capsys):
+    """An engine run in several sessions (an A/B condition pair) gets one confound row per
+    condition, and each row must read its own param-set cells, so its real dial spread
+    reaches the verdict."""
+    a, b = "chatterbox [chatterbox_x2]", "chatterbox [chatterbox_x2_refs]"
+    rows = [
+        {"engine": eng, "session": sess, "param_set": ps, "utmos": mos}
+        for eng, sess, neutral, full in (
+            ("chatterbox", "2026-07-30_0217_chatterbox_x2", 4.0, 3.0),         # dial spread 1.0
+            ("chatterbox", "2026-08-09_1911_chatterbox_x2_refs", 3.75, 3.5),   # dial spread 0.25
+            ("kokoro", "2026-07-27_0015_kokoro_check", 4.5, 4.25),             # dial spread 0.25
+        )
+        for ps, mos in (("neutral", neutral), ("rate_volume_pitch", full))
+    ]
+    naturalness._summary(rows)
+    confound = capsys.readouterr().out.split("Confound check", 1)[1]
+
+    def row(label):              # -> [neutral, rate_volume_pitch, dial spread] as printed
+        return next((ln.split()[-3:] for ln in confound.splitlines()
+                     if ln.startswith(f"  {label} ")), None)
+
+    assert row(a) == ["4.000", "3.000", "1.000"]
+    assert row(b) == ["3.750", "3.500", "0.250"]
+    assert row("kokoro") == ["4.500", "4.250", "0.250"]
+    # real max dial spread is condition A's 1.0, not kokoro's 0.25: ratio 0.875 / 1.0 < 3
+    assert "max dial spread 1.000" in confound
+    assert "CHECK" in confound and "PASS" not in confound
+
+
 def test_output_never_overwrites(tmp_path, monkeypatch):
     w = tmp_path / "a.wav"
     _wav(w)

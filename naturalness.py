@@ -110,10 +110,10 @@ def _summary(rows: list[dict]) -> None:
     for eng in sorted(groups, key=lambda e: -mean(groups[e])):     # most natural first
         vals = groups[eng]
         print(f"  {eng:<{width}}{mean(vals):12.3f}{len(vals):5d}")
-    _confound_check(rows, groups)
+    _confound_check(rows, groups, multi)
 
 
-def _confound_check(rows: list[dict], groups: dict) -> None:
+def _confound_check(rows: list[dict], groups: dict, multi: set) -> None:
     """Confound check (monitoring plan M3): engine effect vs ECHO's own dial settings.
 
     Prints mean UTMOS per engine x param_set and compares the between-engine spread with the
@@ -124,7 +124,8 @@ def _confound_check(rows: list[dict], groups: dict) -> None:
     cells: dict[tuple, list[float]] = defaultdict(list)
     for r in rows:
         try:
-            cells[(r.get("engine", "?"), r.get("param_set", "?"))].append(float(r["utmos"]))
+            # same label as `groups`, so each A/B condition of one engine reads its own cells
+            cells[(_label(r, multi), r.get("param_set", "?"))].append(float(r["utmos"]))
         except (KeyError, TypeError, ValueError):
             pass
     psets = [p for p in ("neutral", "rate", "rate_volume", "rate_volume_pitch")
