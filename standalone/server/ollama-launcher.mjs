@@ -1,6 +1,6 @@
 // Starts the local Ollama when Explore needs the conversation model and nothing answers, then loads the model, so nobody
 // has to start Ollama by hand. Only `node server/start.mjs` creates a launcher; ECHO_OLLAMA_AUTOSTART=0 turns it off.
-// Ollama keeps running after ECHO stops, as if it had been started from the Start menu.
+// The detached Ollama keeps running after ECHO stops, as if started from the Start menu.
 import {spawn as nodeSpawn} from 'node:child_process';
 import {join} from 'node:path';
 

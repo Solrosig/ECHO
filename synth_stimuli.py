@@ -1,13 +1,13 @@
 """Controlled synthesis harness for the TTS / parameter comparison.
 
-Renders the FIXED stimuli through a chosen engine and parameter set(s), across all
-four quadrants, into a documented SESSION folder. The text is held CONSTANT across
-every condition, so only prosody varies (isolates the voice channel). The LLM is
-bypassed — this is a voice-rendering experiment, not a live system run.
+Renders the fixed stimuli through a chosen engine and parameter set(s), across all
+four quadrants, into a documented session folder. The text is constant across every
+condition, so only prosody varies (isolating the voice channel). The LLM is bypassed:
+this is a voice-rendering experiment, not a live system run.
 
 Each run creates:
     research/sessions/<YYYY-MM-DD_HHMM>_<label>/
-        audio/<engine>/<param_set>/<stimulus>_<quadrant>.wav   (neutral/ = flat BEFORE)
+        audio/<engine>/<param_set>/<stimulus>_<quadrant>.wav   (neutral/ = flat Before)
         register.csv   (one row per clip: dials, stimulus, target, hash, duration_ok)
         SESSION.md     (purpose, config, git commit/tag, stimuli, what to compare)
 
@@ -15,8 +15,9 @@ Usage:
     python synth_stimuli.py --engine sapi --param-set all --label sapi_ablation \
         --purpose "Ablation of the voice dials on the SAPI engine at v0.2."
 
-  --engine     pyttsx3 | sapi | espeak | kokoro | chatterbox | zipvoice | mock
-  --param-set  neutral | rate | rate_volume | rate_volume_pitch | all   (neutral = flat BEFORE)
+  --engine     pyttsx3 | sapi | espeak | kokoro | chatterbox | zipvoice | styletts2 |
+               cosyvoice2 | parlertts | mock
+  --param-set  neutral | rate | rate_volume | rate_volume_pitch | all   (neutral = flat Before)
   --label      short slug for the session folder
   --purpose    one-line objective recorded in SESSION.md
   --stimuli    stimuli_eval.txt        --sessions-root  research/sessions
@@ -59,16 +60,18 @@ def load_stimuli(path: str) -> list[tuple[str, str]]:
 
 
 def apply_param_set(vp, param_set: str):
-    """Mask dials for the ablation. 'neutral' is the true BEFORE (no emotion in the
-    voice at all -> a flat carrier); 'rate' adds only speed (the MVP baseline); then
-    volume; then pitch (the full AFTER). Comparing neutral vs rate_volume_pitch for the
-    SAME clip is the clear, audible Before/After; the rate->...->full steps are the
-    (subtle) per-dial research ablation."""
+    """Mask voice dials for the ablation.
+
+    'neutral' is the true Before (no emotion in the voice at all: a flat carrier); 'rate'
+    adds only speed (the MVP baseline); then volume; then pitch (the full After). 'neutral'
+    vs 'rate_volume_pitch' on the same clip is the clear, audible Before/After; the
+    rate -> ... -> full steps are the subtle per-dial research ablation.
+    """
     if param_set == "neutral":
-        # A TRUE baseline must be emotionless for EVERY engine class — so the emotion fields are
-        # zeroed too, not only the prosody dials. Without this, an engine that conditions natively
-        # (e.g. Chatterbox: exaggeration<-arousal, reference style<-quadrant) would still receive
-        # the full emotion here and the "neutral" condition would silently not be neutral.
+        # A true baseline must be emotionless for every engine class, so the emotion fields
+        # are zeroed as well as the prosody dials. Otherwise an engine that conditions natively
+        # (e.g. Chatterbox: exaggeration<-arousal, reference style<-quadrant) would still get
+        # the full emotion here and "neutral" would silently not be neutral.
         return replace(vp, rate=1.0, volume=1.0, pitch=1.0,
                        valence=0.0, arousal=0.0, intensity=0.0, quadrant="")
     if param_set == "rate":
@@ -102,14 +105,12 @@ def _git(args: list[str]) -> str:
 
 
 def engine_settings(engine_id: str, cfg) -> dict:
-    """The engine settings that DEFINE this condition, for the session record.
+    """Engine settings that define this condition, for the session record.
 
-    Conditions in this project frequently differ by a setting rather than by an engine —
-    Chatterbox A/B/C differed in reference clips, and the ZipVoice conditions differ in
-    prompt normalisation and in which reference set is used. Until now the session recorded
-    only the engine name, so those conditions were distinguishable solely by the label the
-    operator typed, and a mistyped label would have silently mislabelled a whole condition.
-    Recording the settings makes the condition self-describing.
+    Conditions often differ by a setting rather than an engine: Chatterbox A/B/C differed in
+    reference clips, and the ZipVoice conditions differ in prompt normalisation and reference
+    set. When the session recorded only the engine name, the operator's label was the sole
+    distinction, and a mistyped label would have silently mislabelled a whole condition.
     """
     if engine_id == "zipvoice":
         return {
@@ -163,12 +164,12 @@ def _write_session_md(path: Path, purpose: str, engine_id: str, param_sets: list
 
 
 def _new_session_dir(root: Path, label: str) -> Path:
-    """A FRESH session folder — never an existing one.
+    """Return a fresh session folder path, never an existing one.
 
-    The stamp has minute resolution, so two runs within the same minute under the same label
-    would previously land in the same folder (`exist_ok=True`) and silently overwrite the clips,
-    register.csv and SESSION.md. Every generated audio set must be preserved for later analysis
-    and reporting, so a collision now yields `..._label-2`, `-3`, … instead of clobbering.
+    The stamp has minute resolution, so two runs in the same minute under the same label used
+    to share a folder (`exist_ok=True`) and silently overwrite the clips, register.csv and
+    SESSION.md. Every generated audio set must be kept for analysis and reporting, so a
+    collision yields `..._label-2`, `-3`, … instead.
     """
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     cand = root / f"{stamp}_{label}"
@@ -223,8 +224,8 @@ def main(argv: list[str] | None = None) -> int:
                 c = EmotionContract.from_quadrant(q)
                 vp = apply_param_set(strat.build_voice_params(c), ps)
                 cid = clip_id_for(engine_id, ps, sid, q.value)
-                # Human-readable filename (stimulus + quadrant) so the SAME words have the
-                # SAME name across param-set folders -> trivial Before/After comparison.
+                # Stimulus + quadrant filename: the same words get the same name in every
+                # param-set folder, for easy Before/After comparison.
                 dest = session_dir / "audio" / engine_id / ps / f"{sid}_{q.value}.wav"
                 tts.synthesize(text, vp, dest)
                 done += 1

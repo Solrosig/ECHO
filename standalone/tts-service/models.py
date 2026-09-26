@@ -1,4 +1,4 @@
-"""Pinned ECHO adapters. Native model outputs; final calibrated DSP runs in the site."""
+"""Pinned ECHO TTS adapters returning native model output; the calibrated DSP runs in the website."""
 from pathlib import Path
 import os, json, random, tempfile
 from contextlib import contextmanager
@@ -97,7 +97,7 @@ def render(text,engine,emotion,condition='preset',output=None):
             model.inference(text,target_voice_path=str(reference),output_wav_file=output,alpha=.3,beta=.7,diffusion_steps=5)
         elif engine=='cosyvoice2':
             from cosyvoice.utils.file_utils import load_wav
-            # ZeroGPU has no real CUDA stream during module initialisation.
+            # ZeroGPU has no real CUDA stream at load time, so the LLM stream is created per call.
             if DEVICE=='cuda':model.model.llm_context=torch.cuda.stream(torch.cuda.Stream(torch.device(DEVICE)))
             prompt=load_wav(str(reference),16000)
             chunks=[x['tts_speech'] for x in model.inference_instruct2(text,instruction,prompt,stream=False,text_frontend=False)]

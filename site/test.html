@@ -186,7 +186,7 @@ calm. <strong>Judge the speaker's emotion, not how the recording made you feel.<
         plays: plays,
         seconds: Math.round((Date.now() - t0) / 100) / 10
       });
-      ECHO.save(state);   // after EVERY trial: a crash at trial 47 must not cost the session
+      ECHO.save(state);   // after every trial: a crash at trial 47 must not cost the session
     }
     i += 1;
     render();

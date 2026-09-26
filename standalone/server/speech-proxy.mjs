@@ -1,8 +1,8 @@
 import {Readable} from 'node:stream';
 
-// Fixed administrator-configured upstream: callers cannot choose a server or forward credentials. The administrator token
-// (ECHO_TTS_TOKEN) is added here and only here: on Hugging Face it makes ZeroGPU bill the Space owner, not the visitor.
-// The relay key (ECHO_TTS_RELAY_KEY) tells the Space that the request comes from this server.
+// Fixed, administrator-configured upstream: callers cannot choose a server or forward credentials. Only this proxy adds
+// the administrator token (ECHO_TTS_TOKEN); on Hugging Face it makes ZeroGPU bill the Space owner, not the visitor. The
+// relay key (ECHO_TTS_RELAY_KEY) tells the Space that the request comes from this server.
 export async function proxySpeech(req,res,url,origin,upstream,token=null,relayKey=null){
  if(!['GET','POST','HEAD'].includes(req.method)){res.writeHead(405);res.end();return;}
  if(req.headers.origin&&req.headers.origin!==origin||req.headers['sec-fetch-site']==='cross-site'){res.writeHead(403);res.end('Use the ECHO website.');return;}

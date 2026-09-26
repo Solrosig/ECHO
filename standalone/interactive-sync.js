@@ -16,11 +16,11 @@ function persist(session){
 export class InteractiveSync{
  constructor(session,{fetcher=fetch,onStatus=()=>{}}={}){Object.assign(this,{session,fetcher,onStatus});this.running=null;this.dirty=false;this.audio=new Map();}
  async request(path,data){const c=new AbortController(),timer=setTimeout(()=>c.abort(),15000);try{const response=await this.fetcher.call(globalThis,path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${this.session.token}`},body:JSON.stringify(data),signal:c.signal});const result=await response.json();if(!response.ok){const e=new Error(result.error||'The database could not save this session.');e.status=response.status;throw e;}return result;}finally{clearTimeout(timer);}}
- // A diagnostic that a message save will follow can travel with that save instead of adding one ({sync:false}).
+ // {sync:false}: when a save will follow, the attempt waits for it instead of starting its own sync.
  attempt(event,{sync=true}={}){this.session.attempts||=[];this.session.attempts.push(event);persist(this.session);return sync?this.sync():Promise.resolve();}
- // Playback events wait in the session and travel with the next save; the page also flushes them now and then.
+ // Playback events wait in the session for the next save; the page also flushes them periodically.
  playback(event){this.session.playback||=[];this.session.playback_seq=(this.session.playback_seq||0)+1;this.session.playback.push({...event,seq:this.session.playback_seq});persist(this.session);}
- // Sends only the waiting playback events: one request, where a full sync would repeat every save.
+ // Sends only the waiting playback events; a full sync would resend the session, turns and ratings.
  flushPlayback(){if(this.running||!this.session.playback?.length)return Promise.resolve();return this.sendPlayback().then(()=>{persist(this.session);});}
  add(turn,buffer){validateConversationTurn(this.session,turn);this.session.turns.push(turn);
   if(buffer){this.audio.set(turn.order,buffer);this.session.audio_orders||=[];this.session.audio_orders.push(turn.order);}

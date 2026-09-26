@@ -1,37 +1,37 @@
 """Objective acoustic analysis of the synthesized clips (Story E4).
 
-Measures, per clip, the three quantities the voice dials are supposed to move:
-    * mean F0    (fundamental frequency, Hz)      <- the PITCH dial
-    * loudness   (RMS, dBFS)                       <- the VOLUME dial
-    * speaking rate (words per second; text is fixed) <- the RATE dial
+Measures, per clip, the three quantities the voice dials should move:
+    * F0 (median over voiced frames, Hz)              <- the pitch dial
+    * loudness (RMS, dBFS)                            <- the volume dial
+    * speaking rate (words per second; text is fixed) <- the rate dial
 
-This is the OBJECTIVE Before/After that complements listening: it shows, in numbers,
-that each dial renders monotonically with its target emotional axis and that the four
-quadrants separate -- without relying on anyone's ears.
+This is the objective Before/After that complements listening: numbers, not ears, show
+whether each dial renders monotonically along its target emotional axis and whether the
+four quadrants separate.
 
     python analyze_acoustics.py --register research/register.csv
-        -> writes research/acoustics.csv  (every register row + f0_hz, rms_dbfs, words_per_s)
+        -> writes research/acoustics.csv  (every register row + f0_hz, rms_dbfs, words_per_s, ...)
         -> prints a per (param_set x quadrant) summary
         -> prints a neutral -> full "Before/After" table per quadrant
 
-Measurement uses the validated Praat backend (via Parselmouth) for F0 and voice quality
-when it is installed, with a numpy autocorrelation fallback; loudness (RMS dBFS) and rate
-are always numpy for a consistent scale. It is meant for RELATIVE comparison across
-conditions, not absolute phonetic precision.
+F0 and voice quality come from the validated Praat backend (via Parselmouth) when it is
+installed, else from a numpy autocorrelation fallback. Loudness (RMS dBFS) and rate always
+use numpy, for one consistent scale. Figures are for relative comparison across conditions,
+not absolute phonetic precision.
 
 Method basis (literature):
-  * Feature choice — F0 (pitch), loudness (intensity), and rate are the standard minimal
+  * Feature choice: F0 (pitch), loudness (intensity) and rate are the standard minimal
     prosodic descriptors for affective voice analysis, per the Geneva Minimalistic Acoustic
     Parameter Set (GeMAPS; Eyben, Scherer, Schuller et al., 2016, IEEE T-AFFC) and the SER
     feature surveys (El Ayadi, Kamel & Karray, 2011; Scherer, 2003). GeMAPS also standardises
-    voice-quality descriptors (jitter, shimmer, HNR) — the valence-relevant channel this tool
-    does NOT yet compute (see the extension note in the project log).
-  * F0 method — short-time AUTOCORRELATION in the lag domain, i.e. the algorithm of Boersma
-    (1993) as used by Praat; robust to noise/jitter and standard for speaking-voice F0.
-  * Loudness — RMS energy (dBFS), the intensity correlate used across the SER literature.
-  * Rate — words per second (text is fixed). This is a lightweight proxy for the rigorous
-    syllable-nuclei speech-rate method of de Jong & Wempe (2009); a later story can adopt it.
-Full citations with open-access URLs are recorded in PROJECT_LOG.md (Story E4, measurement basis).
+    voice-quality descriptors (jitter, shimmer, HNR), the valence-relevant channel; this tool
+    computes them only with the Praat backend (see the extension note in the project log).
+  * F0 method: short-time autocorrelation in the lag domain, the algorithm of Boersma (1993)
+    used by Praat; robust to noise and jitter, and standard for speaking-voice F0.
+  * Loudness: RMS energy (dBFS), the intensity correlate used across the SER literature.
+  * Rate: words per second (text is fixed), a lightweight proxy for the syllable-nuclei
+    speech-rate method of de Jong & Wempe (2009), which a later story can adopt.
+Full citations with open-access URLs are in PROJECT_LOG.md (Story E4, measurement basis).
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ except Exception:                                # pragma: no cover
     _HAVE_PRAAT = False
 
 F0_MIN, F0_MAX = 75.0, 400.0     # plausible speaking-voice F0 band (Hz)
-SILENCE_DBFS = -60.0             # below this a clip is treated as silent (e.g. the mock engine)
+SILENCE_DBFS = -60.0             # at or below this a clip counts as silent (e.g. the mock engine)
 
 
 def read_wav(path: Path) -> tuple[np.ndarray, int]:
@@ -121,8 +121,10 @@ def mean_f0(x: np.ndarray, sr: int, fmin: float = F0_MIN, fmax: float = F0_MAX) 
 
 
 def f0_stats(x: np.ndarray, sr: int, fmin: float = F0_MIN, fmax: float = F0_MAX) -> dict:
-    """F0 level AND variability: median (level), standard deviation and range (spread).
-    Arousal raises not only F0 level but its variability, so spread is reported too."""
+    """F0 median (level), standard deviation and range (spread).
+
+    Arousal raises F0 variability as well as its level, so spread is reported too.
+    """
     f0s = _voiced_f0s(x, sr, fmin, fmax)
     if not f0s:
         return {"f0_hz": 0.0, "f0_sd_hz": 0.0, "f0_range_hz": 0.0}
@@ -135,8 +137,10 @@ def f0_stats(x: np.ndarray, sr: int, fmin: float = F0_MIN, fmax: float = F0_MAX)
 
 
 def _praat_features(path: Path, fmin: float = F0_MIN, fmax: float = F0_MAX) -> dict:
-    """Validated F0 (level + spread) and voice quality (jitter %, shimmer %, HNR dB) via
-    Praat (Boersma) through Parselmouth. Undefined values (e.g. unvoiced) become ''."""
+    """Praat F0 (level, spread) and voice quality (jitter %, shimmer %, HNR dB) via Parselmouth.
+
+    Non-finite voice-quality values become ''; F0 fields are 0.0 when no frame is voiced.
+    """
     snd = parselmouth.Sound(str(path))
     f0 = snd.to_pitch(pitch_floor=fmin, pitch_ceiling=fmax).selected_array["frequency"]
     voiced = f0[f0 > 0]
@@ -161,10 +165,12 @@ def _praat_features(path: Path, fmin: float = F0_MIN, fmax: float = F0_MAX) -> d
 
 
 def analyze_clip(path: Path, text: str = "") -> dict:
-    """Measure one clip. Loudness (RMS dBFS) and speaking rate are ALWAYS numpy (one
-    consistent scale); F0 and voice quality come from Praat/Parselmouth when available
-    (backend='praat'), else the numpy autocorrelation fallback (backend='numpy', with the
-    voice-quality fields left blank because numpy cannot compute them)."""
+    """Measure one clip.
+
+    Loudness (RMS dBFS) and speaking rate always use numpy, for one consistent scale. F0 and
+    voice quality come from Praat when available (backend='praat'), else from the numpy
+    autocorrelation fallback (backend='numpy', voice-quality fields left blank).
+    """
     x, sr = read_wav(path)
     dur = x.size / sr if sr else 0.0
     loud = round(rms_dbfs(x), 1)
@@ -205,15 +211,17 @@ def _isnum(v) -> bool:
 
 
 def _avg(vals) -> float:
-    """Mean over numeric values only (blank / non-numeric entries are ignored)."""
+    """Mean of the numeric values, skipping blanks and non-numbers; 0.0 if there are none."""
     nums = [float(v) for v in vals if _isnum(v)]
     return mean(nums) if nums else 0.0
 
 
 def _summary(rows: list[dict]) -> None:
-    """Mean acoustics per (param_set, quadrant), audible clips only. Voice-quality columns
-    (jitter/shimmer/HNR) are shown only when a backend actually produced them (i.e. Praat),
-    so a numpy-fallback run does not print empty columns."""
+    """Print mean acoustics per (param_set, quadrant) over audible clips.
+
+    Voice-quality columns (jitter, shimmer, HNR) appear only when some clip has them (Praat
+    backend), so a numpy-fallback run prints no empty columns.
+    """
     audible = [r for r in rows if r.get("silent") == "no"]
     if not audible:
         print("  (no audible clips to summarise -- run this on a REAL engine session, not mock)")
@@ -240,7 +248,7 @@ def _summary(rows: list[dict]) -> None:
 
 
 def _before_after(rows: list[dict], before: str = "neutral", after: str = "rate_volume_pitch") -> None:
-    """Objective Before/After: neutral baseline vs full emotion, per quadrant."""
+    """Print the objective Before/After: neutral baseline vs full emotion, per quadrant."""
     audible = [r for r in rows if r["silent"] == "no"]
     def cell(ps: str, q: str, key: str) -> float | None:
         vals = [r[key] for r in audible if r.get("param_set") == ps and r.get("quadrant") == q
@@ -264,14 +272,19 @@ def _before_after(rows: list[dict], before: str = "neutral", after: str = "rate_
 
 
 def _audio_path(raw: str) -> Path:
-    """Cross-platform resolution of a register `audio_path` (Windows-written registers store
-    backslashes, which are not separators on Linux/macOS). See build_register.resolve_audio_path."""
+    """Resolve a register `audio_path` on any OS; see build_register.resolve_audio_path.
+
+    Registers written on Windows store backslashes, which are not separators on Linux/macOS.
+    """
     return Path(str(raw).replace("\\", "/"))
 
 
 def _resolve_out(path: Path, force: bool) -> Path:
-    """Never overwrite: if the target already exists (and --force is not given), return a
-    timestamped sibling (..._YYYYMMDD-HHMMSS[-n].csv) so no prior result is ever lost."""
+    """Return an output path that never overwrites unless `force` is set.
+
+    An existing `path` yields a free timestamped sibling (..._YYYYMMDD-HHMMSS[-n].csv), so no
+    earlier result is lost.
+    """
     if force or not path.exists():
         return path
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")

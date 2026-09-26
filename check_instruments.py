@@ -1,42 +1,29 @@
-"""Instrument ceilings — what the objective instruments score on GROUND-TRUTH human speech.
+"""Instrument ceilings: what the objective instruments score on ground-truth human speech.
 
-Why this is the highest-value analysis in the project
------------------------------------------------------
-ECHO's central finding is that **arousal transmits acoustically and valence does not**,
-reproduced across four engines and four control mechanisms. Testing Strategy v2 §11 names
-the one threat that would undo it:
+ECHO's central finding is that arousal transmits acoustically and valence does not, across
+four engines and four control mechanisms. Testing Strategy v2 §11 names the one threat that
+would undo it: an instrument ceiling, where a low valence score may reflect the recogniser,
+not the speech. Unaddressed, it invalidates the central claim.
 
-    "Instrument ceiling — a low valence score may reflect the recogniser, not the speech.
-     Unaddressed, it invalidates the central claim."
+A low valence score means either the speech carries no valence or the recogniser cannot hear
+it. The distinction decides whether Chapter 6 reports a finding about speech synthesis or
+about speech emotion recognition. RAVDESS (acted, labelled, studio-recorded human emotional speech)
+is as close to a ceiling as this instrument will get. If the recogniser scores valence at
+chance on RAVDESS, chance valence on ECHO's clips says nothing about ECHO. If it scores
+valence well on RAVDESS and poorly on ECHO, the finding is about the synthesis.
 
-A low valence score has two possible causes and the project currently cannot distinguish
-them: either the speech does not carry valence, or **the recogniser cannot hear it**. The
-distinction is not a detail — it decides whether Chapter 6 reports a finding about speech
-synthesis or a finding about speech emotion recognition. Both are publishable; claiming the
-wrong one is not.
+    M1: dimensional SER over labelled RAVDESS   -> the recogniser's ceiling
+    M2: UTMOS over natural human recordings     -> the naturalness scale's ceiling
 
-The test is simple and the data is already on disk. RAVDESS is **acted, labelled, studio-
-recorded human emotional speech** — as close to a ceiling as this instrument will ever see.
-If the recogniser scores valence at chance on RAVDESS, then valence at chance on ECHO's
-clips says nothing about ECHO. If it scores valence well on RAVDESS and poorly on ECHO,
-the finding is about the synthesis.
+M2 anchors every MOS figure in the thesis: "Kokoro scores 4.51" is uninterpretable until the
+same predictor has scored natural human speech. The expected range is roughly 4.3-4.7; a
+natural anchor below the engines would invalidate the naturalness ranking.
 
-    M1 — dimensional SER over labelled RAVDESS  -> the recogniser's ceiling
-    M2 — UTMOS over natural human recordings    -> the naturalness scale's ceiling
-
-M2 anchors every mean-opinion-score figure in the thesis. "Kokoro scores 4.51" is
-uninterpretable until it is known what *natural human speech* scores on the same predictor;
-the expected range is roughly 4.3-4.7, and a natural anchor below the engines would
-invalidate the naturalness ranking outright.
-
-Method note — this run is itself an instance of the categorical->dimensional mapping problem
---------------------------------------------------------------------------------------------
-RAVDESS labels are **categorical** (happy, angry, sad, calm); ECHO's targets are
-**dimensional** quadrants. Assigning happy->Q1 is a mapping, not a fact, and the project's
-own protocol requires it to be declared rather than assumed. The mapping used here is the
-same one `make_ravdess_refs.py` uses for the reference clips, so the ceiling is measured
-under exactly the assumption the rest of the project already operates under. Where the
-recogniser disagrees with a label, that is reported as displacement rather than as error.
+Mapping: RAVDESS labels are categorical (happy, angry, sad, calm) and ECHO's targets are
+dimensional quadrants, so happy->Q1 is a declared mapping, not a fact. It is the mapping
+`make_ravdess_refs.py` uses for the reference clips, so the ceiling is measured under the same
+assumption as the rest of the project. Where the recogniser disagrees with a label, that is
+reported as displacement, not error.
 
     python check_instruments.py --ravdess RAVDESS --per-quadrant 20
     python check_instruments.py --skip-utmos          # M1 only, faster
@@ -55,14 +42,14 @@ from pathlib import Path
 from make_ravdess_refs import QUADRANT_EMOTION
 
 QUADRANTS = ("Q1", "Q2", "Q3", "Q4")
-#: RAVDESS emotion code -> quadrant, inverted from the reference-builder's mapping so the
-#: ceiling is measured under the same declared assumption the reference clips use.
+#: RAVDESS emotion code -> quadrant, the inverse of make_ravdess_refs.QUADRANT_EMOTION, so
+#: the ceiling is measured under the reference clips' declared mapping.
 EMOTION_QUADRANT = {code: q for q, (code, _label) in QUADRANT_EMOTION.items()}
 EMOTION_LABEL = {code: label for _q, (code, label) in QUADRANT_EMOTION.items()}
 
 
 #: RAVDESS emotion code 01 = neutral. Excluded from M1 (it has no quadrant, and assigning
-#: one would be an unjustified mapping) but REQUIRED for M2 — see `natural_anchor_pool`.
+#: one would be an unjustified mapping) but required for M2; see `natural_anchor_pool`.
 NEUTRAL_CODE = "01"
 
 
@@ -88,21 +75,19 @@ def parse_ravdess(path: Path, allow_neutral: bool = False) -> "dict | None":
 
 
 def natural_anchor_pool(root: Path, n: int, seed: int) -> list[dict]:
-    """NEUTRAL human clips — the correct anchor for a naturalness predictor.
+    """Neutral human clips: the correct anchor for a naturalness predictor.
 
-    Corrects a methodological error in the first run of this script (2026-08-31), which
-    scored UTMOS over the *emotional* sample and reported 3.353 for "natural human speech" —
-    below five of ECHO's seven engine configurations, which would have invalidated the
-    naturalness scale.
+    Corrects the first run of this script (2026-08-31), which scored UTMOS over the
+    emotional sample and reported 3.353 for "natural human speech", below five of ECHO's
+    seven engine configurations. That would have invalidated the naturalness scale.
 
-    **Naturalness is not emotion.** UTMOS predicts mean opinion score for synthesis
-    naturalness, and its training material is overwhelmingly ordinary read speech. Shouted
-    anger and whispered sadness are atypical *as speech*, so scoring them and calling the
-    result "the natural anchor" measures the emotion, not the naturalness ceiling. RAVDESS
-    emotion code 01 (neutral) is the material that belongs in that role.
+    Naturalness is not emotion. UTMOS predicts MOS for synthesis naturalness and was trained
+    on overwhelmingly ordinary read speech. Shouted anger and whispered sadness are atypical
+    as speech, so scoring them measures the emotion, not the naturalness ceiling. RAVDESS
+    emotion code 01 (neutral) belongs in that role.
 
-    The emotional pool is still scored, separately — see §M2b. The difference between the
-    two is itself a result.
+    The emotional pool is still scored separately (§M2b); the difference between the two is
+    itself a result.
     """
     clips = [c for c in (parse_ravdess(p, allow_neutral=True)
                          for p in sorted(root.rglob("*.wav"))) if c]
@@ -122,12 +107,12 @@ def natural_anchor_pool(root: Path, n: int, seed: int) -> list[dict]:
 
 
 def sample_balanced(root: Path, per_quadrant: int, seed: int) -> list[dict]:
-    """A balanced, seeded sample: equal per quadrant, spread across actors.
+    """Balanced, seeded sample: equal per quadrant, spread across actors.
 
-    Spreading across actors matters more than sample size here. RAVDESS has 24 actors and
-    a recogniser's apparent accuracy can be carried by a handful of expressive performers,
-    so a sample concentrated in a few actors would measure those actors rather than the
-    instrument. Sorting by actor before the round-robin makes the spread deterministic.
+    Actor spread matters more than sample size. RAVDESS has 24 actors, and a recogniser's
+    apparent accuracy can be carried by a few expressive performers; a sample concentrated
+    in a few actors would measure them, not the instrument. Sorting actors before the
+    round-robin makes the spread deterministic.
     """
     clips = [c for c in (parse_ravdess(p) for p in sorted(root.rglob("*.wav"))) if c]
     rng = random.Random(seed)
@@ -229,7 +214,7 @@ def main(argv: "list[str] | None" = None) -> int:
         return 1
 
     quad_acc = sum(r["rec_q"] == r["quadrant"] for r in rows) / len(rows)
-    # Sign accuracy on each axis, against the quadrant anchors the contract defines.
+    # Per-axis sign accuracy against the contract's quadrant anchors.
     from contracts import Quadrant, anchor_for
 
     aro_hits = val_hits = 0
@@ -297,7 +282,7 @@ def main(argv: "list[str] | None" = None) -> int:
                     print("  WARNING: still below 4.0 on neutral studio speech. The anchor itself")
                     print("  is suspect — investigate before interpreting any engine ranking.")
 
-            # --- M2b: what emotion costs, measured on HUMAN speech ---------
+            # --- M2b: what emotion costs, measured on human speech ---------
             print("\n" + "-" * 78)
             print("M2b — the same predictor on EMOTIONAL human speech (the control)")
             print("-" * 78)

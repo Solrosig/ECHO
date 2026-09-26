@@ -1,36 +1,33 @@
-"""Verify a ZipVoice installation AND prove filter T0.3 — reproducibility — empirically.
+"""Verify a ZipVoice installation and test filter T0.3 (reproducibility) empirically.
 
 ZipVoice is a flow-matching model: it samples from noise, so it is stochastic by nature.
 Every other neural engine in this project is deterministic, and the provenance store's
-SHA-256 per clip silently assumes that a clip can be re-rendered identically. For ZipVoice
-that assumption has to be DEMONSTRATED, not declared — a seed argument in the source proves
-that the authors intended determinism, not that this installation delivers it.
+per-clip SHA-256 silently assumes that a clip can be re-rendered identically. For ZipVoice
+that must be demonstrated, not declared: a seed argument in the source shows the authors
+intended determinism, not that this installation delivers it.
 
-So the check renders the same sentence three times through ECHO's own adapter:
+The check renders the same sentence three times through ECHO's own adapter:
 
     A = seed S        B = seed S        C = seed S+1
 
 and compares the SHA-256 of each file:
 
-    A == B   the seed pins the sampling  -> clips are reproducible, T0.3 SATISFIED
+    A == B   the seed pins the sampling  -> clips are reproducible, T0.3 satisfied
     A != B   identical inputs, different audio -> the provenance hash is meaningless, FAIL
     A == C   output ignores the seed entirely -> reproducible anyway; reported, not failed
 
-The middle case is the one that matters and the only one that fails. The third is reported
-honestly rather than treated as an error: an engine that produces the same audio whatever
-the seed is MORE reproducible, not less, and mislabelling that as a failure would be the
-same category of mistake as check_refs.py failing the RAVDESS set for having dynamics.
+Only the middle case fails. The third is reported, not treated as an error: an engine that
+produces the same audio whatever the seed is more reproducible, not less. Failing it would
+repeat the mistake of check_refs.py failing the RAVDESS set for having dynamics.
 
-The check deliberately goes through `tts.ZipVoiceAdapter` rather than calling the ZipVoice
-CLI directly, because what needs verifying is the path ECHO actually renders through —
-including the seed the adapter passes. Verifying a different code path would prove nothing
-about the one in use.
+The check goes through `tts.ZipVoiceAdapter` rather than the ZipVoice CLI because the path
+under test must be the one ECHO renders through, including the seed the adapter passes.
 
     python check_zipvoice.py                                   # defaults from config
     python check_zipvoice.py --python C:\\zipvoice\\.venv\\Scripts\\python.exe
     python check_zipvoice.py --quadrant Q2 --model zipvoice_distill
 
-Exit code 0 = usable, 1 = not usable. Prints a Tier-1 latency figure as a by-product.
+Exit code 0 = usable, 1 = not usable. Also prints a Tier-1 latency figure.
 """
 
 from __future__ import annotations
@@ -45,8 +42,8 @@ from config import load_config
 from strategies import VoiceParams
 from tts import ZipVoiceAdapter
 
-#: A sentence with clear prosodic structure and no rare vocabulary, so a failure is
-#: attributable to the engine rather than to an awkward input.
+#: Clear prosodic structure and no rare vocabulary, so a failure points at the engine, not
+#: at an awkward input.
 DEFAULT_TEXT = "I really did not expect to hear from you today."
 
 
@@ -55,16 +52,15 @@ def sha256_of(path: Path) -> str:
 
 
 def wav_info(path: Path) -> "tuple[float, int] | None":
-    """(duration_seconds, sample_rate), or None if the file is genuinely unreadable.
+    """Return (duration_seconds, sample_rate), or None if the file is unreadable.
 
-    `soundfile` is tried FIRST and `wave` only as a fallback, because the standard library's
-    `wave` module reads integer PCM only and raises on float32 WAV — which is what
-    `torchaudio.save` produces. Checking with `wave` alone reported a perfectly valid
-    ZipVoice render as "not a valid WAV", which is this project's fourth instance of an
-    instrument reporting a defect in something that was working: check_refs.py failing the
-    RAVDESS set for having dynamics, quadrant thresholding erasing a real valence
-    correlation, UTMOS mis-scoring paralinguistic tokens, and now this. When a check
-    disagrees with an engine, the check is the more likely to be wrong.
+    `soundfile` is tried first and `wave` only as a fallback: the stdlib `wave` module reads
+    integer PCM only and raises on float32 WAV, which `torchaudio.save` produces. A
+    `wave`-only check reported a valid ZipVoice render as "not a valid WAV", the project's
+    fourth instrument to report a defect in something that worked (after check_refs.py
+    failing the RAVDESS set for having dynamics, quadrant thresholding erasing a real valence
+    correlation, and UTMOS mis-scoring paralinguistic tokens). When a check disagrees with
+    an engine, the check is the more likely to be wrong.
     """
     try:
         import soundfile as sf
@@ -84,9 +80,9 @@ def render(adapter: ZipVoiceAdapter, text: str, quadrant: str,
            out_path: Path) -> "tuple[Path, float]":
     """Render one clip through the adapter, returning the path and elapsed seconds.
 
-    Volume is held at 1.0 on purpose: the adapter's loudness post-scale rewrites the file
-    through soundfile, and that round-trip could introduce differences of its own. The
-    engine's raw output is what is under test here.
+    Volume is held at 1.0 so the adapter's loudness post-scale leaves the samples unchanged.
+    The adapter still rewrites the file as 16-bit PCM; that step is deterministic, so equal
+    engine output still gives equal files.
     """
     vp = VoiceParams(voice_id="", rate=1.0, volume=1.0, pitch=1.0, quadrant=quadrant)
     start = time.perf_counter()
@@ -144,11 +140,10 @@ def main(argv: "list[str] | None" = None) -> int:
     print("   The first render loads the model (and may download it) — please wait.")
 
     def adapter_with(seed: int) -> ZipVoiceAdapter:
-        # Every setting the render depends on must be passed here. This function is the
-        # second place config is mapped onto the adapter (make_tts is the first), and that
-        # duplication has already cost one failed run: `repo` was added to the adapter and
-        # to make_tts but not here, so the check ran without a PYTHONPATH and reported a
-        # missing module that was in fact present.
+        # Pass every setting the render depends on. This is the second place config is
+        # mapped onto the adapter (make_tts is the first), and the duplication has cost a
+        # failed run: `repo` was added to the adapter and make_tts but not here, so the
+        # check ran without PYTHONPATH and reported a missing module that was present.
         return ZipVoiceAdapter(refs_dir=str(refs), python=args.python, model_name=args.model,
                                model_dir=args.model_dir, seed=seed,
                                num_step=cfg.zipvoice_num_step,

@@ -1,16 +1,14 @@
-"""LLM adapter — PROTECTED SEAM #2.
+"""LLM adapter (protected seam #2).
 
-`generate(prompt)` returns a parsed result. Every backend implements the same
-interface, so the pipeline never changes when the model does.
+`generate(prompt)` returns a parsed result. Every backend implements the same interface,
+so the pipeline does not change when the model does.
 
-ECHO RUNS ONE MODEL: `llama3.2:3b`, served locally by Ollama. `OllamaAdapter`
-reaches it through Ollama's *OpenAI-compatible* HTTP endpoint
-(`http://localhost:11434/v1`), which is the only reason the `openai` package is a
-dependency: it is used as a client for that wire protocol, nothing more. No
-OpenAI service is contacted, no account or key exists (`api_key="ollama"` is a
-required-but-ignored placeholder), and no text leaves the machine. The seam means
-a hosted backend *could* be added as a new class; none is implemented and none is
-planned, because Chapter 1's aim is a locally deployed system.
+ECHO runs one model, `llama3.2:3b`, served locally by Ollama. `OllamaAdapter` reaches it
+through Ollama's OpenAI-compatible HTTP endpoint (`http://localhost:11434/v1`); that wire
+protocol is the only reason `openai` is a dependency. No OpenAI service is contacted, no
+account or key exists (`api_key="ollama"` is a required but ignored placeholder), and no
+text leaves the machine. A hosted backend could be added as a new class; none is
+implemented or planned, because Chapter 1's aim is a locally deployed system.
 """
 
 from __future__ import annotations
@@ -38,9 +36,8 @@ class LLMResult:
 def parse_llm_json(text: str) -> tuple[str, Quadrant | None]:
     """Extract (reply, self_quadrant) from a model response.
 
-    Defensive: strips code fences, finds the first JSON object, and degrades
-    gracefully — a malformed response keeps the raw text as the reply and returns
-    a null quadrant instead of crashing.
+    Strips code fences and parses the span from the first `{` to the last `}`. A malformed
+    response returns the raw text as the reply and None as the quadrant instead of raising.
     """
     cleaned = _FENCE.sub("", text).strip()
     match = _JSON_OBJ.search(cleaned)
@@ -71,11 +68,11 @@ class LLMAdapter(ABC):
     def generate(self, prompt: str) -> LLMResult: ...
 
 
-# Cue -> (quadrant, reply), matching the wording of prompts/q*.txt.
-# The replies carry real affect words so the mock exercises an INDEPENDENT judge
-# (lexicon) rather than only the legacy self-report path: a placeholder like
-# "[mock Q1 reply]" has no emotional content, so an honest judge would - correctly -
-# refuse to certify it, and the mock pipeline would never pass its own gate.
+# Cue -> (quadrant, reply); cues match the wording of prompts/q*.txt.
+# Replies use real affect words so the mock exercises an independent judge (lexicon),
+# not only the legacy self-report path. A placeholder such as "[mock Q1 reply]" has no
+# emotional content, so an honest judge would rightly refuse to certify it and the mock
+# pipeline would never pass its own gate.
 _MOCK_CUES = {
     "HAPPY and ENERGETIC": ("Q1", "That is wonderful, I am delighted and excited."),
     "UPSET and AGITATED": ("Q2", "This is outrageous and unacceptable, I am furious."),
@@ -87,8 +84,8 @@ _MOCK_CUES = {
 class MockLLMAdapter(LLMAdapter):
     """Deterministic adapter for tests and offline demos.
 
-    Returns whatever `scripted` provides (a raw string), or a canned JSON reply
-    echoing the requested quadrant if none is scripted.
+    Returns `scripted` (a raw string) if given, else a canned JSON reply for the quadrant
+    the prompt asks for.
     """
 
     model_id = "mock"
@@ -101,10 +98,10 @@ class MockLLMAdapter(LLMAdapter):
         if self._scripted is not None:
             raw = self._scripted
         else:
-            # Simulates a COOPERATIVE model: reads the emotion the prompt asks for and
-            # complies. Since G6.1 the prompt no longer contains `self_quadrant`, so the
-            # cue is the emotion description itself. `self_quadrant` is still emitted so
-            # the legacy L0 judge remains testable; independent judges ignore it.
+            # Simulates a cooperative model that complies with the requested emotion.
+            # Since G6.1 the prompt has no `self_quadrant`, so the cue is the emotion
+            # description. `self_quadrant` is still emitted so the legacy L0 judge stays
+            # testable; independent judges ignore it.
             q, reply = next((v for k, v in _MOCK_CUES.items() if k in prompt),
                             _MOCK_CUES["HAPPY and ENERGETIC"])
             raw = json.dumps({"reply": reply, "self_quadrant": q})
@@ -113,7 +110,7 @@ class MockLLMAdapter(LLMAdapter):
 
 
 class OllamaAdapter(LLMAdapter):
-    """Local Ollama via its OpenAI-compatible endpoint. The ONLY live backend."""
+    """Local Ollama via its OpenAI-compatible endpoint; the only live backend."""
 
     def __init__(
         self,
@@ -123,9 +120,8 @@ class OllamaAdapter(LLMAdapter):
         temperature: float = 0.7,
         timeout_s: float = 60.0,
     ) -> None:
-        # `openai` here is a CLIENT for Ollama's OpenAI-compatible wire protocol, not a
-        # connection to OpenAI. Imported inside __init__ so tests and offline runs never
-        # need the package at all.
+        # `openai` is a client for Ollama's OpenAI-compatible protocol here, not a
+        # connection to OpenAI. Imported here so tests and offline runs do not need it.
         from openai import OpenAI
 
         # api_key: Ollama requires the Authorization header and ignores its value.
@@ -135,12 +131,12 @@ class OllamaAdapter(LLMAdapter):
         self._host = host
 
     def ping(self) -> None:
-        """Verify the endpoint is actually reachable. Raises on failure.
+        """Check that the endpoint is reachable; raise on failure.
 
-        Constructing the client makes NO network call, so a caller that only wraps
-        __init__ in try/except cannot detect an unreachable server: the failure surfaces
-        much later, inside generate(), as a 60-line httpx traceback. Observed 2026-08-30
-        when Ollama was not running. This gives callers something to fail fast on.
+        Constructing the client makes no network call, so wrapping __init__ in try/except
+        cannot detect an unreachable server: the failure surfaces later, in generate(), as
+        a 60-line httpx traceback (observed 2026-08-30 with Ollama not running). Call this
+        to fail fast.
         """
         self._client.models.list()
 

@@ -1,21 +1,21 @@
-"""Controllability report (Story E6): does each voice DIAL actually move its acoustic
-correlate, and do the four quadrants separate?
+"""Controllability report (Story E6): does each voice dial move its acoustic correlate?
 
-Reads the measured register (`acoustics.csv` from analyze_acoustics.py), which carries BOTH
-the INTENDED dial values (rate, volume, pitch from the strategy) and the MEASURED correlates
-(words_per_s, rms_dbfs, f0_hz). For each dial it reports:
-  1. Spearman rank correlation (intended dial -> measured correlate) across all conditions
-     -- the monotonicity check: turning the knob up moves the correlate up;
+It also tests whether the four quadrants separate. Input is the measured register
+(`acoustics.csv` from analyze_acoustics.py), which carries both the intended dial values
+(rate, volume, pitch from the strategy) and the measured correlates (words_per_s, rms_dbfs,
+f0_hz). For each dial it reports:
+  1. Spearman rank correlation (intended dial -> measured correlate) across all conditions:
+     the monotonicity check, i.e. turning the dial up moves the correlate up;
   2. a per-quadrant separation table (mean measured value per quadrant, one param-set);
   3. Cohen's d effect sizes across the affective axis each dial serves.
 
-This is the OBJECTIVE *controllability* verdict (intended-vs-measured), deliberately distinct
-from naturalness fidelity (E7). It is literature-grounded twice over: the correlates measured
-are the standard acoustic descriptors of each affective dimension -- F0<-pitch, intensity<-
-loudness, tempo<-rate (Eyben et al. 2016 GeMAPS; Banse & Scherer 1996; Schröder 2004) -- and
-the predicted quadrant orderings come from the same acoustic-correlate literature that the
-two-tier mapping was built on. Spearman's (1904) rho and Cohen's (1988) d are the standard
-non-parametric association and effect-size statistics, appropriate at this small sample size.
+This is the objective controllability verdict (intended vs measured), kept separate from
+naturalness fidelity (E7). The correlates are the standard acoustic descriptors of each
+affective dimension: F0 <- pitch, intensity <- loudness, tempo <- rate (Eyben et al. 2016
+GeMAPS; Banse & Scherer 1996; Schröder 2004). The predicted quadrant orderings come from the
+same acoustic-correlate literature the two-tier mapping was built on. Spearman's (1904) rho
+and Cohen's (1988) d are the standard non-parametric association and effect-size statistics,
+appropriate at this small sample size.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from statistics import mean
 
 import numpy as np
 
-# dial -> (intended column, measured column, human label, expected sign)
+# (intended dial column, measured correlate column, label, expected sign)
 DIALS = [
     ("rate", "words_per_s", "speaking rate", +1),
     ("volume", "rms_dbfs", "loudness", +1),
@@ -92,8 +92,11 @@ def cohens_d(a, b) -> float:
 
 
 def _resolve_out(path: Path, force: bool) -> Path:
-    """Never overwrite: if the target already exists (and --force is not given), return a
-    timestamped sibling (..._YYYYMMDD-HHMMSS[-n].csv) so no prior result is ever lost."""
+    """Return an output path that never overwrites unless `force` is set.
+
+    An existing `path` yields a free timestamped sibling (..._YYYYMMDD-HHMMSS[-n].csv), so no
+    earlier result is lost.
+    """
     if force or not path.exists():
         return path
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -145,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         out.append({"section": "monotonicity", "item": label, "measured": measured,
                     "value": round(rho, 3), "n": len(pairs), "note": "PASS" if ok else "CHECK"})
 
-    # choose the param-set for separation + effect sizes
+    # Param-set for separation + effect sizes: --param-set if present, else the most frequent.
     counts: dict[str, int] = defaultdict(int)
     for r in rows:
         counts[r.get("param_set", "?")] += 1

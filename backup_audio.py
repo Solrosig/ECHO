@@ -1,27 +1,26 @@
-"""Audio backup manifest and verification — the corpus is the one thing that cannot be rebuilt.
+"""Audio backup manifest and verification: the corpus is the one thing that cannot be rebuilt.
 
     python backup_audio.py --manifest
-        Hash EVERY .wav under research/sessions (registered or not) into a timestamped
+        Hash every .wav under research/sessions/*/audio (registered or not) into a timestamped
         research/audio_manifest_<stamp>.csv. Never overwrites.
 
     python backup_audio.py --copy-to D:/ECHO_AUDIO_BACKUP
-        Manifest, copy every clip there, and verify - one command, no timestamp to type.
+        Manifest, copy every clip there and verify, in one command with no timestamp to type.
         Re-running resumes: clips already present with a matching hash are skipped.
 
     python backup_audio.py --verify D:/ECHO_AUDIO_BACKUP
         Re-check an existing backup against the newest manifest.
 
-**Why this is separate from `build_register.py --verify`.** That tool verifies clips that are
-IN a register, which is the right check for the analysed corpus. But `synth_stimuli.py` only
-began writing `register.csv` on 2026-07-26, and **410 of the 823 clips predate it** — seven
-session folders with audio and no register at all. Those clips are invisible to every integrity
-check the project has, so a silent corruption or a partial copy would go unnoticed precisely in
-the oldest and least reproducible part of the corpus. This tool walks the filesystem instead of
-the registers, so nothing is invisible to it.
+Why this is separate from `build_register.py --verify`: that tool checks only clips listed in
+a register, which is right for the analysed corpus. But `synth_stimuli.py` began writing
+`register.csv` only on 2026-07-26, and 410 of the 823 clips predate it (seven session folders
+with audio and no register). No other integrity check sees those clips, so silent corruption
+or a partial copy would go unnoticed in the oldest, least reproducible part of the corpus.
+This tool walks the filesystem instead of the registers, so it sees every clip.
 
-The scorecard can be rebuilt from the audio. The audio cannot be rebuilt from anything: the
-stochastic engines are seeded, but the reference clips, the model checkpoints and the engine
-versions that produced them are not all pinned, and two of the six engines are out-of-process
+The scorecard can be rebuilt from the audio; the audio cannot be rebuilt from anything. The
+stochastic engines are seeded, but the reference clips, model checkpoints and engine versions
+that produced the audio are not all pinned, and two of the six engines are out-of-process
 installs that no longer match their original environments.
 """
 
@@ -46,7 +45,7 @@ def sha256_file(p: Path) -> str:
 
 
 def registered_hashes(sessions_root: Path) -> set:
-    """Every SHA-256 that appears in some session register — used only to mark coverage."""
+    """Every SHA-256 listed in some session register; used only to mark coverage."""
     seen = set()
     for reg in sorted(sessions_root.glob("*/register.csv")):
         try:
@@ -86,22 +85,21 @@ def write_manifest(rows: "list[dict]", out_dir: Path) -> Path:
 def newest_manifest(out_dir: Path) -> "Path | None":
     """The most recent manifest in `out_dir`, so no command line has to carry a timestamp.
 
-    Manifests are timestamped and never overwritten, which is right for a record but makes
-    every filename unguessable. A step that reads `--manifest-file research/audio_manifest_
-    <stamp>.csv` is a step the operator has to interpret, and an interpreted step is a step
-    that gets typed wrong. The newest manifest is always the one that matches the current
-    corpus, so resolving it here removes the placeholder entirely.
+    Manifests are timestamped and never overwritten, which suits a record but makes every
+    filename unguessable. A step such as `--manifest-file research/audio_manifest_<stamp>.csv`
+    must be filled in by hand and is easily mistyped. The newest manifest is the one that
+    matches the current corpus, so resolving it here removes the placeholder.
     """
     files = sorted(Path(out_dir).glob("audio_manifest_*.csv"))
     return files[-1] if files else None
 
 
 def copy_to(rows: "list[dict]", sessions_root: Path, dest: Path) -> "tuple[int, int]":
-    """Copy every manifested clip to `dest`, preserving the session/audio tree. Returns
-    (copied, skipped_identical).
+    """Copy every manifested clip to `dest`, keeping the session/audio tree.
 
-    Files already present with a matching SHA-256 are skipped, so re-running after an
-    interrupted copy resumes instead of starting over, and an unchanged corpus costs nothing.
+    Returns (copied, skipped_identical). Files already present with a matching size and SHA-256
+    are skipped, so re-running after an interrupted copy resumes rather than starting over, and
+    an unchanged corpus copies nothing.
     """
     copied = skipped = 0
     for r in rows:

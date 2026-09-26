@@ -1,13 +1,13 @@
-"""EmotionContract — the single data structure carried through the whole pipeline.
+"""EmotionContract: the single data structure carried through the whole pipeline.
 
-PROTECTED SEAM #1. Change with review.
+Protected seam #1: change only with review.
 
 Emotion is modelled on Russell's valence-arousal circumplex, discretised into four quadrants:
 
     arousal +
             |
       Q2    |    Q1
-   (v<0,a>0)| (v>=0,a>=0)
+  (v<0,a>=0)| (v>=0,a>=0)
   ----------+----------  valence +
       Q3    |    Q4
    (v<0,a<0)| (v>=0,a<0)
@@ -22,17 +22,15 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-# ---------------------------------------------------------------------------
-# Quadrant anchors — versioned constant. Do not edit values silently.
-# ---------------------------------------------------------------------------
+# Quadrant anchors are versioned by ANCHOR_VERSION. Do not edit values silently.
 ANCHOR_VERSION = "va-anchors-v1"
 
 
 class Quadrant(str, Enum):
-    Q1 = "Q1"  # positive valence, high arousal  — excited / happy
-    Q2 = "Q2"  # negative valence, high arousal  — angry / afraid
-    Q3 = "Q3"  # negative valence, low arousal   — sad / bored
-    Q4 = "Q4"  # positive valence, low arousal   — calm / content
+    Q1 = "Q1"  # positive valence, high arousal: excited / happy
+    Q2 = "Q2"  # negative valence, high arousal: angry / afraid
+    Q3 = "Q3"  # negative valence, low arousal: sad / bored
+    Q4 = "Q4"  # positive valence, low arousal: calm / content
 
 
 # (valence, arousal) anchor for each quadrant
@@ -43,7 +41,7 @@ _ANCHORS: dict[Quadrant, tuple[float, float]] = {
     Quadrant.Q4: (0.6, -0.6),
 }
 
-# Human-readable label per quadrant, injected into prompts.
+# Human-readable label per quadrant (EmotionContract.label).
 QUADRANT_LABEL: dict[Quadrant, str] = {
     Quadrant.Q1: "happy and energetic",
     Quadrant.Q2: "upset and agitated",
@@ -60,8 +58,7 @@ def anchor_for(quadrant: Quadrant) -> tuple[float, float]:
 def quadrant_for(valence: float, arousal: float) -> Quadrant:
     """Map a (valence, arousal) point to a quadrant.
 
-    Behaviour on the axes/origin is explicit: valence>=0 counts as positive,
-    arousal>=0 counts as high. So (0, 0) -> Q1.
+    On the axes, valence>=0 counts as positive and arousal>=0 as high, so (0, 0) -> Q1.
     """
     if valence >= 0 and arousal >= 0:
         return Quadrant.Q1

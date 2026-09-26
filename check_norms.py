@@ -1,10 +1,9 @@
-"""Validate an affective-norms CSV and report its COVERAGE over real text.
+"""Validate an affective-norms CSV and report its coverage over real text.
 
-Story C3. The lexicon judge is only as good as the norms behind it: on 2026-08-30 it
-abstained on 3 of 4 real LLM replies, and the cause was not the method but the 30-entry
-placeholder table shipped inside `judge.py`. Coverage — the share of a text's words the
-norms actually recognise — is the quantity that makes that failure visible in advance
-instead of after a run.
+Story C3. The lexicon judge is only as good as its norms: on 2026-08-30 it abstained on
+3 of 4 real LLM replies, and the cause was not the method but the 30-entry placeholder
+table in `judge.py`. Coverage (the share of a text's words the norms recognise) shows that
+failure before a run instead of after.
 
 Expects a Warriner-format CSV (Warriner, Kuperman & Brysbaert, 2013): a `Word` column plus
 `V.Mean.Sum` and `A.Mean.Sum` on the 1-9 rating scale. Lower-case `word,valence,arousal`
@@ -34,7 +33,7 @@ _FALLBACK = [
 
 
 def replies_from_db(db_path: str, limit: int = 200) -> list[str]:
-    """Real generated replies — the only sample that reflects actual usage."""
+    """Real generated replies: the only sample that reflects actual usage."""
     if not Path(db_path).exists():
         return []
     conn = sqlite3.connect(db_path)
@@ -58,8 +57,8 @@ def validate(path: str) -> tuple[dict, list[str]]:
     if not norms:
         return {}, [f"no usable rows parsed from {path} — check the column headers"]
 
-    # load_norms falls back to the seed table on a parse failure; catch that here rather
-    # than letting a 30-word placeholder masquerade as the published norms.
+    # load_norms falls back to the 30-word seed table on a parse failure. Catch that so the
+    # placeholder cannot pass for the published norms.
     if len(norms) < 1000:
         problems.append(
             f"only {len(norms)} entries parsed — the published set has ~13,915. "
@@ -81,11 +80,11 @@ def validate(path: str) -> tuple[dict, list[str]]:
     return norms, problems
 
 
-# Function words, contractions and proper nouns are deliberately absent from the Warriner
-# norms, which rate CONTENT words. Counting them in the denominator understates coverage:
-# a first run over real replies reported 30.8% raw coverage while the judge was in fact
-# forming an opinion on 88% of texts. Raw coverage is reported for information only; the
-# criterion that matters is the OPINION RATE, because that is what the gate consumes.
+# The Warriner norms rate content words; function words, contractions and proper nouns are
+# deliberately absent. Counting them in the denominator understates coverage: a first run
+# over real replies reported 30.8% raw coverage while the judge formed an opinion on 88% of
+# texts. Raw coverage is informational; the criterion is the opinion rate, which the gate
+# consumes.
 _FUNCTION_WORDS = {
     "a", "an", "the", "and", "or", "but", "if", "so", "of", "to", "in", "on", "at", "for",
     "with", "from", "by", "as", "is", "are", "was", "were", "be", "been", "am", "do",
@@ -99,12 +98,12 @@ _FUNCTION_WORDS = {
 
 
 def _is_content(word: str) -> bool:
-    """Contractions and function words are not expected to be in the norms."""
+    """True unless the word is a contraction or function word, which the norms omit."""
     return "'" not in word and word not in _FUNCTION_WORDS
 
 
 def coverage(texts: list[str], norms: dict) -> tuple[float, float, int, int, list[str]]:
-    """Raw and content-word coverage, plus the most common CONTENT misses."""
+    """Raw and content-word coverage, plus the most common content misses."""
     total = hits = c_total = c_hits = 0
     missed: dict[str, int] = {}
     for t in texts:
@@ -155,9 +154,9 @@ def main(argv: list[str] | None = None) -> int:
     if missed:
         print(f"content misses: {', '.join(missed)}")
 
-    # The gate consumes an OPINION per text, so that is the criterion. Reported at two
-    # thresholds because a one-word judgement is fragile: "yeah, that's just great" scores
-    # Q1 on the single word 'great'. min_hits=2 is more robust but abstains more often.
+    # The gate consumes an opinion per text, so that is the criterion. Reported for min_hits
+    # 1-3 because a one-word judgement is fragile: "yeah, that's just great" scores Q1 on the
+    # single word 'great'. A higher min_hits is more robust but abstains more often.
     n = len(texts)
     rates = {}
     for min_hits in (1, 2, 3):

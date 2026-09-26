@@ -3,11 +3,11 @@ import {dialogueMessages,DIALOGUE_PROMPT_VERSION,unwrapQuotedReply,stripActLabel
 import {REPLY_CHECK_VERSION,CHECK_GENERATION,CHECK_FORMAT,replyCheckMessages,parseVerdict,judgeReply,acceptedAttempt} from './reply-check.mjs';
 import {QWEN_BACKUP_ALLOWED,QWEN_BACKUP_MODEL} from './llm-backup.mjs';
 
-// ECHO's primary language model is llama3.2:3b served by Ollama (decision 2026-09-11).
+// Primary language model, served by Ollama (decision 2026-09-11).
 export const PRIMARY_MODEL='llama3.2:3b';
-// The generation settings the 1.5.0 conversation used, kept so replies stay comparable.
+// Generation settings of the 1.5.0 conversation, kept so replies stay comparable.
 export const GENERATION={temperature:.7,seed:666,max_tokens:150};
-// A hosted model that sleeps between study sessions answers again after a wake-up; the page retries at this interval.
+// The page retries at this interval while a hosted model that sleeps between study sessions wakes up.
 export const WAKE_RETRY_S=15;
 // The reply check stays off. In the pre-registered 2026-09-13 screen (evidence 2026-09-13-reply-check-prompt-v4-screen) the
 // replies it passed were right 81% of the time (85% required) and an exchange took about five times as long.
@@ -21,11 +21,11 @@ const LOOPBACK=/^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/|$)/
 
 // ECHO_COHERENCE_GATE: 'off' = option B, the reply comes straight from Ollama (in use since 2026-09-11).
 //                      'on'  = option A, the same request goes through ECHO's coherence gate (gate_service.py).
-// ECHO_OLLAMA_URL and ECHO_OLLAMA_TOKEN point at a remote Ollama, such as a private Hugging Face Space that sleeps
-// when unused. The token is sent as a Bearer header and never reaches the page.
-// ECHO_LLM_MODE=embedded, set on the Hugging Face Space, is a local Ollama that starts beside the website and downloads
-// its model again after every wake-up; until it answers, the page is told the model is starting.
-// ECHO_OLLAMA_AUTOSTART=0 stops `node server/start.mjs` from starting a local Ollama itself when Explore needs it.
+// ECHO_OLLAMA_URL and ECHO_OLLAMA_TOKEN point at a remote Ollama, such as a private Hugging Face Space that sleeps when
+// unused. The token is sent as a Bearer header and never reaches the page.
+// ECHO_LLM_MODE=embedded (set on the Hugging Face Space): a local Ollama starts beside the website and downloads its model
+// again after every wake-up; until it answers, the page is told the model is starting.
+// ECHO_OLLAMA_AUTOSTART=0 stops `node server/start.mjs` from starting a local Ollama when Explore needs it.
 export function dialogueConfig(env=process.env){
   const gate=String(env.ECHO_COHERENCE_GATE||'off').trim().toLowerCase();
   if(!['off','on'].includes(gate))throw new Error('ECHO_COHERENCE_GATE must be off or on.');
@@ -41,7 +41,7 @@ export function dialogueConfig(env=process.env){
   // ECHO_DIALOGUE_PROMPT picks the conversation prompt: v3, or the 2026-09-13 candidates v4a and v4b.
   const prompt=String(env.ECHO_DIALOGUE_PROMPT||DEFAULT_PROMPT).trim().toLowerCase();
   if(!Object.hasOwn(PROMPT_VERSIONS,prompt))throw new Error(`ECHO_DIALOGUE_PROMPT must be one of: ${Object.keys(PROMPT_VERSIONS).join(', ')}.`);
-  // ECHO_REPLY_CHECK=on checks each reply against the message and the chosen quadrant and generates a miss again (reply-check.mjs).
+  // ECHO_REPLY_CHECK=on checks each reply against the message and the chosen quadrant and regenerates a miss (reply-check.mjs).
   const check=String(env.ECHO_REPLY_CHECK||DEFAULT_REPLY_CHECK).trim().toLowerCase();
   if(!['off','on'].includes(check))throw new Error('ECHO_REPLY_CHECK must be off or on.');
   const checkRetries=Number(env.ECHO_REPLY_CHECK_RETRIES??2);
@@ -65,7 +65,7 @@ async function send(fetchImpl,url,{method='POST',payload,apiKey=null,wakes=false
   }finally{clearTimeout(timer);}
 }
 
-// A remote model that is still starting is answered by the hosting proxy: 502/503/504, or a page instead of JSON.
+// While a remote model starts, its hosting proxy answers: 502/503/504, or a page instead of JSON.
 function checkRemote(config,response,data){
   if(!config.remote)return;
   if([502,503,504].includes(response.status)||response.ok&&data===null)throw waking();
@@ -102,8 +102,8 @@ export async function dialogueReply(input,config,{fetchImpl=fetch,launcher=null}
   };
   const first=await generate(GENERATION.seed);
   if(config.check!=='on')return {text:first.text,gate:'off',prompt_version};
-  // The reply check (reply-check.mjs): each attempt is checked; a miss is generated again with the next seed. A failure of
-  // the check itself, or of a later attempt, never refuses the reply: the best attempt so far is used.
+  // Reply check (reply-check.mjs): each attempt is checked and a miss is regenerated with the next seed. A failure of the
+  // check or of a later attempt never refuses the reply; the best attempt so far is used.
   const attempts=[first],verdicts=[],checkMs=[];
   for(let i=0;;i++){
     const started=Date.now();let verdict=null;
@@ -123,8 +123,8 @@ export async function dialogueReply(input,config,{fetchImpl=fetch,launcher=null}
     details:attempts.map((a,i)=>({seed:a.seed,text:a.text,act:a.act,check_ms:checkMs[i]}))};
 }
 
-// Whether the model answers. Asking a sleeping hosted model also starts it, so the page asks when Explore opens; a local
-// Ollama that does not answer is started, and one that answers loads the model before the first message.
+// Whether the model answers. Asking also wakes a sleeping hosted model, so the page asks when Explore opens. A local
+// Ollama that does not answer is started; one that answers loads the model before the first message.
 export async function dialogueStatus(config,{fetchImpl=fetch,launcher=null}={}){
   if(!config)return {ready:false,waking:false};
   try{
@@ -136,16 +136,16 @@ export async function dialogueStatus(config,{fetchImpl=fetch,launcher=null}={}){
   }catch(error){return {ready:false,waking:error.details?.waking===true};}
 }
 
-// One JSON line per reply in the private data folder, so option B's latency and failures can be reviewed; researchers
-// download the file from /api/research/dialogue-metrics.jsonl.
+// One JSON line per reply in the private data folder, for reviewing option B's latency and failures; researchers
+// download it from /api/research/dialogue-metrics.jsonl.
 export function createMetricsLog(file){
   const log=entry=>{try{appendFileSync(file,JSON.stringify(entry)+'\n',{mode:0o600});}catch(error){console.error('Could not record dialogue metrics:',error.message);}};
   log.read=()=>{try{return readFileSync(file,'utf8');}catch(error){if(error.code==='ENOENT')return '';throw error;}};
   return log;
 }
 
-// The page names its conversation, planned message and browser attempt, so a metrics line joins the saved message and its
-// generation attempt. Malformed identifiers are left out; they never refuse a reply.
+// The page names its conversation, planned message and browser attempt so a metrics line joins the saved message and its
+// generation attempt. Malformed identifiers are dropped and never refuse a reply.
 export function metricsLink(input){
   const link={};
   if(typeof input?.session_id==='string'&&/^(?:X|EXP1X)-[A-F0-9]{32}$/.test(input.session_id))link.session_id=input.session_id;

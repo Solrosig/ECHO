@@ -1,5 +1,4 @@
-// Records every play, pause, finish and seek of an audio element with its playback position, and each opening or closing
-// of a message transcript, for the listening-behaviour log.
+// Listening-behaviour log: every play, pause, finish and seek with its playback position, plus transcript opens and closes.
 export const MEDIA_EVENTS=['play','pause','ended','seeked'];
 export const TRANSCRIPT_EVENTS=['transcript_open','transcript_close'];
 const round=(value,digits)=>Number.isFinite(value)?Number(value.toFixed(digits)):null;

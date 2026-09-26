@@ -1,5 +1,5 @@
 # ECHO conversation model on Hugging Face: Ollama 0.30.11 with the llama3.2:3b build ECHO's prompt screen used.
-# Run it as a PRIVATE Docker Space on paid hardware with a short sleep time; the ECHO Space wakes it when needed.
+# Run it as a private Docker Space on paid hardware with a short sleep time; the ECHO Space wakes it when needed.
 FROM ollama/ollama:0.30.11@sha256:c484b703176aa19dfc0a54cbfb60ab8094b38faa04283fb77eba1d33319e5eca
 
 # The model is baked into the image, so a wake-up loads it from local disk instead of downloading 2 GB.

@@ -1,15 +1,15 @@
-"""StyleTTS 2 runner — emotion as an explicit STYLE VECTOR (mechanism 4).
+"""StyleTTS 2 runner: emotion as an explicit style vector (mechanism 4).
 
-StyleTTS 2 (Li et al., NeurIPS 2023) ships notebooks rather than a CLI. The community
-`styletts2` package wraps the reference implementation with a stable inference call, which is
-what this runner uses; the upstream repository remains the citable artefact.
+StyleTTS 2 (Li et al., NeurIPS 2023) ships notebooks rather than a CLI. This runner uses the
+community `styletts2` package, which wraps the reference implementation with a stable
+inference call; the upstream repository remains the citable artefact.
 
-The style vector is what makes this engine mechanism 4 rather than another reference-transfer
-engine: it can be **extracted from a reference clip** (what ECHO does here, so the comparison
-against Chatterbox and ZipVoice holds the reference constant) or **sampled from a diffusion
-model**, which would produce a style ECHO never supplied. Only the first is used for the
-paired corpus; the second is noted as available and unused, because a sampled style has no
-declared target and could not be scored against one.
+The style vector makes this engine mechanism 4 rather than another reference-transfer
+engine. It can be extracted from a reference clip (done here, so the comparison with
+Chatterbox and ZipVoice holds the reference constant) or sampled from a diffusion model,
+which would produce a style ECHO never supplied. The paired corpus uses extraction only:
+sampling is available but unused, because a sampled style has no declared target to be
+scored against.
 """
 
 from __future__ import annotations

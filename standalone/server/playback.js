@@ -1,5 +1,5 @@
-// Listening behaviour: every play, pause, finish and seek of a voice, and each transcript opening in Explore, in the order
-// the browser recorded it.
+// Playback log: every play, pause, finish and seek of a voice, and each Explore transcript opening and closing, in the
+// order the browser recorded it.
 import {MEDIA_EVENTS,TRANSCRIPT_EVENTS} from '../playback-log.js';
 export const MAX_PLAYBACK_BATCH=200;
 // Far above a real session (a few events per clip). Beyond it, events are acknowledged but not stored.

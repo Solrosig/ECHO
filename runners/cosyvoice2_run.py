@@ -1,16 +1,15 @@
-"""CosyVoice 2 runner — emotion as a natural-language INSTRUCTION (mechanism 5).
+"""CosyVoice 2 runner: emotion as a natural-language instruction (mechanism 5).
 
-CosyVoice 2 has no CLI; it is a Python API (FunAudioLLM/CosyVoice). This script is the CLI,
+CosyVoice 2 has no CLI, only a Python API (FunAudioLLM/CosyVoice). This script is the CLI,
 run inside CosyVoice's own environment.
 
-`inference_instruct2` is the instruction-conditioned entry point and takes a prompt clip in
-addition to the instruction, because the model separates *who is speaking* (the clip) from
-*how they speak it* (the instruction). ECHO supplies the same per-quadrant reference set the
-other engines use, which keeps voice identity constant and lets the instruction carry the
-emotion alone.
+`inference_instruct2` is the instruction-conditioned entry point. It takes a prompt clip as
+well as the instruction because the model separates who speaks (the clip) from how they
+speak (the instruction). ECHO supplies the same per-quadrant reference set as the other
+engines, so voice identity stays constant and the instruction alone carries the emotion.
 
-If upstream renames or re-signatures that function, **this file is the only thing to change** —
-the adapter, the config and the tests are unaffected.
+If upstream renames that function or changes its signature, only this file changes; the
+adapter, config and tests are unaffected.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 // Latency data kept with each generated message (echo-generation-v2). Every time is measured in the participant's browser,
 // so it describes this deployment (device, network, shared queue), not an engine's speed alone.
 export const GENERATION_METADATA_VERSION='echo-generation-v2';
-// Milliseconds to seconds with millisecond resolution; anything that is not a valid duration becomes null.
+// Milliseconds to seconds, rounded to the millisecond; anything but a finite non-negative number becomes null.
 export const seconds=ms=>Number.isFinite(ms)&&ms>=0?Math.round(ms)/1000:null;
 export const clock=()=>performance.now();
 
@@ -15,7 +15,7 @@ export function queueTracker(submittedAt,now=clock){
       lastPending=now();
       if(Number.isInteger(event.position)&&event.position>=0)position=Math.max(position??0,event.position+1);
     },
-    // max_queue_position is the highest place shown to the page; 1 means next in line or started at once.
+    // max_queue_position is the highest 1-based place Gradio reported; 1 means next in line or started at once.
     summary(completedAt){return {queue_s:lastPending===null?null:seconds(lastPending-submittedAt),service_processing_s:lastPending===null?null:seconds(completedAt-lastPending),max_queue_position:position};}
   };
 }

@@ -1,17 +1,17 @@
 """Objective naturalness (Story N4): predict a no-reference MOS per clip with UTMOS and
 rank the engines (SAPI vs eSpeak vs Kokoro).
 
-UTMOS (Saeki et al., 2022 — VoiceMOS Challenge winner) is a *learned no-reference* MOS
-predictor: it estimates the human naturalness rating (1-5) straight from the waveform, with
-no reference recording needed. Loaded via SpeechMOS through torch.hub (tarepan/SpeechMOS).
-PyTorch/torchaudio/librosa are heavy and live in the OPTIONAL eval layer, so anything that
-touches the predictor fails with a clear message where they're absent (core stays light).
+UTMOS (Saeki et al., 2022; VoiceMOS Challenge winner) is a learned no-reference MOS
+predictor: it estimates the human naturalness rating (1-5) from the waveform alone. Loaded
+via SpeechMOS through torch.hub (tarepan/SpeechMOS). PyTorch/torchaudio/librosa are heavy
+and live in the optional eval layer (core stays light); without them, scoring fails with a
+clear message.
 
     python naturalness.py --register research/register.csv
         -> writes naturalness.csv (register rows + `utmos`) beside the register (never overwrites)
         -> prints mean UTMOS per engine  (the SAPI vs eSpeak vs Kokoro naturalness ranking)
 
-Run on the MASTER register (build_register.py --build over all engine sessions) to compare
+Run on the master register (build_register.py --build over all engine sessions) to compare
 engines in one table, or on a single session's register.csv.
 """
 
@@ -33,9 +33,8 @@ def _utmos_predictor():
     if _PREDICTOR is None:
         try:
             import torch
-            # FIX: torchaudio is imported by UTMOS's OWN model code, not by us — so a missing
-            # torchaudio surfaced as a confusing ModuleNotFoundError from deep inside the hub
-            # module. Checking it here turns that into an actionable dependency message.
+            # UTMOS's own model code imports torchaudio. Check it here so a missing install
+            # gives an actionable message, not a ModuleNotFoundError deep in the hub module.
             import torchaudio  # noqa: F401
         except Exception as exc:                 # torch / torchaudio absent
             raise RuntimeError(
@@ -80,9 +79,10 @@ def _resolve_out(path: Path, force: bool) -> Path:
 def _label(r: dict, multi: set) -> str:
     """Engine name, qualified by session when one engine appears in several sessions.
 
-    Needed for A/B experiments where only an engine SETTING differs (e.g. Chatterbox condition A
-    = arousal only vs B = + reference style): both rows say engine='chatterbox', so averaging by
-    engine alone would silently merge the two conditions and hide the comparison."""
+    In A/B experiments only an engine setting differs (e.g. Chatterbox condition A = arousal
+    only vs B = + reference style): both rows say engine='chatterbox', so averaging by engine
+    alone would silently merge the two conditions.
+    """
     eng = r.get("engine", "?")
     if eng not in multi:
         return eng
@@ -114,11 +114,13 @@ def _summary(rows: list[dict]) -> None:
 
 
 def _confound_check(rows: list[dict], groups: dict) -> None:
-    """CONFOUND CHECK (monitoring plan M3): is the naturalness difference driven by the ENGINE
-    or by ECHO's own dial settings? Prints mean UTMOS per engine x param_set and compares the
-    between-engine spread with the largest within-engine (dial) spread. A large ratio means the
-    comparison measures the engine, as intended. A monotonic decline across param-sets is itself
-    a finding: the cost in naturalness of adding expressive dials."""
+    """Confound check (monitoring plan M3): engine effect vs ECHO's own dial settings.
+
+    Prints mean UTMOS per engine x param_set and compares the between-engine spread with the
+    largest within-engine (dial) spread. A large ratio (>= 3 prints PASS) means the comparison
+    measures the engine, as intended. A monotonic decline across param-sets is itself a
+    finding: the naturalness cost of adding expressive dials.
+    """
     cells: dict[tuple, list[float]] = defaultdict(list)
     for r in rows:
         try:

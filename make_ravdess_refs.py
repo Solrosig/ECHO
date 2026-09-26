@@ -1,8 +1,8 @@
 """Build per-quadrant reference clips from RAVDESS (Condition C).
 
 Condition B used self-recorded references and produced the best emotion conveyance in the study
-(arousal 100 %) but a naturalness drop (4.34 -> 3.37), because Chatterbox clones the REFERENCE
-speaker — so consumer-microphone quality was inherited. Condition C repeats the experiment with
+(arousal 100 %) but a naturalness drop (4.34 -> 3.37): Chatterbox clones the reference speaker,
+so it inherited consumer-microphone quality. Condition C repeats the experiment with
 professionally recorded references (RAVDESS: studio recordings, trained actors, labelled
 emotion) to test whether that drop was a reference-quality artefact rather than a cost of the
 method. Same actor for all four clips, so voice identity is held constant across quadrants.
@@ -22,7 +22,7 @@ ECHO quadrant mapping (Russell valence-arousal):
     python make_ravdess_refs.py --ravdess C:\\path\\to\\Audio_Speech_Actors_01-24 --actor 1
         -> refs_ravdess/Q1.wav .. Q4.wav   (then: python check_refs.py --dir refs_ravdess)
 
-Refs: Livingstone & Russo (2018), PLoS ONE 13(5), e0196391 (CC BY-NC-SA 4.0 — research use).
+Refs: Livingstone & Russo (2018), PLoS ONE 13(5), e0196391 (CC BY-NC-SA 4.0, research use).
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ QUADRANT_EMOTION = {
 }
 
 #: RAVDESS actors speak exactly two carrier sentences, identified by the 5th filename field.
-#: The words are held constant across emotions BY DESIGN — which is what makes the corpus a
-#: clean emotion manipulation, and what lets the transcript be read off the filename.
+#: The words are constant across emotions by design: that makes the corpus a clean emotion
+#: manipulation and lets the transcript be read off the filename.
 RAVDESS_STATEMENTS = {
     "01": "Kids are talking by the door.",
     "02": "Dogs are sitting by the door.",
@@ -51,13 +51,12 @@ RAVDESS_STATEMENTS = {
 def statement_text(filename: str) -> "str | None":
     """Transcript of a RAVDESS clip, from the statement code in its filename.
 
-    ZipVoice is zero-shot: it clones from `--prompt-wav` AND `--prompt-text`, and has no
-    default voice to fall back on, so a reference clip without its transcript is unusable.
-    Chatterbox never needed this (it takes audio alone), which is why the transcript is
-    only being written now.
+    ZipVoice is zero-shot: it clones from `--prompt-wav` and `--prompt-text` and has no
+    default voice, so a reference clip without its transcript is unusable. Chatterbox takes
+    audio alone and never needed one.
 
     Returns None for a name that does not parse, so a malformed file is reported rather
-    than silently paired with the wrong sentence — the transcript must match the audio or
+    than silently paired with the wrong sentence. The transcript must match the audio, or
     the clone is conditioned on a lie.
     """
     parts = Path(filename).stem.split("-")
@@ -67,10 +66,11 @@ def statement_text(filename: str) -> "str | None":
 
 
 def find_clip(root: Path, emotion: str, actor: int, intensity: str, statement: str) -> "Path | None":
-    """Locate one RAVDESS clip, relaxing intensity then statement if the exact match is absent.
+    """Locate one RAVDESS clip; without an exact match, relax the statement, then the intensity.
 
     'neutral' and sometimes 'calm' are recorded at normal intensity only, so an exact
-    intensity match cannot be required for every emotion."""
+    intensity match cannot be required for every emotion.
+    """
     actor_s = f"{actor:02d}"
     patterns = [
         f"03-01-{emotion}-{intensity}-{statement}-*-{actor_s}.wav",   # exact
@@ -112,10 +112,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         dst = out / f"{q}.wav"
         shutil.copyfile(src, dst)
-        # Transcript sidecar, required by zero-shot engines (ZipVoice) that clone from
-        # audio + text. Read from the ACTUAL file selected, not from --statement, because
-        # find_clip() relaxes the statement constraint when an exact match is unavailable —
-        # so assuming the requested sentence would sometimes write the wrong words.
+        # Transcript sidecar for zero-shot engines (ZipVoice) that clone from audio + text.
+        # Read it from the file actually selected, not from --statement: find_clip() relaxes
+        # the statement when no exact match exists, so the requested sentence can be wrong.
         text = statement_text(src.name)
         if text is None:
             print(f"  {q}  <- {label:<6} {src.name}  (WARNING: unparseable name, no transcript)")
