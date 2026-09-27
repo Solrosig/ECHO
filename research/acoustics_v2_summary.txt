@@ -1,0 +1,51 @@
+Praat backend: parselmouth
+register: research\register_frozen45.csv  (45 clips)
+
+measured 45 clips (0 missing)
+
+========================================================================================
+PRESET MINUS MATCHED NEUTRAL, per configuration  (semitones, syll/s, %, dB)
+========================================================================================
+engine      target      dF0 (st)  dF0rng(st)    dArtRate    dJitter%     dHNR dB
+chatterbox  calm           -3.87       -2.71       -2.24       -0.14        0.32
+chatterbox  happy           2.56        1.13       -0.63       -0.01        0.59
+chatterbox  sad            -0.90       -2.13       -1.73       -0.26        1.34
+chatterbox  upset          -3.46       -3.06       -0.40        0.25       -3.02
+cosyvoice2  calm           -2.58       -0.18        1.34        0.35       -0.94
+cosyvoice2  happy          -1.56       -0.28        1.26        0.30       -1.20
+cosyvoice2  sad            -2.76       -2.31        0.41       -0.58        1.29
+cosyvoice2  upset          -0.93       -1.54        1.39        0.47       -0.34
+espeak      calm            0.70       -0.14       -0.40       -0.03        1.01
+espeak      happy           3.45       -1.08        0.90       -0.14       -0.11
+espeak      sad            -3.06       -1.39       -0.85        0.10       -0.49
+espeak      upset          -0.74       -0.15        0.40        0.20       -1.42
+kokoro      calm           -0.15       -0.26       -0.23       -0.04        0.09
+kokoro      happy           1.27        0.60        0.44       -0.27        0.72
+kokoro      sad            -2.06       -0.76       -1.30       -0.12        0.83
+kokoro      upset           0.51       -0.52        0.23       -0.05        0.15
+parlertts   calm           -1.41       -0.11       -0.29        0.34       -3.21
+parlertts   happy           2.71        2.23        0.21        0.45       -3.04
+parlertts   sad            -1.01       -1.74       -0.76        0.43       -0.60
+parlertts   upset           2.04        2.11       -0.67        0.30       -0.64
+pyttsx3     calm           -0.06       -0.14       -0.45       -0.06        0.48
+pyttsx3     happy           0.04       -0.03        1.92        0.45       -1.82
+pyttsx3     sad            -0.11        0.01       -1.07       -0.21        1.29
+pyttsx3     upset          -0.03       -0.01        0.85        0.23       -0.92
+sapi5xml    calm            0.35       -0.05       -0.40       -0.43        0.70
+sapi5xml    happy           1.68        0.13        2.25       -0.33       -0.17
+sapi5xml    sad            -1.25       -1.45       -1.35       -0.34       -2.58
+sapi5xml    upset          -0.57       -0.31        0.73       -0.30       -0.55
+styletts2   calm           -1.60       -1.55       -0.71       -0.29        0.98
+styletts2   happy           2.24       -0.57       -0.27        0.29        0.80
+styletts2   sad             1.03       -2.06       -0.53        0.39        1.14
+styletts2   upset          -1.92       -0.36       -0.49        0.48       -1.71
+zipvoice    calm           -1.33       -5.88       -0.96       -0.59        1.63
+zipvoice    happy           2.18       -3.45       -0.95       -0.26        0.16
+zipvoice    sad             0.69       -4.52       -0.63       -0.33        2.12
+zipvoice    upset          -2.33       -4.65       -1.40       -0.40        1.25
+
+========================================================================================
+DIRECTION CHECK  (Juslin & Laukka 2003: high-arousal targets raise F0 and rate)
+========================================================================================
+  F0 level             high-arousal targets  +0.397   low-arousal targets  -1.076   separation  +1.473
+  articulation rate    high-arousal targets  +0.321   low-arousal targets  -0.676   separation  +0.997

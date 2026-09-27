@@ -1,0 +1,60 @@
+============================================================================================
+ACOUSTIC SEPARATION BY ENGINE   (high-arousal targets minus low-arousal targets)
+============================================================================================
+engine      mechanism                                 dF0 sep  dRate sep  |dF0| mean
+parlertts   Natural-language delivery instruction        3.58       0.30        1.79
+espeak      Explicit prosody markup                      2.54       1.27        1.99
+kokoro      Native rate, external pitch and level        1.99       1.10        1.00
+chatterbox  Reference or style conditioning              1.93       1.47        2.70
+cosyvoice2  Natural-language delivery instruction        1.43       0.45        1.96
+sapi5xml    Explicit prosody markup                      1.00       2.37        0.96
+styletts2   Reference or style conditioning              0.44       0.24        1.70
+zipvoice    Reference or style conditioning              0.25      -0.38        1.63
+pyttsx3     Explicit prosody markup                      0.09       2.15        0.06
+
+============================================================================================
+INFERENCE OVER ENGINES   (n = 9, 20 000 bootstrap resamples, seed 666)
+============================================================================================
+axis     measure                        mean              95% CI   p boot  p Wilcox   +/9
+arousal  d_f0_median_st                1.473      [0.781, 2.213]   0.0000    0.0039     9
+arousal  d_f0_sd_st                    0.438      [0.242, 0.617]   0.0000    0.0117     8
+arousal  d_f0_range_st                 0.976      [0.467, 1.615]   0.0000    0.0039     9
+arousal  d_articulation_rate           0.997      [0.440, 1.568]   0.0002    0.0195     8
+arousal  d_speech_rate                 0.704      [0.197, 1.233]   0.0047    0.0391     7
+arousal  d_pause_fraction              0.013     [-0.004, 0.031]   0.1382    0.3008     6
+valence  d_hnr_db                     -0.008     [-0.964, 0.909]   0.9951    1.0000     4
+valence  d_jitter_local_pct           -0.037     [-0.176, 0.105]   0.6071    0.4258     3
+valence  d_shimmer_local_pct           0.298     [-0.211, 0.846]   0.2741    0.4258     5
+valence  d_dynamic_range_db           -0.288     [-0.895, 0.249]   0.3280    0.4961     4
+
+============================================================================================
+ACOUSTIC TIER versus LISTENER TIER   (Spearman over 9 engines, bootstrap CI)
+============================================================================================
+acoustic                        listener                      rho              95% CI       p
+aro_sep__d_f0_median_st         lis_imp_arousal            -0.017       [-0.84, 0.73]   0.966
+aro_sep__d_articulation_rate    lis_imp_arousal             0.650       [-0.11, 0.98]   0.058
+aro_sep__d_f0_range_st          lis_imp_arousal            -0.267       [-0.72, 0.53]   0.488
+val_sep__d_hnr_db               lis_imp_valence            -0.550       [-0.93, 0.22]   0.125
+val_sep__d_jitter_local_pct     lis_imp_valence             0.350       [-0.53, 1.00]   0.356
+val_sep__d_shimmer_local_pct    lis_imp_valence             0.233       [-0.70, 0.93]   0.546
+aro_sep__d_f0_median_st         lis_improvement            -0.017       [-0.72, 0.72]   0.966
+pitch_excursion_st              lis_improvement            -0.133       [-0.82, 0.58]   0.732
+pitch_excursion_st              lis_preset_naturalness      0.333       [-0.53, 0.94]   0.381
+pitch_excursion_st              auto_utmos                 -0.067       [-0.80, 0.67]   0.865
+
+============================================================================================
+BY CONTROL MECHANISM
+============================================================================================
+mechanism                                 n  dF0 sep   dRate   |dF0|  imp aro    nat  UTMOS
+Explicit prosody markup                   3     1.21    1.93    1.00    0.116   1.64   3.32
+Native rate, external pitch and level     1     1.99    1.10    1.00    0.159   3.50   4.52
+Natural-language delivery instruction     2     2.51    0.37    1.88    0.079   3.48   4.25
+Reference or style conditioning           3     0.87    0.44    2.01    0.062   3.24   4.37
+
+============================================================================================
+PER-TARGET F0 DELTA   (mean over 9 engines; upset is the diagnostic case)
+============================================================================================
+  happy      1.620  [ 0.610,  2.478]   engines raising F0: 8/9   p = 0.0032
+  upset     -0.826  [-1.801,  0.172]   engines raising F0: 2/9   p = 0.1059
+  sad       -1.048  [-1.913, -0.181]   engines raising F0: 2/9   p = 0.0165
+  calm      -1.105  [-2.049, -0.242]   engines raising F0: 2/9   p = 0.0081
