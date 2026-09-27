@@ -15,18 +15,12 @@ FILL, FILL2 = "white", "white"   # boxes carry no fill; hierarchy is shown by we
 OUT = "ECHO Design E1 - work breakdown structure.png"
 W, H = 6.3, 4.08  # inches
 
+# Package and leaf text were sized to the widest label in each tier, then pinned, so the
+# figure no longer depends on font metrics measured at run time.
+FS_PKG, FS_LEAF = 6.8, 6.9
+
 fig = plt.figure(figsize=(W, H))
 ax = fig.add_axes([0, 0, 1, 1]); ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off")
-fig.canvas.draw(); R = fig.canvas.get_renderer()
-
-def text_w(t, fs, weight="normal"):
-    tt = ax.text(0, 0, t, fontsize=fs, fontweight=weight); bb = tt.get_window_extent(R); tt.remove()
-    return bb.width / fig.dpi
-
-def fit(lines, w, fs, weight="normal"):
-    while max(text_w(t, fs, weight) for t in lines) > w - 0.05 and fs > 5.5:
-        fs -= 0.1
-    return fs
 
 def box(x, y, w, h, lines, fill=FILL, bold=False, fs=7.0, lw=1.0, pad=0.055, num=None):
     ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle=f"round,pad=0,rounding_size={pad}", linewidth=lw,
@@ -102,15 +96,13 @@ for label, a, b in top:
     for i in range(a, b):
         arrow_down(xs[i] + cw / 2, ybus, y_pkg + ph + 0.004)
 
-fs_pkg = min(fit(t, cw, 7.4, "bold") for t, _ in packages)
-fs_leaf = min(fit(lines, cw - leaf_dx, 6.9) for _, lv in packages for _, lines in lv)
 for i, (title, leaves) in enumerate(packages):
     x = xs[i]
-    box(x, y_pkg, cw, ph, title, fill=FILL2, bold=True, fs=fs_pkg)
+    box(x, y_pkg, cw, ph, title, fill=FILL2, bold=True, fs=FS_PKG)
     sx = x + spine_dx
     for k, (num, lines) in enumerate(leaves):
         yl = y_leaf0 - k * (lh + lgap)
-        box(x + leaf_dx, yl, cw - leaf_dx, lh, lines, fill=FILL, fs=fs_leaf, num=num)
+        box(x + leaf_dx, yl, cw - leaf_dx, lh, lines, fill=FILL, fs=FS_LEAF, num=num)
         hline(sx, x + leaf_dx, yl + lh / 2)
     vline(sx, y_pkg, y_leaf0 - 3 * (lh + lgap) + lh / 2)
 
