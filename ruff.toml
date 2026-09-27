@@ -9,3 +9,6 @@ extend-exclude = ["standalone"]
 "make_figure_d.py" = ["E401", "E702", "F401"]
 "make_figures.py" = ["E401", "E402", "E701", "E702", "F401"]
 "make_figures_abc.py" = ["E401", "E701", "E702", "F401"]
+# figures/ holds the report-figure scripts from the evidence bundle (03 Figures), kept as written: they import
+# the shared style and diagram helpers with *, keep several statements per line, and one redefines TGT on purpose.
+"figures/*.py" = ["E401", "E402", "E701", "E702", "E731", "E741", "F401", "F403", "F405", "F811"]
