@@ -1,7 +1,7 @@
 """Figure E.1 for Appendix E: the work breakdown structure as realised.
 
-Same house style as the results figures: Liberation Serif, monochrome, rounded boxes with
-a light fill, canvas 6.3 in wide at 300 dpi, no tight bounding box. Seven work packages,
+Same house style as the results figures: Liberation Serif, monochrome, unfilled rounded
+boxes, canvas 6.3 in wide at 300 dpi, no tight bounding box. Seven work packages,
 four under the conversational system and three under the evaluation environment, each with
 its four deliverables. Run from any folder:
     python make_figure_E_1.py
@@ -11,7 +11,7 @@ from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 
 DPI = 300
 TEXT, MID, EDGE = "#3a3a3a", "#8a8a8a", "#3c3c3c"
-FILL, FILL2 = "#f9f9f9", "#f0f0f0"
+FILL, FILL2 = "white", "white"   # boxes carry no fill; hierarchy is shown by weight and size
 OUT = "ECHO Design E1 - work breakdown structure.png"
 W, H = 6.3, 4.08  # inches
 
