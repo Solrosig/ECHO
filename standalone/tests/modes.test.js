@@ -6,7 +6,8 @@ import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import worker,{COLLECTION_VERSION} from '../server/worker.js';
 import {localDatabase} from '../server/local-db.js';
-import {controlsFor} from '../voice-controls.js';
+import {controlsFor,ENGINES} from '../voice-controls.js';
+import {EXPLORE_ENGINES,EXPLORE_NAMES} from '../engine-catalog.js';
 import {validateNickname} from '../participant.js';
 import {createInteractiveSession,InteractiveSync} from '../interactive-sync.js';
 import {newSessionToken} from '../study-sync.js';
@@ -32,6 +33,16 @@ test('Explore stores exactly ten exchanges, locks its engine and nickname, and p
  const saved=await (await f.call(`/api/interactive/sessions/${f.s.session_id}`)).json();assert.equal(saved.saved_count,10);assert.equal(saved.nickname,'technical_tester');assert.equal(saved.turns[0].output_text,turns[0].output_text);
  const csv=await (await f.call('/api/research/interactive.csv')).text();assert.equal(csv.trim().split('\n').length,11);assert.match(csv,/technical_tester/);assert.match(csv,/technical_test/);assert.doesNotMatch(csv,/token/);
  assert.equal((await (await f.call('/api/research/responses.csv')).text()).trim().split('\n').length,1);
+});
+test('Explore offers CosyVoice 2 as "CosyVoice 2 (Test)" and stores its conversation; Test mode keeps its pinned name',async t=>{
+ assert.ok(EXPLORE_ENGINES.includes('cosyvoice2'));assert.equal(EXPLORE_NAMES.cosyvoice2,'CosyVoice 2 (Test)');assert.equal(ENGINES.cosyvoice2.name,'CosyVoice2');
+ const studio=readFileSync(new URL('../studio.html',import.meta.url),'utf8');
+ assert.match(studio.match(/<select id="chat-engine">.*?<\/select>/)[0],/<option value="cosyvoice2">CosyVoice 2 \(Test\)<\/option>/);
+ assert.match(readFileSync(new URL('../app.js',import.meta.url),'utf8'),/\['chat-engine',EXPLORE_ENGINES,exploreName\]/);
+ const f=fixture(t,'explore','cosyvoice2');assert.equal((await f.register()).status,200);
+ assert.equal((await f.save([f.turn(1),f.turn(2)])).status,200);
+ const saved=await (await f.call(`/api/interactive/sessions/${f.s.session_id}`)).json();assert.equal(saved.saved_count,2);
+ assert.match(await (await f.call('/api/research/interactive.csv')).text(),/cosyvoice2/);
 });
 test('Voice a line accepts all existing engines and custom controls, and rejects altered output text',async t=>{
  const f=fixture(t,'line');await f.register();
