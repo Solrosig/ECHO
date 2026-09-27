@@ -1,11 +1,10 @@
 # standalone/ is imported byte-for-byte from ECHO standalone 1.5.0; it is not reformatted to pass ECHO's lint gate.
 extend-exclude = ["standalone"]
 
-# The Chapter 5 analysis and figure scripts (written 2026-09-19/20) are kept exactly as they
-# produced the thesis figures, so only their style findings are ignored; every other rule applies.
+# The Chapter 5 analysis scripts (written 2026-09-19/20) are kept exactly as they produced the
+# thesis tables, so only their style findings are ignored; every other rule applies. The same
+# holds for figures/, the per-figure scripts that carry the report's figure code verbatim.
 [lint.per-file-ignores]
 "analyze_acoustics_v2.py" = ["E702", "F541"]
 "analyze_bridge.py" = ["E401", "E701", "E702", "F401"]
-"make_figure_d.py" = ["E401", "E702", "F401"]
-"make_figures.py" = ["E401", "E402", "E701", "E702", "F401"]
-"make_figures_abc.py" = ["E401", "E701", "E702", "F401"]
+"figures/*.py" = ["E402", "E701", "E702"]

@@ -156,11 +156,11 @@ report_controllability.py                   do the dials move?
 analyze_acoustics_v2.py  naturalness.py     acoustics, predicted naturalness,
 emotion_conveyance.py  check_instruments.py automatic emotion, instrument reference checks
 analyse_h3.py  analyze_bridge.py            hypotheses, instrument–listener agreement
-build_scorecard.py  make_figure*.py         selection scorecard, report figures
+build_scorecard.py                          selection scorecard
 research/                                   frozen data and outputs (one file per reported table)
 standalone/                                 listening-study web app and deployments
 tests/  standalone/tests/                   pytest and node suites, engines mocked
-figures/  docs/                             report figures, report PDF
+figures/                                    one script per report figure, and the figures
 ```
 
 ## Quick start
@@ -263,9 +263,9 @@ Check out `v1.0` for the exact numbers.
 | Acoustic separation, Table 5.9, Figures 5.2–5.3 | `analyze_acoustics_v2.py` | `register_frozen45.csv`, audio |
 | Instrument reference performance, Table 5.7 | `check_instruments.py` | `instrument_ceilings/` |
 | Automatic scores, Table 5.10 | `naturalness.py`, `emotion_conveyance.py` | frozen corpus |
-| H1–H3, Tables 5.11–5.13, Figure 5.9 | `analyse_h3.py`, `analyze_bridge.py`, `make_figure_d.py` | `listening/ratings_frozen45.csv` |
+| H1–H3, Tables 5.11–5.13 | `analyse_h3.py`, `analyze_bridge.py` | `listening/ratings_frozen45.csv` |
 | Scorecard and selection, Tables 5.14–5.15 | `build_scorecard.py` | all of the above |
-| Figures 5.4–5.11 | `make_figures.py`, `make_figures_abc.py` | `research/` |
+| Figures 4.1–4.7, 5.1–5.11, E.1 | `figures/make_figure_<n>.py`, or all at once `figures/make_all_figures.py` | `research/` |
 
 `research/listening/ratings_frozen45.csv` holds the 360 anonymised trial-level ratings from
 eight participants: participant code, trial order, clip hash, four ratings, replay count. No
