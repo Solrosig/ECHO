@@ -1,0 +1,66 @@
+UTMOS rows 45 · recogniser rows (presets) 36 · recogniser rows (neutrals) 9 · listener clips 45
+joined on item id — clips without UTMOS: 0/45 · without recogniser: 0/45
+
+==============================================================================
+H3 PART 1 — AGREEMENT PER CLIP  (the level a screening device must get right)
+==============================================================================
+  recogniser arousal   vs listener arousal       n=45  rho=+0.714 [+0.509,+0.842] p=0.0000  sign=77.8%  MAE=0.226  CCC=+0.511   ceiling 88.8%
+  recogniser valence   vs listener valence       n=45  rho=-0.317 [-0.588,+0.023] p=0.0337  sign=26.7%  MAE=0.291  CCC=-0.208   ceiling 48.8%
+  UTMOS                vs listener naturalness   n=45  rho=+0.568 [+0.258,+0.788] p=0.0000  sign=  n/a  MAE=1.223  CCC=+0.356   natural anchor 4.057
+
+==============================================================================
+QUADRANT RECOVERY ON THE FROZEN CORPUS  (presets only, read against 41.2 %)
+==============================================================================
+  overall recovery 38.9%   (instrument ceiling on natural speech 41.2 %)
+
+rec_quadrant  Q1  Q2  Q3  Q4
+intended_q                  
+Q1             2   5   2   0
+Q2             3   3   3   0
+Q3             0   0   8   1
+Q4             0   1   7   1
+
+  per quadrant, corpus vs ceiling:
+    Q1  corpus 22.2%   ceiling  5.0%
+    Q2  corpus 33.3%   ceiling 90.0%
+    Q3  corpus 88.9%   ceiling 70.0%
+    Q4  corpus 11.1%   ceiling  0.0%
+
+==============================================================================
+H3 PART 2 — AGREEMENT PER ENGINE  (the level a ranking must get right)
+==============================================================================
+    engine                             mechanism  n  auto_utmos  auto_err_aro  auto_transmission  lis_improvement  lis_preset_error  lis_preset_naturalness
+cosyvoice2 Natural-language delivery instruction  4       4.444         0.260              0.740            0.126             0.199                   3.375
+  sapi5xml               Explicit prosody markup  4       3.674         0.234              0.766            0.089             0.255                   1.906
+chatterbox       Reference or style conditioning  4       4.263         0.192              0.808            0.085             0.238                   3.562
+    kokoro Native rate, external pitch and level  4       4.516         0.279              0.720            0.085             0.231                   3.500
+   pyttsx3               Explicit prosody markup  4       4.130         0.224              0.776            0.084             0.235                   2.000
+ styletts2       Reference or style conditioning  4       4.434         0.258              0.742            0.060             0.253                   3.281
+ parlertts Natural-language delivery instruction  4       4.059         0.226              0.774            0.017             0.324                   3.594
+    espeak               Explicit prosody markup  4       2.168         0.255              0.745            0.001             0.339                   1.000
+  zipvoice       Reference or style conditioning  4       4.405         0.258              0.742           -0.006             0.310                   2.875
+
+  automatic arousal transmission   vs lis_improvement          n=9  rho=-0.133 [-0.675,+0.815] p=0.732  tau=+0.000 p=1.000
+  automatic arousal transmission   vs lis_preset_error         n=9  rho=+0.283 [-0.670,+0.812] p=0.460  tau=+0.167 p=0.612
+  UTMOS                            vs lis_preset_naturalness   n=9  rho=+0.483 [-0.434,+1.000] p=0.187  tau=+0.444 p=0.119
+  automatic total error            vs lis_preset_error         n=9  rho=-0.067 [-0.739,+0.684] p=0.865  tau=-0.056 p=0.919
+
+==============================================================================
+THE SCREENING QUESTION  (would the cheap instrument have chosen the same three?)
+==============================================================================
+            automatic_rank  listener_rank  shift
+engine                                          
+chatterbox             1.0            4.0    3.0
+pyttsx3                2.0            5.0    3.0
+parlertts              3.0            7.0    4.0
+sapi5xml               4.0            2.0   -2.0
+espeak                 5.0            8.0    3.0
+styletts2              6.0            6.0    0.0
+zipvoice               7.0            9.0    2.0
+cosyvoice2             8.0            1.0   -7.0
+kokoro                 9.0            3.0   -6.0
+
+  automatic top three: ['chatterbox', 'parlertts', 'pyttsx3']
+  listener  top three: ['cosyvoice2', 'kokoro', 'sapi5xml']
+  overlap: 0/3
+  would have been discarded by an automatic screen: ['cosyvoice2', 'kokoro', 'sapi5xml']
