@@ -1,4 +1,4 @@
-import {TEST_ENGINES,EXPLORE_ENGINES} from './engine-catalog.js';
+import {TEST_ENGINES,EXPLORE_ENGINES,EXPLORE_NAMES} from './engine-catalog.js';
 import {messageRatingForm,refreshMessageRatings} from './message-rating-ui.js';
 import {interactivePending} from './message-rating.js';
 import {RemoteSpeechClient} from './remote-speech.js';
@@ -18,7 +18,8 @@ let listeningLoaded=false,listeningLoading=false;
 let mode='listening',busy=false,job=0,ticker,started,phase='',records=[],lastLine=null,lastComparedEngine=null,chat=null,lineSession=null,replyRequest=null;
 const syncs=new Map(),requestedEngines=new Set();
 function selection(){return {emotion:document.querySelector('input[name=emotion]:checked').value,intensity:1,engine:mode==='explore'?(chat?.engine||$('chat-engine').value):$('engine').value,condition:mode==='explore'?'preset':$('condition').value,custom:{rate:Number($('custom-rate').value)/100,gain:Number($('custom-gain').value)/100,pitch:Number($('custom-pitch').value)}};}
-for(const [id,engines] of [['engine',TEST_ENGINES],['chat-engine',EXPLORE_ENGINES]])$(id).replaceChildren(...engines.map(e=>new Option(ENGINES[e].name,e)));
+const exploreName=e=>EXPLORE_NAMES[e]||ENGINES[e].name;
+for(const [id,engines,name] of [['engine',TEST_ENGINES,e=>ENGINES[e].name],['chat-engine',EXPLORE_ENGINES,exploreName]])$(id).replaceChildren(...engines.map(e=>new Option(name(e),e)));
 $('compare-actions').querySelectorAll('[data-compare-engine]').forEach(b=>b.remove());
 for(const e of TEST_ENGINES){const button=document.createElement('button');button.type='button';button.className='secondary';button.dataset.compareEngine=e;button.textContent='Compare '+ENGINES[e].name;$('compare-actions').append(button);}
 function update(){
@@ -37,7 +38,7 @@ function update(){
  $('custom-controls').hidden=s.condition!=='custom';$('custom-rate-value').textContent=`${s.custom.rate.toFixed(2)}×`;$('custom-gain-value').textContent=s.custom.gain.toFixed(2);$('custom-pitch-value').textContent=engine.pitch?s.custom.pitch:'Unavailable';
  $('char-count').textContent=`${$('message').value.length} / 800`;
  $('chat-engine').disabled=busy||Boolean(chat);$('nickname').disabled=busy||Boolean(mode==='explore'&&chat);for(const g of document.querySelectorAll('#identity-form input[name=gender]'))g.disabled=busy||Boolean(mode==='explore'&&chat);
- $('chat-engine-label').textContent=chat?`${ENGINES[chat.engine].name} · ${chat.nickname}`:'Choose a voice for this conversation';
+ $('chat-engine-label').textContent=chat?`${exploreName(chat.engine)} · ${chat.nickname}`:'Choose a voice for this conversation';
  const count=chat?.turns.length||0;$('chat-count').textContent=`${count} / ${MAX_EXCHANGES}`;$('chat-send').disabled=busy||count>=MAX_EXCHANGES;$('chat-message').disabled=busy||count>=MAX_EXCHANGES;
  $('engine-lock-note').textContent=chat?'Voice locked for this conversation. Start a new conversation to change it.':'The voice is locked after your first message. Start a new conversation to change it.';
  if(count>=MAX_EXCHANGES&&!busy)$('chat-status').textContent='10 exchanges complete. Start a new conversation to continue.';
@@ -119,14 +120,14 @@ async function runChat(){
    // A successful reply's diagnostic travels with the message save; a failed or cancelled reply is sent at once.
    void syncFor(session).attempt({attempt_id:replyAttempt,engine:s.engine,emotion:s.emotion,status:cancelled?'cancelled':replyOutcome,stage:'dialogue',elapsed_s:(performance.now()-replyStart)/1000,created_utc:new Date().toISOString(),turn_order:null},{sync:cancelled||replyOutcome!=='success'});}
   if(id!==job)return;const replyWait=performance.now()-replyStart;
-  status(`Voicing the reply with ${ENGINES[s.engine].name}…`);const record=await speech(validateText(generated.text),s,id,session);if(!record)return;
+  status(`Voicing the reply with ${exploreName(s.engine)}…`);const record=await speech(validateText(generated.text),s,id,session);if(!record)return;
   record.dialogue={prompt_version:generated.prompt_version??null,gate:generated.gate??null,attempt_id:replyAttempt,reply_wait_s:seconds(replyWait),model_start_retries:retries,check:generated.check??null};
   record.exchange={end_to_end_s:seconds(performance.now()-exchangeStart),page_hidden:exchangeHidden.stop()};
   pending.replaceChildren();const label=document.createElement('span');label.className='voice-label';label.textContent=`Voice message · ${record.duration_s.toFixed(1)}s`;
   const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.setAttribute('aria-label','ECHO voice reply');const url=URL.createObjectURL(new Blob([record.buffer],{type:'audio/wav'}));chat.audioUrls.push(url);audio.src=url;
   const button=document.createElement('button');button.type='button';button.className='transcript-button';button.textContent='Show transcript';button.setAttribute('aria-expanded','false');
   const transcript=document.createElement('p');transcript.className='transcript';transcript.textContent=record.text;transcript.hidden=true;transcript.id='transcript-'+crypto.randomUUID();button.setAttribute('aria-controls',transcript.id);button.addEventListener('click',()=>{transcript.hidden=!transcript.hidden;button.textContent=transcript.hidden?'Show transcript':'Hide transcript';button.setAttribute('aria-expanded',String(!transcript.hidden));});
-  const meta=document.createElement('small');meta.textContent=`${ENGINES[record.engine].name} · ${QUADRANTS[record.emotion].name}`;pending.append(label,audio,button,transcript,meta);
+  const meta=document.createElement('small');meta.textContent=`${exploreName(record.engine)} · ${QUADRANTS[record.emotion].name}`;pending.append(label,audio,button,transcript,meta);
   const turn=turnMetadata(chat,record,input);void syncFor(chat).add(turn,record.buffer);pending.append(messageRatingForm(audio,chat,turn.order,syncFor(chat)));status('Voice reply ready. Play it or open the transcript.');$('chat-messages').scrollTop=$('chat-messages').scrollHeight;
   // Browsers may block autoplay after the wait for the model; the play control stays available.
   const conversation=chat,saveEvent=event=>syncFor(conversation).playback(event);trackPlayback(audio,()=>({item_order:turn.order}),saveEvent);trackTranscript(button,transcript,audio,()=>({item_order:turn.order}),saveEvent);
