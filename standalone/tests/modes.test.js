@@ -34,10 +34,11 @@ test('Explore stores exactly ten exchanges, locks its engine and nickname, and p
  const csv=await (await f.call('/api/research/interactive.csv')).text();assert.equal(csv.trim().split('\n').length,11);assert.match(csv,/technical_tester/);assert.match(csv,/technical_test/);assert.doesNotMatch(csv,/token/);
  assert.equal((await (await f.call('/api/research/responses.csv')).text()).trim().split('\n').length,1);
 });
-test('Explore offers CosyVoice 2 as "CosyVoice 2 (Test)" and stores its conversation; Test mode keeps its pinned name',async t=>{
- assert.ok(EXPLORE_ENGINES.includes('cosyvoice2'));assert.equal(EXPLORE_NAMES.cosyvoice2,'CosyVoice 2 (Test)');assert.equal(ENGINES.cosyvoice2.name,'CosyVoice2');
+test('Explore offers exactly the report shortlist, CosyVoice 2 by its plain name, and stores its conversation; Test mode keeps its pinned name',async t=>{
+ assert.deepEqual([...EXPLORE_ENGINES].sort(),['chatterbox','cosyvoice2','kokoro']);assert.equal(EXPLORE_NAMES.cosyvoice2,'CosyVoice 2');assert.equal(ENGINES.cosyvoice2.name,'CosyVoice2');
  const studio=readFileSync(new URL('../studio.html',import.meta.url),'utf8');
- assert.match(studio.match(/<select id="chat-engine">.*?<\/select>/)[0],/<option value="cosyvoice2">CosyVoice 2 \(Test\)<\/option>/);
+ assert.equal(studio.match(/<select id="chat-engine">.*?<\/select>/)[0],'<select id="chat-engine"><option value="chatterbox">Chatterbox</option><option value="kokoro">Kokoro</option><option value="cosyvoice2">CosyVoice 2</option></select>');
+ const parler=fixture(t,'explore','parlertts');assert.equal((await parler.register()).status,400);
  assert.match(readFileSync(new URL('../app.js',import.meta.url),'utf8'),/\['chat-engine',EXPLORE_ENGINES,exploreName\]/);
  const f=fixture(t,'explore','cosyvoice2');assert.equal((await f.register()).status,200);
  assert.equal((await f.save([f.turn(1),f.turn(2)])).status,200);
