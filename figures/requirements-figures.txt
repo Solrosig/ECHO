@@ -1,0 +1,7 @@
+# Python packages needed to rebuild the figures of the report (Python 3.11+).
+matplotlib==3.10.9
+numpy>=2.0
+pandas>=2.2
+statsmodels>=0.14   # Figure 5.9 only (mixed model)
+# scipy is optional: used for the Spearman p-value in Figure 5.10 when present; a built-in
+# implementation with the same t-approximation is used otherwise.
